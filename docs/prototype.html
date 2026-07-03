@@ -1,4 +1,8 @@
-<title>kobel-shell — sakura pop v3, live</title>
+<title>kobel-shell — sakura pop v4, live</title>
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 <style>
   :root{
     --panel:oklch(17% .012 300);
@@ -19,13 +23,13 @@
     --shadow-sm:0 6px 18px rgb(0 0 0/.3);
     --rp:16px; --rt:12px; --rb:10px;
     --ovr:cubic-bezier(.24,1.36,.35,1);
-    --font:system-ui,-apple-system,"Segoe UI",Cantarell,sans-serif;
-    --mono:ui-monospace,"JetBrains Mono",Menlo,monospace;
+    --font:InterVariable,"Inter var",Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
   }
   *{box-sizing:border-box;margin:0}
   body{background:oklch(12% .015 300);color:var(--tx);font-family:var(--font);min-height:100vh}
-  svg{display:block}
+  .tn{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
   button{font-family:inherit;color:inherit}
+  i.ph,i.ph-fill{display:inline-flex;line-height:1}
   :focus-visible{outline:2px solid var(--leaf);outline-offset:2px;border-radius:6px}
 
   .meta{max-width:1280px;margin:0 auto;padding:26px 24px 6px}
@@ -50,7 +54,7 @@
     background:oklch(16% .014 300 / .97);box-shadow:var(--shadow);z-index:5}
   .win .tb{height:32px;display:flex;align-items:center;gap:7px;padding:0 13px;color:var(--dim);font-size:11px}
   .win .tb i{width:9px;height:9px;border-radius:99px;background:var(--chip)}
-  .win .bd{padding:4px 16px 16px;font:12px/1.95 var(--mono);color:var(--mut)}
+  .win .bd{padding:4px 16px 16px;font-size:12px;line-height:1.95;color:var(--mut)}
   .win .blocks{display:flex;gap:7px;margin-bottom:10px}
   .win .blocks b{width:25px;height:33px;border-radius:5px}
   .win .g{color:var(--leaf)} .win .c{color:oklch(78% .1 250)}
@@ -61,10 +65,9 @@
     background:var(--panel);border-radius:13px;box-shadow:var(--shadow-sm)}
   .ibtn{appearance:none;border:0;background:transparent;color:var(--mut);width:31px;height:31px;
     border-radius:9px;display:grid;place-items:center;cursor:pointer;position:relative;
-    transition:background .16s,color .16s,transform .3s var(--ovr)}
+    transition:background .16s,color .16s,transform .3s var(--ovr);font-size:16px}
   .ibtn:hover{background:var(--panel2);color:var(--tx)}
   .ibtn:active{transform:scale(.86)}
-  .ibtn svg{width:15px;height:15px}
   .ws{display:flex;align-items:center;padding:0 4px}
   .wsb{appearance:none;border:0;background:transparent;width:18px;height:30px;
     display:grid;place-items:center;cursor:pointer;padding:0}
@@ -78,21 +81,19 @@
   .bcenter{appearance:none;border:0;background:transparent;display:flex;align-items:baseline;
     gap:8px;padding:6px 12px;border-radius:9px;cursor:pointer;transition:background .16s}
   .bcenter:hover{background:var(--panel2)}
-  .clk{font:600 13.5px var(--mono);font-variant-numeric:tabular-nums;color:var(--tx)}
-  .bdate{font:11.5px var(--mono);color:var(--mut)}
+  .clk{font-size:13.5px;font-weight:600;color:var(--tx)}
+  .bdate{font-size:11.5px;color:var(--mut)}
   .grow{flex:1}
   .status{appearance:none;border:0;display:flex;align-items:center;gap:2px;
-    background:var(--panel2);border-radius:999px;padding:2px 10px 2px 2px;cursor:pointer;
+    background:var(--panel2);border-radius:999px;padding:2px 11px 2px 2px;cursor:pointer;
     transition:background .16s}
   .status:hover{background:var(--chip)}
-  .status .si{width:28px;height:28px;display:grid;place-items:center;color:var(--mut)}
-  .status .si svg{width:15px;height:15px}
-  .status .pct{display:flex;align-items:center;gap:5px;font:600 11.5px var(--mono);
-    color:var(--tx);font-variant-numeric:tabular-nums}
-  .status .pct svg{width:17px;height:10px;color:var(--mut)}
+  .status .si{width:28px;height:28px;display:grid;place-items:center;color:var(--mut);font-size:15px}
+  .status .pct{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--tx)}
+  .status .pct i{font-size:15px;color:var(--mut)}
   .bell{position:relative}
   .badge{position:absolute;top:2px;right:2px;min-width:14px;height:14px;border-radius:99px;
-    background:var(--leaf);color:var(--ink);font:700 9px var(--mono);
+    background:var(--leaf);color:var(--ink);font-size:9px;font-weight:700;
     display:grid;place-items:center;padding:0 3px;opacity:0;pointer-events:none}
 
   /* ---------- dock ---------- */
@@ -102,8 +103,7 @@
   .dbtn{appearance:none;border:0;background:transparent;padding:0;cursor:pointer;
     display:flex;flex-direction:column;align-items:center;gap:3px}
   .dbtn .di{width:40px;height:40px;border-radius:var(--rt);display:grid;place-items:center;
-    will-change:transform}
-  .dbtn .di svg{width:20px;height:20px;color:#fff}
+    will-change:transform;color:#fff;font-size:21px}
   .dbtn .dot{display:block;width:4px;height:4px;border-radius:99px;background:transparent;
     transition:background .25s,width .3s var(--ovr)}
   .dbtn.running .dot{background:var(--mut)}
@@ -122,18 +122,17 @@
   /* launcher */
   .launcher{top:13.5%;left:50%;width:560px;margin-left:-280px;padding:10px}
   .lsearch{display:flex;align-items:center;gap:11px;padding:7px 11px}
-  .lsearch>svg{width:16px;height:16px;color:var(--dim);flex:none}
+  .lsearch>i{font-size:16px;color:var(--dim)}
   .lsearch input{flex:1;background:transparent;border:0;outline:0;color:var(--tx);
     font:14.5px var(--font);padding:8px 0;caret-color:var(--leaf)}
   .lsearch input::placeholder{color:var(--mut)}
-  .lsearch kbd{font:10.5px var(--mono);color:var(--dim);background:var(--panel2);
+  .lsearch kbd{font-size:10.5px;color:var(--dim);background:var(--panel2);
     border-radius:5px;padding:3px 7px}
   .lapps{display:flex;gap:12px;padding:14px 10px 12px;justify-content:center}
   .tile{width:66px;flex:none;display:flex;flex-direction:column;align-items:center;gap:7px;
     cursor:pointer;border-radius:10px;padding:4px 0;border:0;background:transparent}
   .tile .ic{width:52px;height:52px;border-radius:var(--rt);display:grid;place-items:center;
-    flex:none;transition:transform .35s var(--ovr)}
-  .tile .ic svg{width:24px;height:24px;color:#fff}
+    flex:none;transition:transform .35s var(--ovr);color:#fff;font-size:26px}
   .tile:hover .ic{transform:translateY(-4px) scale(1.08)}
   .tile em{font-style:normal;font-size:10.5px;color:var(--mut)}
   .tile.sel{background:var(--panel2)}
@@ -145,36 +144,42 @@
     cursor:pointer;transition:background .15s;border:0;background:transparent;width:100%;text-align:left}
   .crow:hover,.crow.sel{background:var(--panel2)}
   .crow .ri{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;
-    color:#fff}
-  .crow .ri svg{width:14px;height:14px}
+    color:#fff;font-size:15px}
   .crow .ri.ghost{background:var(--panel2);color:var(--mut)}
-  .crow b{font:600 13px var(--font);color:var(--tx)}
-  .crow b.cmd{font:600 13px var(--mono)}
+  .crow b{font-size:13px;font-weight:600;color:var(--tx)}
   .crow span{font-size:11.5px;color:var(--mut);flex:1;min-width:0;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap}
-  .crow kbd{font:10.5px var(--mono);color:var(--dim);background:var(--panel2);
+  .crow kbd{font-size:10.5px;color:var(--dim);background:var(--panel2);
     border-radius:5px;padding:2px 7px}
   .lempty{display:none;padding:20px 0 14px;text-align:center;color:var(--mut);font-size:12.5px}
   .lempty b{color:var(--tx)}
   .lfoot{display:flex;gap:14px;padding:9px 12px 4px;color:var(--dim);font-size:11px}
-  .lfoot b{color:var(--mut);font-family:var(--mono);font-weight:600}
+  .lfoot b{color:var(--mut);font-weight:600}
 
-  /* quick settings */
+  /* quick settings + drilldown */
   .qs{top:58px;right:12px;width:354px;padding:12px}
+  .qsviews{position:relative;overflow:hidden;will-change:height}
+  .view{position:absolute;top:0;left:0;right:0;will-change:transform,opacity}
+  .qclock{display:flex;align-items:flex-start;padding:2px 4px 10px}
+  .qclock b{font-size:30px;line-height:1;font-weight:600;letter-spacing:-.01em}
+  .qclock span{display:block;font-size:11.5px;color:var(--mut);margin-top:5px}
+  .qclock .qb{margin-left:auto;display:flex;gap:6px;align-items:center;padding-top:6px;
+    font-size:11.5px;font-weight:600;color:var(--mut)}
+  .qclock .qb i{font-size:15px}
   .chips{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-  .chipb{position:relative;display:flex;min-width:0;align-items:center;gap:9px;padding:9px 8px 9px 12px;
-    border-radius:var(--rt);background:var(--panel2);cursor:pointer;text-align:left;border:0;
-    transition:background .22s,transform .3s var(--ovr)}
+  .chipb{position:relative;display:flex;min-width:0;align-items:center;gap:9px;
+    padding:9px 8px 9px 12px;border-radius:var(--rt);background:var(--panel2);cursor:pointer;
+    text-align:left;border:0;transition:background .22s,transform .3s var(--ovr)}
   .chipb:hover{background:var(--chip)}
   .chipb:active{transform:scale(.96)}
-  .chipb>svg{width:16px;height:16px;color:var(--mut);flex:none;transition:color .22s}
+  .chipb>i{font-size:17px;color:var(--mut);flex:none;transition:color .22s}
   .chipb .cl{min-width:0;line-height:1.3;flex:1}
   .chipb .cl b{display:block;font-size:12.5px;font-weight:650}
   .chipb .cl span{display:block;font-size:10.5px;color:var(--mut);white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;transition:color .22s}
   .chipb.on{background:var(--leaf)}
   .chipb.on:hover{background:var(--leaf2)}
-  .chipb.on>svg,.chipb.on .cl b{color:var(--ink)}
+  .chipb.on>i,.chipb.on .cl b{color:var(--ink)}
   .chipb.on .cl span{color:oklch(34% .06 122)}
   .chipb.busy{background:var(--panel2)}
   .chipb.busy .cl span{color:var(--amber)}
@@ -182,86 +187,55 @@
   .chipb.tall{grid-column:2;grid-row:1/3;flex-direction:column;align-items:stretch;
     justify-content:space-between;gap:10px;padding:12px}
   .chipb.tall .ti{width:36px;height:36px;border-radius:99px;background:rgb(0 0 0/.22);
-    display:grid;place-items:center;color:var(--mut);flex:none}
-  .chipb.tall .ti svg{width:16px;height:16px}
+    display:grid;place-items:center;color:var(--mut);flex:none;font-size:17px}
   .chipb.tall.on .ti{background:rgb(255 255 255/.38);color:var(--ink)}
   .chipb.tall .chevb{position:absolute;top:10px;right:10px}
+  .chevb{appearance:none;border:0;background:transparent;width:24px;height:24px;flex:none;
+    border-radius:7px;display:grid;place-items:center;color:var(--dim);cursor:pointer;
+    transition:background .15s;font-size:13px}
+  .chevb:hover{background:rgb(0 0 0/.14)}
+  .chipb.on .chevb{color:var(--ink)}
   .rounds{display:flex;gap:10px;margin-top:8px}
   .rbig{appearance:none;border:0;flex:1;display:flex;flex-direction:column;align-items:center;
     gap:5px;background:transparent;padding:0;cursor:pointer}
   .rbig .rc{width:100%;height:44px;border-radius:999px;background:var(--panel2);
-    display:grid;place-items:center;color:var(--mut);
+    display:grid;place-items:center;color:var(--mut);font-size:17px;
     transition:background .22s,color .22s,transform .3s var(--ovr)}
   .rbig:hover .rc{background:var(--chip)}
   .rbig:active .rc{transform:scale(.95)}
   .rbig.on .rc{background:var(--leaf);color:var(--ink)}
-  .rbig .rc svg{width:16px;height:16px}
   .rbig em{font-style:normal;font-size:10px;color:var(--mut)}
-  .qclock{display:flex;align-items:flex-start;padding:2px 4px 10px}
-  .qclock b{font:600 30px/1 var(--mono);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
-  .qclock span{display:block;font:11.5px var(--mono);color:var(--mut);margin-top:5px}
-  .qclock .qb{margin-left:auto;display:flex;gap:6px;align-items:center;padding-top:6px;
-    font:600 11.5px var(--mono);color:var(--mut)}
-  .qclock .qb svg{width:17px;height:10px}
-  .chevb{appearance:none;border:0;background:transparent;width:24px;height:24px;flex:none;
-    border-radius:7px;display:grid;place-items:center;color:var(--dim);cursor:pointer;
-    transition:background .15s,rotate .3s var(--ovr)}
-  .chevb:hover{background:rgb(0 0 0/.14)}
-  .chipb.on .chevb{color:var(--ink)}
-  .chevb.openx{rotate:90deg}
-  .chevb svg{width:13px;height:13px}
-  .xsec{overflow:hidden;height:0;will-change:height}
-  .xin{padding:7px 2px 3px;display:flex;flex-direction:column;gap:2px}
-  .xrow{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;
-    border:0;background:transparent;cursor:pointer;text-align:left;transition:background .15s;width:100%}
-  .xrow:hover{background:var(--panel2)}
-  .xrow>svg{width:14px;height:14px;color:var(--mut);flex:none}
-  .xrow b{font-size:12px;font-weight:600;flex:1;text-align:left}
-  .xrow .xs{font:10.5px var(--mono);color:var(--mut)}
-  .xrow.active .xs{color:var(--leaf)}
   .sliders{display:flex;flex-direction:column;margin:10px 0 0}
   .srow{display:flex;align-items:center;gap:10px;padding:0 2px;min-height:42px}
-  .srow>svg{width:15px;height:15px;color:var(--mut);flex:none}
+  .srow>i{font-size:16px;color:var(--mut);flex:none}
   .slider{flex:1;height:36px;display:flex;align-items:center;cursor:pointer;touch-action:none}
   .rail{position:relative;height:30px;width:100%;border-radius:99px;background:var(--chip);overflow:hidden}
   .fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--leaf)}
   .knob{position:absolute;top:50%;width:4px;height:16px;border-radius:3px;background:var(--ink);
     translate:-140% -50%;will-change:scale}
-  .sval{font:600 11px var(--mono);color:var(--mut);width:32px;text-align:right;
-    font-variant-numeric:tabular-nums}
-  .mixrow{display:flex;align-items:center;gap:9px;padding:2px 2px 2px 26px;min-height:28px}
-  .mixrow .mi{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;flex:none;
-    background:var(--panel2);color:var(--mut)}
-  .mixrow .mi svg{width:11px;height:11px}
-  .mixrow em{font-style:normal;font-size:11.5px;color:var(--mut);width:56px;flex:none}
-  .mixrow .slider{height:22px}
-  .mixrow .rail{height:18px}
-  .mixrow .knob{width:3px;height:10px}
+  .sval{font-size:11px;font-weight:600;color:var(--mut);width:32px;text-align:right}
   .media{margin-top:9px;padding:10px 11px 9px;border-radius:var(--rt);background:var(--panel2)}
   .mrow{display:flex;gap:11px;align-items:center}
   .art{width:46px;height:46px;border-radius:10px;flex:none;background:var(--chip);
-    color:var(--mut);display:grid;place-items:center}
-  .art svg{width:20px;height:20px}
+    color:var(--mut);display:grid;place-items:center;font-size:22px}
   .mmeta{flex:1;min-width:0;line-height:1.35}
   .mmeta b{display:block;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;
     text-overflow:ellipsis}
   .mmeta span{font-size:11.5px;color:var(--mut)}
   .mbtns{display:flex;gap:1px}
   .mbtn{appearance:none;border:0;background:transparent;color:var(--mut);width:29px;height:29px;
-    border-radius:8px;display:grid;place-items:center;cursor:pointer;
+    border-radius:8px;display:grid;place-items:center;cursor:pointer;font-size:14px;
     transition:color .15s,background .15s,transform .3s var(--ovr)}
   .mbtn:hover{background:var(--chip);color:var(--tx)}
   .mbtn:active{transform:scale(.84)}
-  .mbtn:disabled{opacity:.4;pointer-events:none}
-  .mbtn svg{width:13px;height:13px}
   .mbtn.play{color:var(--tx)}
   .mbtn.play .i-pause{display:none}
-  .playing .mbtn.play .i-pause{display:block}
+  .playing .mbtn.play .i-pause{display:inline-flex}
   .playing .mbtn.play .i-play{display:none}
   .mbar{margin-top:7px;display:flex;align-items:center;gap:8px}
   .mtrack{flex:1;height:4px;border-radius:99px;background:var(--chip);position:relative;overflow:hidden}
   .mfill{position:absolute;inset:0 auto 0 0;background:var(--leaf);border-radius:99px}
-  .mtime{font:10.5px var(--mono);color:var(--mut);font-variant-numeric:tabular-nums}
+  .mtime{font-size:10.5px;color:var(--mut)}
   .cava{display:flex;align-items:flex-end;gap:3px;height:16px;margin-top:8px;padding:0 1px}
   .cava i{flex:1;background:var(--mut);opacity:.65;border-radius:2px;height:2px}
   .memptyrow{display:none;align-items:center;gap:11px}
@@ -274,34 +248,31 @@
   .media.empty .memptyrow{display:flex}
   .stats{display:flex;gap:8px;margin-top:9px}
   .stat{flex:1;padding:7px 10px;border-radius:var(--rt);background:var(--panel2)}
-  .stat .lb{display:flex;justify-content:space-between;font:600 10.5px var(--mono);
-    color:var(--mut);margin-bottom:6px;font-variant-numeric:tabular-nums}
+  .stat .lb{display:flex;justify-content:space-between;font-size:10.5px;font-weight:600;
+    color:var(--mut);margin-bottom:6px}
   .stat .tr{height:4px;border-radius:99px;background:var(--chip);position:relative;overflow:hidden}
   .stat .tr i{position:absolute;inset:0 auto 0 0;background:var(--mut);border-radius:99px}
   .urow{display:flex;align-items:center;gap:10px;margin-top:9px;padding:8px 9px;
     border-radius:var(--rt);background:var(--panel2)}
   .ava{width:34px;height:34px;border-radius:99px;flex:none;display:grid;place-items:center;
-    background:var(--chip);color:var(--tx);font:800 14px var(--font)}
+    background:var(--chip);color:var(--tx);font-size:14px;font-weight:800}
   .uwho{flex:1;line-height:1.3;min-width:0}
   .uwho b{display:block;font-size:12.5px;font-weight:650}
-  .uwho span{font:10.5px var(--mono);color:var(--mut);white-space:nowrap;overflow:hidden;
+  .uwho span{font-size:10.5px;color:var(--mut);white-space:nowrap;overflow:hidden;
     text-overflow:ellipsis;display:block}
-  .ubatt{font:600 11px var(--mono);color:var(--mut);font-variant-numeric:tabular-nums;padding-right:2px}
+  .ubatt{font-size:11px;font-weight:600;color:var(--mut);padding-right:2px}
   .rbtn{appearance:none;border:0;background:var(--chip);color:var(--mut);
     width:32px;height:32px;border-radius:99px;display:grid;place-items:center;cursor:pointer;
-    transition:background .16s,color .16s,transform .3s var(--ovr)}
+    font-size:14px;transition:background .16s,color .16s,transform .3s var(--ovr)}
   .rbtn:hover{background:var(--hover);color:var(--tx)}
   .rbtn:active{transform:scale(.86)}
-  .rbtn:disabled{opacity:.4;pointer-events:none}
-  .rbtn svg{width:14px;height:14px}
   .rbtn.danger:hover{background:var(--rose);color:var(--rose-ink)}
   .gnob{margin-top:9px;display:flex;align-items:center;gap:10px;padding:8px 9px;
     border-radius:var(--rt);background:var(--panel2)}
   .gnob .gi{width:28px;height:28px;border-radius:9px;background:var(--chip);color:var(--mut);
-    display:grid;place-items:center;flex:none;transition:background .25s,color .25s}
-  .gnob .gi svg{width:14px;height:14px}
+    display:grid;place-items:center;flex:none;font-size:15px;transition:background .25s,color .25s}
   .gnob p{flex:1;font-size:10.5px;color:var(--mut);line-height:1.4;min-width:0}
-  .gnob p b{display:block;color:var(--tx);font:600 11.5px var(--mono)}
+  .gnob p b{display:block;color:var(--tx);font-size:11.5px;font-weight:600}
   .gnob.err .gi{background:var(--amber);color:var(--ink)}
   .gnob.err p b{color:var(--amber)}
   .gbtn{appearance:none;display:flex;align-items:center;gap:6px;border:0;background:var(--leaf);
@@ -309,29 +280,61 @@
     cursor:pointer;transition:background .18s,transform .3s var(--ovr)}
   .gbtn:hover{background:var(--leaf2)}
   .gbtn:active{transform:scale(.94)}
-  .gbtn svg{width:12px;height:12px;will-change:transform}
+  .gbtn i{font-size:13px;will-change:transform}
 
-  /* notification drawer (right slide-out) */
+  /* drilldown subview */
+  .dhead{display:flex;align-items:center;gap:8px;padding:0 0 10px}
+  .dhead b{flex:1;text-align:center;font-size:14px;font-weight:650}
+  .dhead .sp{width:31px;flex:none}
+  .drow{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:var(--rt);
+    background:var(--panel2);margin-bottom:8px}
+  .drow b{flex:1;font-size:13px;font-weight:600}
+  .sw{appearance:none;border:0;width:46px;height:26px;border-radius:99px;background:var(--chip);
+    position:relative;cursor:pointer;transition:background .25s;flex:none}
+  .sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:99px;
+    background:var(--mut);transition:left .3s var(--ovr),background .25s}
+  .sw.on{background:var(--leaf)}
+  .sw.on i{left:23px;background:var(--ink)}
+  .dlist{display:flex;flex-direction:column;gap:2px;min-height:120px}
+  .xrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;
+    border:0;background:transparent;cursor:pointer;text-align:left;transition:background .15s;width:100%}
+  .xrow:hover{background:var(--panel2)}
+  .xrow>i{font-size:16px;color:var(--mut);flex:none}
+  .xrow b{font-size:12.5px;font-weight:600;flex:1;text-align:left}
+  .xrow .xs{font-size:10.5px;color:var(--mut)}
+  .xrow.active .xs{color:var(--leaf)}
+  .mixrow{display:flex;align-items:center;gap:10px;padding:4px 2px;min-height:40px}
+  .mixrow .mi{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
+    background:var(--panel2);color:var(--mut);font-size:13px}
+  .mixrow em{font-style:normal;font-size:12px;color:var(--mut);width:56px;flex:none}
+  .mixrow .slider{height:30px}
+  .mixrow .rail{height:22px}
+  .mixrow .knob{width:3px;height:12px}
+  .done{appearance:none;border:0;background:transparent;color:var(--tx);
+    font:600 13px var(--font);padding:12px 0 4px;margin-top:8px;width:100%;cursor:pointer;
+    border-top:1px solid var(--panel2);transition:color .15s}
+  .done:hover{color:var(--leaf)}
+
+  /* notification drawer */
   .nc{top:10px;right:10px;bottom:10px;width:348px;padding:12px;display:flex;flex-direction:column}
   .cal{padding:10px 12px 12px;border-radius:var(--rt);background:var(--panel2);margin-bottom:11px;flex:none}
   .calhead{display:flex;align-items:center;gap:4px;margin-bottom:8px}
   .calhead b{flex:1;font-size:12.5px;font-weight:650;padding-left:3px}
-  .calhead .ibtn{width:26px;height:26px}
+  .calhead .ibtn{width:26px;height:26px;font-size:13px}
   .calhead .ibtn:hover{background:var(--chip)}
   .calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;text-align:center}
-  .calgrid .dow{font:600 9.5px var(--mono);color:var(--dim);padding:3px 0 5px}
-  .calgrid .day{font:11px var(--mono);color:var(--tx);padding:4px 0;border-radius:7px;
-    font-variant-numeric:tabular-nums}
+  .calgrid .dow{font-size:9.5px;font-weight:600;color:var(--dim);padding:3px 0 5px}
+  .calgrid .day{font-size:11px;color:var(--tx);padding:4px 0;border-radius:7px}
   .calgrid .day.out{color:var(--dim)}
   .calgrid .day.today{background:var(--leaf);color:var(--ink);font-weight:700}
   .nhead{display:flex;align-items:baseline;gap:8px;padding:2px 4px 9px;flex:none}
   .nhead b{font-size:13.5px;font-weight:650}
-  .nhead span{font:11px var(--mono);color:var(--dim)}
+  .nhead span{font-size:11px;color:var(--dim)}
   .nclear{margin-left:auto;appearance:none;border:0;background:transparent;color:var(--rose);
     font:600 11.5px var(--font);cursor:pointer;padding:4px 9px;border-radius:7px;
     display:flex;align-items:center;gap:5px;transition:background .15s}
   .nclear:hover{background:var(--panel2)}
-  .nclear svg{width:11px;height:11px}
+  .nclear i{font-size:12px}
   .nlist{display:flex;flex-direction:column;overflow-y:auto;min-height:0}
   .ncard{will-change:transform,opacity,height}
   .ncard .inner{display:flex;gap:10px;padding:11px 12px;margin-bottom:2px;border-radius:8px;
@@ -339,39 +342,37 @@
   .ncard .inner:active{cursor:grabbing}
   .ncard:first-child .inner{border-top-left-radius:var(--rp);border-top-right-radius:var(--rp)}
   .ncard:last-child .inner{border-bottom-left-radius:var(--rp);border-bottom-right-radius:var(--rp)}
-  .nic{width:30px;height:30px;border-radius:9px;flex:none;display:grid;place-items:center;color:#fff}
-  .nic svg{width:14px;height:14px}
+  .nic{width:30px;height:30px;border-radius:9px;flex:none;display:grid;place-items:center;
+    color:#fff;font-size:15px}
   .ntx{flex:1;min-width:0;line-height:1.35}
   .ntx .t{display:flex;align-items:baseline;gap:8px}
   .ntx b{font-size:12.5px;font-weight:650}
-  .ntx .when{margin-left:auto;font:10px var(--mono);color:var(--dim);flex:none;
-    font-variant-numeric:tabular-nums}
+  .ntx .when{margin-left:auto;font-size:10px;color:var(--dim);flex:none}
   .ntx p{font-size:11.8px;color:var(--mut)}
   .nx{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:99px;border:0;
     background:transparent;color:var(--dim);display:grid;place-items:center;cursor:pointer;
-    opacity:0;transition:opacity .15s,color .15s,background .15s}
+    font-size:11px;opacity:0;transition:opacity .15s,color .15s,background .15s}
   .ncard .inner:hover .nx,.ncard .inner:focus-within .nx{opacity:1}
   .nx:hover{background:var(--chip);color:var(--rose)}
-  .nx svg{width:9px;height:9px}
   .nprog{margin-top:7px;height:4px;border-radius:99px;background:var(--chip);
     position:relative;overflow:hidden}
   .nprog i{position:absolute;inset:0 auto 0 0;background:var(--leaf);border-radius:99px}
   .nempty{padding:22px 0 16px;text-align:center;color:var(--mut);font-size:12.5px;display:none}
-  .nempty svg{width:22px;height:22px;color:var(--mut);margin:0 auto 8px}
+  .nempty i{font-size:22px;color:var(--mut);display:block;margin:0 auto 8px;width:fit-content}
   .nlist.empty+.nempty{display:block}
 
-  /* toasts float over content, macOS-style (blur = gnoblin compositor effect in prod) */
+  /* toasts */
   .toasts{position:absolute;top:58px;right:12px;z-index:62;display:flex;flex-direction:column;
     gap:8px;pointer-events:none;width:330px}
   .toast{pointer-events:auto;display:flex;gap:10px;padding:11px 13px;border-radius:var(--rt);
     background:var(--panelT);backdrop-filter:blur(16px) saturate(1.35);
     box-shadow:var(--shadow);will-change:transform,opacity}
 
-  /* osd — compact, display-only, never intercepts the pointer */
+  /* osd */
   .osd{bottom:64px;left:50%;width:230px;margin-left:-115px;display:flex;align-items:center;
     gap:11px;padding:10px 15px;border-radius:999px;z-index:55;pointer-events:none!important;
     background:var(--panelT);backdrop-filter:blur(16px) saturate(1.35);box-shadow:var(--shadow)}
-  .osd>svg{width:15px;height:15px;color:var(--tx);flex:none}
+  .osd>i{font-size:15px;color:var(--tx)}
   .osd .rail{position:relative;height:8px;flex:1;border-radius:99px;background:var(--chip);overflow:hidden}
   .osd .sval{width:34px}
 
@@ -382,15 +383,13 @@
   .sbtn{appearance:none;border:0;background:transparent;display:flex;flex-direction:column;
     align-items:center;gap:10px;cursor:pointer;padding:6px;border-radius:12px}
   .sbtn .sic{width:64px;height:64px;border-radius:var(--rp);display:grid;place-items:center;
-    background:var(--panel);box-shadow:var(--shadow-sm);
+    background:var(--panel);box-shadow:var(--shadow-sm);font-size:24px;
     transition:transform .35s var(--ovr),background .2s}
   .sbtn:hover .sic,.sbtn:focus-visible .sic{transform:translateY(-5px) scale(1.06);background:var(--panel2)}
   .sbtn:active .sic{transform:scale(.92)}
-  .sbtn .sic svg{width:22px;height:22px;color:var(--tx)}
   .sbtn span{font-size:12px;color:var(--mut)}
   .sbtn:hover span,.sbtn:focus-visible span{color:var(--tx)}
-  .sbtn.red:hover .sic,.sbtn.red:focus-visible .sic{background:var(--rose)}
-  .sbtn.red:hover svg,.sbtn.red:focus-visible svg{color:var(--rose-ink)}
+  .sbtn.red:hover .sic,.sbtn.red:focus-visible .sic{background:var(--rose);color:var(--rose-ink)}
   .sbtn.confirm span{color:var(--rose);font-weight:650}
 
   @media (prefers-reduced-motion:reduce){
@@ -404,18 +403,18 @@
 </style>
 
 <div class="meta">
-  <h1>kobel-shell <em>· sakura pop v3 — live, click everything</em></h1>
-  <p>Dock, slide-out notifications with floating blurred toasts, an expandable control centre
-     (Wi-Fi/BT lists, per-app mixer), spotlight launcher with files + calc, quiet accent, full
-     keyboard path, and designed failure states. Springs everywhere; 1:1 with QML.</p>
+  <h1>kobel-shell <em>· sakura pop v4 — live, click everything</em></h1>
+  <p>Drilldown quick settings (chevrons slide the whole panel into a subview and spring-resize it),
+     Inter with tabular numerals, Phosphor icons, dock, slide-out notifications, failure states,
+     full keyboard path. Springs everywhere; 1:1 with QML.</p>
 </div>
 <div class="demo">
   <button data-demo="notify">send a notification</button>
   <button data-demo="volume">volume key</button>
   <button data-demo="media">play / pause</button>
   <button data-demo="fail">failure tour</button>
-  <span class="hint"><b>try:</b> ':' commands or '=2+2' in the launcher · expand Wi-Fi/volume chevrons ·
-    Tab everywhere · Del dismisses a focused notification · Esc closes</span>
+  <span class="hint"><b>try:</b> chevrons drill into Wi-Fi / Bluetooth / volume (Esc = back) ·
+    ':' commands or '=2+2' in the launcher · Del dismisses a focused notification</span>
 </div>
 
 <div class="stage">
@@ -438,28 +437,23 @@
 
   <!-- ============ BAR ============ -->
   <div class="bar">
-    <button class="ibtn" id="b-launch" title="Launcher (Super)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>
-    </button>
+    <button class="ibtn" id="b-launch" title="Launcher (Super)"><i class="ph ph-squares-four"></i></button>
     <div class="ws" id="ws" aria-label="Workspaces"></div>
     <div class="ftitle" id="ftitle">zed — Bar.qml</div>
     <div class="grow"></div>
     <button class="bcenter" id="b-clock" title="Calendar &amp; notifications">
-      <span class="clk" id="clk">10:42</span><span class="bdate" id="bdate">Fri 3 Jul</span>
+      <span class="clk tn" id="clk">10:42</span><span class="bdate" id="bdate">Fri 3 Jul</span>
     </button>
     <div class="grow"></div>
     <button class="status" id="b-status" title="Quick settings">
-      <span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 9c5.5-5.3 14.5-5.3 20 0M5.5 12.6c3.6-3.4 9.4-3.4 13 0M9 16.2c1.8-1.6 4.2-1.6 6 0"/><circle cx="12" cy="19.4" r=".9" fill="currentColor"/></svg></span>
-      <span class="si" id="b-vol" title="Volume — scroll me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 010 7"/></svg></span>
-      <span class="pct"><svg viewBox="0 0 20 11" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="15" height="9" rx="2.5"/><rect x="3" y="3" width="11" height="5" rx="1" fill="currentColor" stroke="none"/><path d="M18.5 4v3" stroke-linecap="round"/></svg>100%</span>
+      <span class="si"><i class="ph ph-wifi-high"></i></span>
+      <span class="si" id="b-vol" title="Volume — scroll me"><i class="ph ph-speaker-simple-high"></i></span>
+      <span class="pct tn"><i class="ph ph-battery-high"></i>100%</span>
     </button>
     <button class="ibtn bell" id="b-bell" title="Notifications">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 9a6 6 0 10-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9M10.3 20a2 2 0 003.4 0"/></svg>
-      <b class="badge" id="badge">1</b>
+      <i class="ph ph-bell"></i><b class="badge tn" id="badge">1</b>
     </button>
-    <button class="ibtn" id="b-power" title="Session">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v8M17.6 6.2a8 8 0 11-11.2 0"/></svg>
-    </button>
+    <button class="ibtn" id="b-power" title="Session"><i class="ph ph-power"></i></button>
   </div>
 
   <!-- ============ DOCK ============ -->
@@ -470,7 +464,7 @@
   <!-- ============ LAUNCHER ============ -->
   <section class="p sheet launcher" id="p-launch">
     <div class="lsearch st" style="--i:0">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <i class="ph ph-magnifying-glass"></i>
       <input id="lq" placeholder="Apps, files, =maths — ':' for commands" autocomplete="off" spellcheck="false">
       <kbd>esc</kbd>
     </div>
@@ -486,105 +480,108 @@
 
   <!-- ============ QUICK SETTINGS ============ -->
   <section class="p sheet qs" id="p-qs">
-    <div class="qclock st" style="--i:0">
-      <div><b id="q-time">14:08</b><span id="q-date">Fri 3 Jul</span></div>
-      <span class="qb"><svg viewBox="0 0 20 11" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="15" height="9" rx="2.5"/><rect x="3" y="3" width="11" height="5" rx="1" fill="currentColor" stroke="none"/><path d="M18.5 4v3" stroke-linecap="round"/></svg>100%</span>
-    </div>
-    <div class="chips st" style="--i:0">
-      <button class="chipb pill on" data-t="wifi" id="c-wifi">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 9c5.5-5.3 14.5-5.3 20 0M5.5 12.6c3.6-3.4 9.4-3.4 13 0M9 16.2c1.8-1.6 4.2-1.6 6 0"/><circle cx="12" cy="19.4" r=".9" fill="currentColor"/></svg>
-        <span class="cl"><b>Wi-Fi</b><span data-on="chompers-5G" data-off="Off">chompers-5G</span></span>
-        <span class="chevb" data-x="x-wifi" role="button" tabindex="0" title="Networks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg></span>
-      </button>
-      <button class="chipb tall on" data-t="bt" id="c-bt">
-        <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg></span>
-        <span class="cl"><b>Bluetooth</b><span data-on="WH-1000XM5" data-off="Off">WH-1000XM5</span></span>
-        <span class="chevb" data-x="x-bt" role="button" tabindex="0" title="Devices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg></span>
-      </button>
-      <button class="chipb pill" data-t="save">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>
-        <span class="cl"><b>Power Saver</b><span data-on="On" data-off="Off">Off</span></span>
-      </button>
-    </div>
-    <div class="xsec" id="x-wifi"><div class="xin" id="x-wifi-in"></div></div>
-    <div class="xsec" id="x-bt"><div class="xin" id="x-bt-in"></div></div>
-    <div class="rounds st" style="--i:1">
-      <button class="rbig on" data-t="dark" title="Dark — kobel-sakura">
-        <span class="rc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z"/></svg></span><em>Dark</em>
-      </button>
-      <button class="rbig" data-t="silent" title="Silent — mute toasts">
-        <span class="rc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 9a6 6 0 10-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9"/><path d="M5 4l15 16"/></svg></span><em>Silent</em>
-      </button>
-      <button class="rbig" data-t="night" title="Night Light">
-        <span class="rc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg></span><em>Night</em>
-      </button>
-    </div>
-
-    <div class="sliders st" style="--i:2">
-      <div class="srow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 010 7M18.8 5.2a9.5 9.5 0 010 13.6"/></svg>
-        <div class="slider" id="s-vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>
-        <span class="sval">64%</span>
-        <span class="chevb" data-x="x-mix" role="button" tabindex="0" title="Per-app volume"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg></span>
-      </div>
-      <div class="xsec" id="x-mix"><div class="xin" id="x-mix-in"></div></div>
-      <div class="srow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
-        <div class="slider" id="s-bri" role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>
-        <span class="sval">80%</span>
-        <span class="chevb" role="button" aria-disabled="true" style="opacity:.35;pointer-events:none" title="No external displays"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg></span>
-      </div>
-    </div>
-
-    <div class="media playing st" id="media" style="--i:3">
-      <div class="mrow">
-        <div class="art"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 18.5a2.5 2.5 0 11-2.4-2.5c.5 0 1 .1 1.4.4V6l11-2v11.5a2.5 2.5 0 11-2.4-2.5c.5 0 1 .1 1.4.4V7.6L9 9.4z"/></svg></div>
-        <div class="mmeta"><b>Weightless</b><span>Marconi Union</span></div>
-        <div class="mbtns">
-          <button class="mbtn" id="m-prev" title="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 5v14L8 12zM7 5H5v14h2z"/></svg></button>
-          <button class="mbtn play" id="m-play" title="Play/Pause">
-            <svg class="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>
-            <svg class="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+    <div class="qsviews" id="qsviews">
+      <div class="view" id="qv-root">
+        <div class="qclock st" style="--i:0">
+          <div><b class="tn" id="q-time">14:08</b><span id="q-date">Fri 3 Jul</span></div>
+          <span class="qb tn"><i class="ph ph-battery-high"></i>100%</span>
+        </div>
+        <div class="chips st" style="--i:0">
+          <button class="chipb pill on" data-t="wifi" id="c-wifi">
+            <i class="ph ph-wifi-high"></i>
+            <span class="cl"><b>Wi-Fi</b><span data-on="chompers-5G" data-off="Off">chompers-5G</span></span>
+            <span class="chevb" data-x="wifi" role="button" tabindex="0" title="Networks"><i class="ph ph-caret-right"></i></span>
           </button>
-          <button class="mbtn" id="m-next" title="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l9-7zM17 5h2v14h-2z"/></svg></button>
+          <button class="chipb tall on" data-t="bt" id="c-bt">
+            <span class="ti"><i class="ph ph-bluetooth"></i></span>
+            <span class="cl"><b>Bluetooth</b><span data-on="WH-1000XM5" data-off="Off">WH-1000XM5</span></span>
+            <span class="chevb" data-x="bt" role="button" tabindex="0" title="Devices"><i class="ph ph-caret-right"></i></span>
+          </button>
+          <button class="chipb pill" data-t="save">
+            <i class="ph ph-lightning"></i>
+            <span class="cl"><b>Power Saver</b><span data-on="On" data-off="Off">Off</span></span>
+          </button>
+        </div>
+        <div class="rounds st" style="--i:1">
+          <button class="rbig on" data-t="dark" title="Dark — kobel-sakura">
+            <span class="rc"><i class="ph ph-moon"></i></span><em>Dark</em>
+          </button>
+          <button class="rbig" data-t="silent" title="Silent — mute toasts">
+            <span class="rc"><i class="ph ph-bell-slash"></i></span><em>Silent</em>
+          </button>
+          <button class="rbig" data-t="night" title="Night Light">
+            <span class="rc"><i class="ph ph-sun-dim"></i></span><em>Night</em>
+          </button>
+        </div>
+        <div class="sliders st" style="--i:2">
+          <div class="srow">
+            <i class="ph ph-speaker-simple-high"></i>
+            <div class="slider" id="s-vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>
+            <span class="sval tn">64%</span>
+            <span class="chevb" data-x="mix" role="button" tabindex="0" title="Per-app volume"><i class="ph ph-caret-right"></i></span>
+          </div>
+          <div class="srow">
+            <i class="ph ph-sun"></i>
+            <div class="slider" id="s-bri" role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>
+            <span class="sval tn">80%</span>
+            <span class="chevb" role="button" aria-disabled="true" style="opacity:.35;pointer-events:none" title="No external displays"><i class="ph ph-caret-right"></i></span>
+          </div>
+        </div>
+        <div class="media playing st" id="media" style="--i:3">
+          <div class="mrow">
+            <div class="art"><i class="ph ph-music-notes"></i></div>
+            <div class="mmeta"><b>Weightless</b><span>Marconi Union</span></div>
+            <div class="mbtns">
+              <button class="mbtn" id="m-prev" title="Previous"><i class="ph-fill ph-skip-back"></i></button>
+              <button class="mbtn play" id="m-play" title="Play/Pause">
+                <i class="i-play ph-fill ph-play"></i><i class="i-pause ph-fill ph-pause"></i>
+              </button>
+              <button class="mbtn" id="m-next" title="Next"><i class="ph-fill ph-skip-forward"></i></button>
+            </div>
+          </div>
+          <div class="mbar">
+            <span class="mtime tn" id="m-cur">2:41</span>
+            <div class="mtrack"><div class="mfill" id="m-fill"></div></div>
+            <span class="mtime tn">8:00</span>
+          </div>
+          <div class="cava" id="cava"></div>
+          <div class="memptyrow">
+            <div class="art"><i class="ph ph-vinyl-record"></i></div>
+            <p><b>Nothing playing</b>Media controls appear when a player starts</p>
+            <button class="ghostb" id="m-open">Open Music</button>
+          </div>
+        </div>
+        <div class="stats st" style="--i:4">
+          <div class="stat"><div class="lb tn"><span>CPU</span><span id="cpu-v">12%</span></div>
+            <div class="tr"><i id="cpu-b" style="width:12%"></i></div></div>
+          <div class="stat"><div class="lb tn"><span>MEM</span><span id="mem-v">38%</span></div>
+            <div class="tr"><i style="width:38%"></i></div></div>
+        </div>
+        <div class="urow st" style="--i:5">
+          <div class="ava">K</div>
+          <div class="uwho"><b>kieran</b><span>up 6h</span></div>
+          <span class="ubatt tn">100% · 3h 02m</span>
+          <button class="rbtn" title="Lock"><i class="ph ph-lock-simple"></i></button>
+          <button class="rbtn" id="u-out" title="Log out"><i class="ph ph-sign-out"></i></button>
+          <button class="rbtn danger" id="u-power" title="Session"><i class="ph ph-power"></i></button>
+        </div>
+        <div class="gnob st" id="gnob" style="--i:6">
+          <div class="gi" id="g-ic"><i class="ph ph-leaf"></i></div>
+          <p><b>org.gnoblin.Shell</b><span id="g-tx">connected · owns osd + notifs</span></p>
+          <button class="gbtn" id="g-reload">
+            <i class="ph ph-arrows-clockwise"></i><span id="g-bl">Soft-reload</span>
+          </button>
         </div>
       </div>
-      <div class="mbar">
-        <span class="mtime" id="m-cur">2:41</span>
-        <div class="mtrack"><div class="mfill" id="m-fill"></div></div>
-        <span class="mtime">8:00</span>
+      <div class="view" id="qv-sub">
+        <div class="dhead">
+          <button class="ibtn" id="q-back" title="Back"><i class="ph ph-caret-left"></i></button>
+          <b id="q-title">Wi-Fi</b>
+          <span class="sp"></span>
+        </div>
+        <div id="q-body"></div>
+        <button class="done" id="q-done">Done</button>
       </div>
-      <div class="cava" id="cava"></div>
-      <div class="memptyrow">
-        <div class="art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18V6l11-2v12M9 9.4L20 7.6"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg></div>
-        <p><b>Nothing playing</b>Media controls appear when a player starts</p>
-        <button class="ghostb" id="m-open">Open Music</button>
-      </div>
-    </div>
-
-    <div class="stats st" style="--i:4">
-      <div class="stat"><div class="lb"><span>CPU</span><span id="cpu-v">12%</span></div>
-        <div class="tr"><i id="cpu-b" style="width:12%"></i></div></div>
-      <div class="stat"><div class="lb"><span>MEM</span><span id="mem-v">38%</span></div>
-        <div class="tr"><i style="width:38%"></i></div></div>
-    </div>
-
-    <div class="urow st" style="--i:5">
-      <div class="ava">K</div>
-      <div class="uwho"><b>kieran</b><span>up 6h</span></div>
-      <span class="ubatt">100% · 3h 02m</span>
-      <button class="rbtn" title="Lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></button>
-      <button class="rbtn" id="u-out" title="Log out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg></button>
-      <button class="rbtn danger" id="u-power" title="Session"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v8M17.6 6.2a8 8 0 11-11.2 0"/></svg></button>
-    </div>
-
-    <div class="gnob st" id="gnob" style="--i:6">
-      <div class="gi" id="g-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21C7 17 4 13 4 9a8 8 0 0116 0c0 4-3 8-8 12z"/><path d="M12 21V9"/></svg></div>
-      <p><b>org.gnoblin.Shell</b><span id="g-tx">connected · owns osd + notifs</span></p>
-      <button class="gbtn" id="g-reload">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"/></svg>
-        <span id="g-bl">Soft-reload</span>
-      </button>
     </div>
   </section>
 
@@ -593,38 +590,34 @@
     <div class="cal st" style="--i:0">
       <div class="calhead">
         <b id="cal-title">July 2026</b>
-        <button class="ibtn" id="cal-prev" title="Previous month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 6l-6 6 6 6"/></svg></button>
-        <button class="ibtn" id="cal-today" title="Today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/></svg></button>
-        <button class="ibtn" id="cal-next" title="Next month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg></button>
+        <button class="ibtn" id="cal-prev" title="Previous month"><i class="ph ph-caret-left"></i></button>
+        <button class="ibtn" id="cal-today" title="Today"><i class="ph ph-calendar-blank"></i></button>
+        <button class="ibtn" id="cal-next" title="Next month"><i class="ph ph-caret-right"></i></button>
       </div>
-      <div class="calgrid" id="cal-grid"></div>
+      <div class="calgrid tn" id="cal-grid"></div>
     </div>
-    <div class="nhead st" style="--i:1"><b>Notifications</b><span id="n-count"></span>
-      <button class="nclear" id="n-clear">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6"/></svg>
-        Clear</button></div>
+    <div class="nhead st" style="--i:1"><b>Notifications</b><span class="tn" id="n-count"></span>
+      <button class="nclear" id="n-clear"><i class="ph ph-trash"></i>Clear</button></div>
     <div class="nlist st" id="nlist" style="--i:2"></div>
-    <div class="nempty st" style="--i:2">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg>
-      All caught up</div>
+    <div class="nempty st" style="--i:2"><i class="ph ph-check"></i>All caught up</div>
   </section>
 
   <div class="toasts" id="toasts"></div>
 
   <!-- ============ OSD ============ -->
   <div class="p osd" id="p-osd">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 010 7M18.8 5.2a9.5 9.5 0 010 13.6"/></svg>
+    <i class="ph ph-speaker-simple-high"></i>
     <div class="rail"><div class="fill" id="osd-fill"></div></div>
-    <span class="sval" id="osd-val">64%</span>
+    <span class="sval tn" id="osd-val">64%</span>
   </div>
 
   <!-- ============ SESSION ============ -->
   <div class="session" id="p-sess">
     <div class="sess-row p" id="sess-inner" style="opacity:1;pointer-events:none;position:static">
-      <button class="sbtn st" data-s="Lock" style="--i:0"><span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></span><span>Lock</span></button>
-      <button class="sbtn st" data-s="Log out" style="--i:1"><span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg></span><span>Log out</span></button>
-      <button class="sbtn st" data-s="Restart" data-confirm="1" style="--i:2"><span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"/></svg></span><span>Restart</span></button>
-      <button class="sbtn red st" data-s="Shut down" data-confirm="1" style="--i:3"><span class="sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v8M17.6 6.2a8 8 0 11-11.2 0"/></svg></span><span>Shut down</span></button>
+      <button class="sbtn st" data-s="Lock" style="--i:0"><span class="sic"><i class="ph ph-lock-simple"></i></span><span>Lock</span></button>
+      <button class="sbtn st" data-s="Log out" style="--i:1"><span class="sic"><i class="ph ph-sign-out"></i></span><span>Log out</span></button>
+      <button class="sbtn st" data-s="Restart" data-confirm="1" style="--i:2"><span class="sic"><i class="ph ph-arrow-counter-clockwise"></i></span><span>Restart</span></button>
+      <button class="sbtn red st" data-s="Shut down" data-confirm="1" style="--i:3"><span class="sic"><i class="ph ph-power"></i></span><span>Shut down</span></button>
     </div>
   </div>
 
@@ -814,6 +807,7 @@ function openP(n,from){
   P[n].show();scrim.style.display="block";
   if(n==="launch")setTimeout(()=>{$("lq").focus();},60);
   if(n==="nc")markRead();
+  if(n==="qs")qFit(true);
 }
 function closeAll(){
   if(cur){P[cur].hide();cur=null;}
@@ -825,7 +819,11 @@ function closeAll(){
   if(invoker&&invoker.focus){invoker.focus();invoker=null;}
 }
 scrim.addEventListener("click",closeAll);
-addEventListener("keydown",e=>{if(e.key==="Escape")closeAll();});
+addEventListener("keydown",e=>{
+  if(e.key!=="Escape")return;
+  if(cur==="qs"&&drilled){undrill();return;}
+  closeAll();
+});
 function openSession(from){
   closeAll();sessOpen=true;invoker=from||document.activeElement;
   scrim.style.display="block";
@@ -891,24 +889,15 @@ function setWs(i){
   f.textContent=titles[i];f.classList.add("swoop");
 }
 
-/* ================= icons / apps ================= */
-const GLYPHS={
-  term:'<path d="M6 8l6 4-6 4M13 17h6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-  files:'<path d="M4 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z" fill="none" stroke="currentColor" stroke-width="2"/>',
-  web:'<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 12h16M12 4c-5 5-5 11 0 16 5-5 5-11 0-16" fill="none" stroke="currentColor" stroke-width="2"/>',
-  zed:'<path d="M6 7h12l-9 10h9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
-  music:'<path d="M9 18.5a2.5 2.5 0 11-2.4-2.5c.5 0 1 .1 1.4.4V6l11-2v11.5a2.5 2.5 0 11-2.4-2.5c.5 0 1 .1 1.4.4V7.6L9 9.4z" fill="currentColor"/>',
-  gear:'<circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-  doc:'<path d="M6 3h8l4 4v14H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 3v4h4" fill="none" stroke="currentColor" stroke-width="2"/>',
-  calc:'<rect x="5" y="3" width="14" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
-};
+/* ================= apps / data ================= */
+function ph(n,fill){return '<i class="'+(fill?'ph-fill':'ph')+' ph-'+n+'"></i>';}
 const APPS=[
-  {n:"Terminal",g:"term",bg:"oklch(30% .02 300)",run:true},
-  {n:"Files",g:"files",bg:"oklch(64% .12 250)",run:true},
-  {n:"Firefox",g:"web",bg:"oklch(70% .15 55)",run:true,focused:true},
-  {n:"Zed",g:"zed",bg:"oklch(64% .14 290)",run:true},
-  {n:"Music",g:"music",bg:"oklch(70% .13 5)"},
-  {n:"Settings",g:"gear",bg:"oklch(58% .12 130)"}
+  {n:"Terminal",g:"terminal-window",bg:"oklch(30% .02 300)",run:true},
+  {n:"Files",g:"folder",bg:"oklch(64% .12 250)",run:true},
+  {n:"Firefox",g:"globe",bg:"oklch(70% .15 55)",run:true,focused:true},
+  {n:"Zed",g:"code",bg:"oklch(64% .14 290)",run:true},
+  {n:"Music",g:"music-notes",bg:"oklch(70% .13 5)"},
+  {n:"Settings",g:"gear-six",bg:"oklch(58% .12 130)"}
 ];
 const FILES=[
   {n:"Bar.qml",p:"~/dev/kobel-shell/modules"},
@@ -931,7 +920,7 @@ APPS.forEach((a,i)=>{
   const b=document.createElement("button");
   b.className="dbtn"+(a.run?" running":"")+(a.focused?" focused":"");
   b.title=a.n;
-  b.innerHTML='<span class="di" style="background:'+a.bg+'"><svg viewBox="0 0 24 24">'+GLYPHS[a.g]+'</svg></span><span class="dot"></span>';
+  b.innerHTML='<span class="di" style="background:'+a.bg+'">'+ph(a.g)+'</span><span class="dot"></span>';
   dock.appendChild(b);
   const di=b.querySelector(".di");
   const sc=new Spring(1),ty=new Spring(0);
@@ -952,8 +941,8 @@ function tick(){
   const d=new Date();
   $("clk").textContent=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
   $("bdate").textContent=d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
-  const qt=$("q-time");
-  if(qt){qt.textContent=$("clk").textContent;$("q-date").textContent=$("bdate").textContent;}
+  $("q-time").textContent=$("clk").textContent;
+  $("q-date").textContent=$("bdate").textContent;
 }
 tick();setInterval(tick,10000);
 const now0=new Date();let calY=now0.getFullYear(),calM=now0.getMonth();
@@ -979,7 +968,7 @@ $("cal-next").addEventListener("click",()=>{calM++;if(calM>11){calM=0;calY++;}re
 $("cal-today").addEventListener("click",()=>{calY=now0.getFullYear();calM=now0.getMonth();renderCal();});
 renderCal();
 
-/* ================= sliders (pointer + keyboard) ================= */
+/* ================= sliders ================= */
 function slider(root,onInput){
   const rail=root.querySelector(".rail"),fill=root.querySelector(".fill"),
         knob=root.querySelector(".knob"),
@@ -1033,22 +1022,8 @@ $("b-vol").addEventListener("wheel",e=>{
 },{passive:false});
 $("b-vol").addEventListener("click",e=>{e.stopPropagation();setVol(vol);});
 
-/* ================= chips + expandable sections ================= */
+/* ================= chips + drilldown ================= */
 const tstate={wifi:true,bt:true,save:false,dark:true,silent:false,night:false};
-const xsprings={};
-function xToggle(id,force){
-  const el=$(id),inner=el.firstElementChild;
-  if(!xsprings[id])xsprings[id]=new Spring(0).on(v=>{el.style.height=Math.max(0,v).toFixed(1)+"px";});
-  const s=xsprings[id];
-  const open=force!==undefined?force:s.t<1;
-  document.querySelectorAll(".chevb[data-x='"+id+"']").forEach(c=>c.classList.toggle("openx",open));
-  s.cfg(open?380:520,open?26:40).set(open?inner.scrollHeight:0);
-}
-document.querySelectorAll(".chevb[data-x]").forEach(c=>{
-  const go=e=>{e.stopPropagation();e.preventDefault();xToggle(c.dataset.x);};
-  c.addEventListener("click",go);
-  c.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" ")go(e);});
-});
 document.querySelectorAll(".chipb,.rbig").forEach(el=>{
   el.addEventListener("click",e=>{
     if(e.target.closest(".chevb"))return;
@@ -1060,53 +1035,127 @@ document.querySelectorAll(".chipb,.rbig").forEach(el=>{
     if(sub)sub.textContent=tstate[k]?sub.dataset.on:sub.dataset.off;
   });
 });
-/* wifi network list + connect flow */
-const NETS=[{n:"chompers-5G",s:3},{n:"chompers-2G",s:2},{n:"BT-Hub-9F2",s:1}];
-let wifiOn=true,wifiNet="chompers-5G";
+
+/* drilldown: whole-panel subview with height spring */
+const qsv=$("qsviews"),qroot=$("qv-root"),qsub=$("qv-sub");
+let drilled=null;
+const qX=new Spring(0).on(v=>{
+  qroot.style.transform="translateX("+(-46*v).toFixed(2)+"px)";
+  qroot.style.opacity=(1-v).toFixed(3);
+  qroot.style.pointerEvents=v<.4?"auto":"none";
+  qsub.style.transform="translateX("+(46*(1-v)).toFixed(2)+"px)";
+  qsub.style.opacity=v.toFixed(3);
+  qsub.style.pointerEvents=v>.6?"auto":"none";
+});
+const qH=new Spring(600).on(v=>{qsv.style.height=Math.max(0,v).toFixed(1)+"px";});
+function qFit(jumpNow){
+  const target=(drilled?qsub:qroot).scrollHeight;
+  if(jumpNow)qH.jump(target);else qH.cfg(440,32).set(target);
+}
+new ResizeObserver(()=>qFit(false)).observe(qroot);
+function drill(kind){
+  buildSub(kind);drilled=kind;
+  qX.cfg(400,27).set(1);
+  qFit(false);
+  setTimeout(()=>$("q-back").focus(),80);
+}
+function undrill(){
+  drilled=null;
+  qX.cfg(440,29).set(0);
+  qFit(false);
+}
+$("q-back").addEventListener("click",undrill);
+$("q-done").addEventListener("click",undrill);
+document.querySelectorAll(".chevb[data-x]").forEach(c=>{
+  const go=e=>{e.stopPropagation();e.preventDefault();drill(c.dataset.x);};
+  c.addEventListener("click",go);
+  c.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" ")go(e);});
+});
+const NETS=[{n:"chompers-5G",s:"wifi-high"},{n:"chompers-2G",s:"wifi-medium"},{n:"BT-Hub-9F2",s:"wifi-low"}];
+let wifiNet="chompers-5G",wifiBusy=null;
+function swRow(label,key){
+  return '<div class="drow"><b>'+label+'</b>'
+    +'<button class="sw'+(tstate[key]?" on":"")+'" data-sw="'+key+'" role="switch" aria-checked="'+tstate[key]+'"><i></i></button></div>';
+}
+function buildSub(kind){
+  const body=$("q-body");
+  if(kind==="wifi"){
+    $("q-title").textContent="Wi-Fi";
+    body.innerHTML=swRow("Wi-Fi","wifi")+'<div class="dlist" id="d-nets"></div>';
+    renderNets();
+  }else if(kind==="bt"){
+    $("q-title").textContent="Bluetooth";
+    body.innerHTML=swRow("Bluetooth","bt")+'<div class="dlist">'
+      +btRow("headphones","WH-1000XM5","connected",true)
+      +btRow("keyboard","MX Keys Mini","paired",false)
+      +btRow("game-controller","DualSense","paired",false)
+      +"</div>";
+    hookRows(body);
+  }else{
+    $("q-title").textContent="Volume";
+    body.innerHTML='<div class="dlist" id="d-mix"></div>';
+    [["Music","music-notes",64],["Firefox","globe",40],["Zed","code",15]].forEach(m=>{
+      const row=document.createElement("div");row.className="mixrow";
+      row.innerHTML='<span class="mi">'+ph(m[1])+'</span><em>'+m[0]+'</em>'
+        +'<div class="slider" role="slider" tabindex="0" aria-label="'+m[0]+' volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+m[2]+'"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>'
+        +'<span class="sval tn">'+m[2]+"%</span>";
+      body.querySelector("#d-mix").appendChild(row);
+      slider(row.querySelector(".slider"),()=>{}).set(m[2],false);
+    });
+  }
+  body.querySelectorAll(".sw").forEach(sw=>{
+    sw.addEventListener("click",()=>{
+      const k=sw.dataset.sw;tstate[k]=!tstate[k];
+      sw.classList.toggle("on",tstate[k]);
+      sw.setAttribute("aria-checked",tstate[k]);
+      const chip=$(k==="wifi"?"c-wifi":"c-bt");
+      chip.classList.toggle("on",tstate[k]);
+      const s2=chip.querySelector(".cl span");
+      s2.textContent=tstate[k]?s2.dataset.on:s2.dataset.off;
+      if(k==="wifi"&&drilled==="wifi")renderNets();
+    });
+  });
+}
+function btRow(icon,name,state,active){
+  return '<button class="xrow'+(active?" active":"")+'">'+ph(icon)+"<b>"+name+'</b><span class="xs">'+state+"</span></button>";
+}
+function hookRows(scope){
+  scope.querySelectorAll(".xrow").forEach(b=>{
+    b.addEventListener("click",()=>{
+      const nm=b.querySelector("b").textContent;
+      toast({title:"bluetooth",body:nm+" — toggled",icon:"leaf"});
+    });
+  });
+}
 function renderNets(){
-  const box=$("x-wifi-in");box.innerHTML="";
+  const box=$("d-nets");if(!box)return;
+  box.innerHTML="";
   NETS.forEach(nt=>{
-    const b=document.createElement("button");b.className="xrow"+(nt.n===wifiNet&&wifiOn?" active":"");
-    const bars='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'+
-      '<path d="M4 18v-2" opacity="'+(nt.s>=1?1:.3)+'"/><path d="M9 18v-5" opacity="'+(nt.s>=2?1:.3)+'"/>'+
-      '<path d="M14 18v-8" opacity="'+(nt.s>=3?1:.3)+'"/><path d="M19 18V7" opacity="'+(nt.s>=3?1:.3)+'"/></svg>';
-    b.innerHTML=bars+"<b>"+nt.n+"</b><span class='xs'>"+(nt.n===wifiNet&&wifiOn?"connected":"connect")+"</span>";
+    const b=document.createElement("button");
+    const activeN=nt.n===wifiNet&&tstate.wifi&&!wifiBusy;
+    b.className="xrow"+(activeN?" active":"");
+    b.innerHTML=ph(nt.s)+"<b>"+nt.n+"</b><span class='xs'>"
+      +(wifiBusy===nt.n?"connecting…":(activeN?"connected":"connect"))+"</span>";
     b.addEventListener("click",()=>wifiConnect(nt.n));
     box.appendChild(b);
   });
 }
 function wifiConnect(name){
   const chip=$("c-wifi");
-  chip.classList.remove("on");wifiOn=false;
+  chip.classList.remove("on");tstate.wifi=false;wifiBusy=name;
   chip.classList.add("busy");
   chip.querySelector(".cl span").textContent="Connecting…";
   renderNets();
   setTimeout(()=>{
-    wifiOn=true;wifiNet=name;tstate.wifi=true;
+    tstate.wifi=true;wifiNet=name;wifiBusy=null;
     chip.classList.remove("busy");chip.classList.add("on");
     const sub=chip.querySelector(".cl span");
     sub.textContent=name;sub.dataset.on=name;
     renderNets();
-    if(xsprings["x-wifi"]&&xsprings["x-wifi"].t>0)xToggle("x-wifi",true);
+    const sw=document.querySelector('.sw[data-sw="wifi"]');
+    if(sw){sw.classList.add("on");sw.setAttribute("aria-checked","true");}
   },1200);
 }
-renderNets();
-/* bt devices */
-[["WH-1000XM5","connected"],["MX Keys Mini","paired"],["DualSense","paired"]].forEach((d,i)=>{
-  const b=document.createElement("button");b.className="xrow"+(i===0?" active":"");
-  b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg><b>'+d[0]+"</b><span class='xs'>"+d[1]+"</span>";
-  b.addEventListener("click",()=>toast({title:"bluetooth",body:d[0]+" — "+(d[1]==="connected"?"disconnected":"connected ✓"),icon:"leaf"}));
-  $("x-bt-in").appendChild(b);
-});
-/* per-app mixer */
-[["Music","music",64],["Firefox","web",40],["Zed","zed",15]].forEach(m=>{
-  const row=document.createElement("div");row.className="mixrow";
-  row.innerHTML='<span class="mi"><svg viewBox="0 0 24 24">'+GLYPHS[m[1]]+'</svg></span><em>'+m[0]+'</em>'+
-    '<div class="slider" role="slider" tabindex="0" aria-label="'+m[0]+' volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+m[2]+'"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>'+
-    '<span class="sval">'+m[2]+'%</span>';
-  $("x-mix-in").appendChild(row);
-  slider(row.querySelector(".slider"),()=>{}).set(m[2],false);
-});
 
 /* ================= media + cava ================= */
 let playing=true,mPos=161;const mDur=480;
@@ -1164,12 +1213,7 @@ function fx(t,dt){
 }
 
 /* ================= notifications ================= */
-const ICONS={
-  leaf:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21C7 17 4 13 4 9a8 8 0 0116 0c0 4-3 8-8 12z"/><path d="M12 21V9"/></svg>',
-  msg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 01-8 8H4l2.5-2.5A8 8 0 1121 12z"/></svg>',
-  dl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12M6 11l6 6 6-6M4 21h16"/></svg>',
-  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 5l14 14M19 5L5 19"/></svg>'
-};
+const ICONS={leaf:"leaf",msg:"chat-circle",dl:"download-simple"};
 const ICBG={leaf:"oklch(58% .12 130)",msg:"oklch(56% .13 300)",dl:"oklch(58% .1 250)"};
 const store=[];let unread=1;const progressBars=[];
 store.push({icon:"leaf",title:"gnoblin",
@@ -1188,11 +1232,11 @@ syncBadge(false);
 function markRead(){unread=0;syncBadge(false);renderNC();}
 function cardHTML(n){
   return '<div class="inner" tabindex="0">'
-    +'<div class="nic" style="background:'+(ICBG[n.icon]||ICBG.leaf)+'">'+(ICONS[n.icon]||ICONS.leaf)+'</div>'
-    +'<div class="ntx"><div class="t"><b>'+n.title+'</b><span class="when">'+n.when+'</span></div>'
+    +'<div class="nic" style="background:'+(ICBG[n.icon]||ICBG.leaf)+'">'+ph(ICONS[n.icon]||"leaf")+'</div>'
+    +'<div class="ntx"><div class="t"><b>'+n.title+'</b><span class="when tn">'+n.when+'</span></div>'
     +'<p>'+n.body+'</p>'
     +(n.progress?'<div class="nprog"><i style="width:'+(n.pct||0)+'%"></i></div>':'')
-    +'</div><button class="nx" title="Dismiss (Del)">'+ICONS.x+'</button></div>';
+    +'</div><button class="nx" title="Dismiss (Del)">'+ph("x")+'</button></div>';
 }
 function renderNC(){
   const list=$("nlist");list.innerHTML="";
@@ -1281,7 +1325,6 @@ $("n-clear").addEventListener("click",()=>{
 });
 function toast(n){
   n.when="now";
-  /* silent, or a panel already open: route straight to the drawer + badge */
   if(tstate.silent||cur){
     store.unshift(n);unread++;syncBadge(true);
     bellR.cfg(330,7).kick(-330);bellR.set(0);
@@ -1289,8 +1332,8 @@ function toast(n){
     return;
   }
   const el=document.createElement("div");el.className="toast";
-  el.innerHTML='<div class="nic" style="background:'+(ICBG[n.icon]||ICBG.leaf)+'">'+(ICONS[n.icon]||ICONS.leaf)+'</div>'
-    +'<div class="ntx"><div class="t"><b>'+n.title+'</b><span class="when">now</span></div><p>'+n.body+'</p>'
+  el.innerHTML='<div class="nic" style="background:'+(ICBG[n.icon]||ICBG.leaf)+'">'+ph(ICONS[n.icon]||"leaf")+'</div>'
+    +'<div class="ntx"><div class="t"><b>'+n.title+'</b><span class="when tn">now</span></div><p>'+n.body+'</p>'
     +(n.progress?'<div class="nprog"><i></i></div>':'')+'</div>';
   $("toasts").appendChild(el);
   if(n.progress)progressBars.push({el:el.querySelector(".nprog i"),pct:0,src:n});
@@ -1317,7 +1360,7 @@ const lapps=$("lapps"),lrows=$("lrows"),lq=$("lq"),lempty=$("lempty");
 let sel=0;
 APPS.forEach(a=>{
   const t=document.createElement("button");t.className="tile st";t.style.setProperty("--i",1);
-  t.innerHTML='<span class="ic" style="background:'+a.bg+'"><svg viewBox="0 0 24 24">'+GLYPHS[a.g]+'</svg></span><em>'+a.n+'</em>';
+  t.innerHTML='<span class="ic" style="background:'+a.bg+'">'+ph(a.g)+'</span><em>'+a.n+'</em>';
   t.addEventListener("click",()=>launch(a.n));
   lapps.appendChild(t);
 });
@@ -1330,14 +1373,13 @@ function paintSel(){
   if(v.length){sel=Math.max(0,Math.min(sel,v.length-1));v[sel].classList.add("sel");
     if(v[sel].scrollIntoView)v[sel].scrollIntoView({block:"nearest"});}
 }
-function row(iconHTML,iconBg,name,hint,kbd,act,mono){
+function row(iconName,iconBg,name,hint,kbd,act){
   const b=document.createElement("button");b.className="crow";
-  b.innerHTML='<span class="ri'+(iconBg?'" style="background:'+iconBg+'':' ghost')+'">'+iconHTML+"</span>"
-    +"<b"+(mono?' class="cmd"':"")+">"+name+"</b><span>"+hint+"</span>"+(kbd?"<kbd>"+kbd+"</kbd>":"");
+  b.innerHTML='<span class="ri'+(iconBg?'" style="background:'+iconBg+'':' ghost')+'">'+ph(iconName)+"</span>"
+    +"<b>"+name+"</b><span>"+hint+"</span>"+(kbd?"<kbd>"+kbd+"</kbd>":"");
   b.addEventListener("click",act);
   lrows.appendChild(b);
 }
-function svgw(g){return '<svg viewBox="0 0 24 24">'+g+"</svg>";}
 function filter(){
   const q=lq.value,qt=q.trim(),qq=qt.toLowerCase();
   const isCmd=q.startsWith(":");
@@ -1349,20 +1391,20 @@ function filter(){
   if(isCmd){
     const cq=q.slice(1).trim().toLowerCase();
     CMDS.filter(c=>c.c.startsWith(cq)).forEach(c=>{
-      row(ICONS.leaf,"oklch(58% .12 130)",":"+c.c,c.d,c.k,()=>runCmd(c),true);
+      row("leaf","oklch(58% .12 130)",":"+c.c,c.d,c.k,()=>runCmd(c));
     });
   }else{
     if(isMath){
       let res;try{res=Function('"use strict";return('+qt.replace(/^=/,"")+")")();}catch(err){res=null;}
       if(res!==null&&res!==undefined&&isFinite(res))
-        row(svgw(GLYPHS.calc),null,String(Math.round(res*1e6)/1e6),qt.replace(/^=/,"")+" =","↵ copy",
+        row("calculator",null,String(Math.round(res*1e6)/1e6),qt.replace(/^=/,"")+" =","↵ copy",
           ()=>{closeAll();resetLauncher();toast({title:"calculator",body:qt.replace(/^=/,"")+" = "+res+" — copied",icon:"leaf"});});
     }
     APPS.filter(a=>a.n.toLowerCase().includes(qq)).forEach(a=>{
-      row(svgw(GLYPHS[a.g]),a.bg,a.n,"Application","",()=>launch(a.n));
+      row(a.g,a.bg,a.n,"Application","",()=>launch(a.n));
     });
     FILES.filter(f=>f.n.toLowerCase().includes(qq)).forEach(f=>{
-      row(svgw(GLYPHS.doc),null,f.n,f.p,"",()=>{closeAll();resetLauncher();
+      row("file-text",null,f.n,f.p,"",()=>{closeAll();resetLauncher();
         toast({title:"files",body:"Opening "+f.n+"…",icon:"leaf"});});
     });
   }
@@ -1400,14 +1442,14 @@ filter();
 
 /* gnoblin row states + reload spin */
 const relR=new Spring(0).on(v=>{
-  $("g-reload").querySelector("svg").style.rotate=v.toFixed(1)+"deg";
+  $("g-reload").querySelector("i").style.rotate=v.toFixed(1)+"deg";
 });
 let gnobUp=true;
 function setGnob(up,retrying){
   gnobUp=up;
   $("gnob").classList.toggle("err",!up);
   $("g-tx").textContent=up?"connected · owns osd + notifs"
-    :(retrying?"disconnected — retrying (2)…":"disconnected — osd handed back to gnome");
+    :(retrying?"disconnected — retrying (2)…":"disconnected — osd handed back");
   $("g-bl").textContent=up?"Soft-reload":"Reconnect";
 }
 $("g-reload").addEventListener("click",()=>{
@@ -1439,15 +1481,14 @@ document.querySelectorAll(".demo button").forEach(b=>{
 });
 function failTour(){
   const step=failStep++%4;
-  if(step===0){setGnob(false,true);
-    if(cur!=="qs")openP("qs");}
+  if(step===0){setGnob(false,true);if(cur!=="qs")openP("qs");}
   else if(step===1){wifiConnect(wifiNet);if(cur!=="qs")openP("qs");}
   else if(step===2){setMediaEmpty(true);if(cur!=="qs")openP("qs");}
   else{setGnob(true);setMediaEmpty(false);setPlaying(true);
     closeAll();toast({title:"kobel",body:"All systems nominal ✓",icon:"leaf"});}
 }
 
-/* deep-link test hook: #qs / #nc / #launch / #sess / #fail opens that surface settled */
+/* deep-link test hook */
 const hash=location.hash.slice(1);
 if(hash){
   const st=document.createElement("style");
@@ -1458,7 +1499,9 @@ if(hash){
   else if(hash==="launch")openP("launch");
   else if(hash==="sess")openSession();
   else if(hash==="fail"){setGnob(false,true);setMediaEmpty(true);openP("qs");}
+  else if(hash==="drill"){openP("qs");drill("bt");}
   for(const s of Array.from(live))s.jump(s.t);
 }
+qFit(true);
 })();
 </script>
