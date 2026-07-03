@@ -53,7 +53,12 @@
     container-type:inline-size;
     --pw:clamp(290px,28.5cqw,384px);
     --lw:clamp(430px,46cqw,584px);
-    --icon:clamp(38px,3.4cqw,48px)}
+    --icon:clamp(38px,3.4cqw,48px);
+    --gap:10px;--edge:12px;
+    --bar-h:42px;--bar-r:14px;
+    --ctl:calc(var(--bar-h) - 11px);
+    --panel-top:calc(var(--gap) + var(--bar-h) + 6px);
+    --dock-pad:5px;--tile-h:54px}
   #wall{position:absolute;inset:0;width:100%;height:100%}
 
   .win{position:absolute;border-radius:var(--rt);background:oklch(16% .014 300 / .97);
@@ -85,12 +90,12 @@
   .win .g{color:var(--leaf)} .win .c{color:oklch(78% .1 250)}
 
   /* ---------- bar ---------- */
-  .bar{position:absolute;top:10px;left:12px;right:12px;height:42px;z-index:30;
-    display:flex;align-items:center;gap:4px;padding:0 7px;
-    background:var(--panel);border-radius:16px;box-shadow:var(--shadow-sm)}
-  .ibtn{appearance:none;border:0;background:transparent;color:var(--mut);width:31px;height:31px;
+  .bar{position:absolute;top:var(--gap);left:var(--edge);right:var(--edge);height:var(--bar-h);
+    z-index:30;display:flex;align-items:center;gap:4px;padding:0 7px;
+    background:var(--panel);border-radius:var(--bar-r);box-shadow:var(--shadow-sm)}
+  .ibtn{appearance:none;border:0;background:transparent;color:var(--mut);width:var(--ctl);height:var(--ctl);
     border-radius:9px;display:grid;place-items:center;cursor:pointer;position:relative;
-    transition:background .16s,color .16s,transform .3s var(--ovr);font-size:16px}
+    transition:background .16s,color .16s,transform .3s var(--ovr);font-size:calc(var(--ctl)*.52)}
   .ibtn:hover{background:var(--panel2);color:var(--tx)}
   .ibtn:active{transform:scale(.86)}
   .ftitle{font-size:12.5px;color:var(--mut);padding:0 9px;max-width:230px;overflow:hidden;
@@ -103,26 +108,24 @@
   .bdate{font-size:11.5px;color:var(--mut)}
   .grow{flex:1}
   .status{appearance:none;border:0;display:flex;align-items:center;gap:10px;
-    background:var(--panel2);border-radius:999px;padding:0 13px;height:30px;cursor:pointer;
+    background:var(--panel2);border-radius:999px;padding:0 13px;height:calc(var(--ctl) - 1px);cursor:pointer;
     transition:background .16s}
   .status:hover{background:var(--chip)}
-  .status .si{height:30px;display:grid;place-items:center;color:var(--mut);font-size:16px}
+  .status .si{height:100%;display:grid;place-items:center;color:var(--mut);font-size:calc(var(--ctl)*.52)}
   .status .pct{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--tx)}
   .status .pct i{font-size:15px;color:var(--mut)}
   .bell{position:relative}
-  .gapless .bar{top:0;left:0;right:0;height:36px;border-radius:0;
-    box-shadow:0 6px 20px rgb(0 0 0/.25)}
-  .gapless .bar .ibtn{width:28px;height:28px;font-size:15px}
-  .gapless .status{height:26px}
-  .gapless .qs,.gapless .toasts,.gapless .nc,.gapless .calp{top:44px}
+  .gapless{--gap:0px;--edge:0px;--bar-h:38px;--bar-r:0px}
+  .gapless .bar{box-shadow:0 6px 20px rgb(0 0 0/.25)}
   .badge{position:absolute;top:2px;right:2px;min-width:14px;height:14px;border-radius:99px;
     background:var(--leaf);color:var(--ink);font-size:9px;font-weight:700;
     display:grid;place-items:center;padding:0 3px;opacity:0;pointer-events:none}
 
   /* ---------- dock ---------- */
-  .dock{position:absolute;bottom:10px;left:50%;translate:-50% 0;z-index:30;
-    display:flex;align-items:center;gap:4px;padding:5px;
-    background:var(--panel);border-radius:16px;box-shadow:var(--shadow-sm)}
+  .dock{position:absolute;bottom:var(--gap);left:50%;translate:-50% 0;z-index:30;
+    display:flex;align-items:center;gap:4px;padding:var(--dock-pad);
+    background:var(--panel);border-radius:calc(var(--rt) + var(--dock-pad) - 1px);
+    box-shadow:var(--shadow-sm)}
   .dbtn{appearance:none;border:0;background:transparent;padding:0;cursor:pointer;
     display:block;position:relative}
   .dghost{position:absolute;width:var(--icon);height:var(--icon);overflow:visible;background:transparent;
@@ -249,8 +252,8 @@
   .lfoot b{color:var(--mut);font-weight:600}
 
   /* quick settings + drilldown */
-  .qs{top:58px;right:12px;width:var(--pw);padding:12px;overflow:hidden auto;
-    max-height:calc(100% - 76px)}
+  .qs{top:var(--panel-top);right:var(--edge);width:var(--pw);padding:12px;overflow:hidden auto;
+    max-height:calc(100% - var(--panel-top) - 18px)}
   .qsviews{position:relative;overflow:visible;will-change:height}
   .view{position:absolute;top:0;left:0;right:0;will-change:transform,opacity}
   .qtop{position:relative;height:43px;margin-bottom:1px}
@@ -273,11 +276,11 @@
   .gbanner p b{display:block;color:var(--amber);font-size:11.5px;font-weight:650}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   .tray{display:flex;align-items:center;gap:1px;margin-right:3px}
-  .tray .ibtn{font-size:14px;width:28px}
+  .tray .ibtn{font-size:calc(var(--ctl)*.45);width:calc(var(--ctl) - 3px)}
   .ibtn.lang{width:auto;padding:0 8px;font-size:11px;font-weight:650}
   .nc .media{margin:0 0 10px;background:var(--panel);box-shadow:var(--shadow)}
-  .calp{top:58px;left:50%;width:clamp(280px,27cqw,336px);translate:-50% 0;padding:12px;
-    overflow:hidden auto;max-height:calc(100% - 76px)}
+  .calp{top:var(--panel-top);left:50%;width:clamp(280px,27cqw,336px);translate:-50% 0;padding:12px;
+    overflow:hidden auto;max-height:calc(100% - var(--panel-top) - 18px)}
   .calhero{padding:4px 8px 8px;line-height:1.25}
   .calhero span{display:block;font-size:11.5px;color:var(--mut)}
   .calhero b{font-size:19px;font-weight:650}
@@ -301,7 +304,7 @@
   .evempty{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);padding:2px 3px 3px}
   .evempty iconify-icon{color:var(--dim);font-size:14px}
   .chips{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-  .chipb{position:relative;display:flex;min-width:0;align-items:center;min-height:54px;
+  .chipb{position:relative;display:flex;min-width:0;align-items:center;min-height:var(--tile-h);
     border-radius:var(--rt);background:var(--panel2);
     text-align:left;border:0;transition:background .22s,transform .3s var(--ovr)}
   button.chipb,.chipm{cursor:pointer}
@@ -451,7 +454,7 @@
   
 
   /* notification drawer */
-  .nc{top:58px;right:12px;bottom:12px;width:var(--pw);padding:0;display:flex;flex-direction:column;
+  .nc{top:var(--panel-top);right:var(--edge);bottom:max(var(--edge),10px);width:var(--pw);padding:0;display:flex;flex-direction:column;
     background:transparent;box-shadow:none;border-radius:0}
   .calhead{display:flex;align-items:center;gap:4px;margin-bottom:8px}
   .calhead b{flex:1;font-size:12.5px;font-weight:650;padding-left:3px}
@@ -508,14 +511,14 @@
   .nlist.empty+.nempty{display:block}
 
   /* toasts */
-  .toasts{position:absolute;top:58px;right:12px;z-index:62;display:flex;flex-direction:column;
+  .toasts{position:absolute;top:var(--panel-top);right:var(--edge);z-index:62;display:flex;flex-direction:column;
     gap:8px;pointer-events:none;width:var(--pw)}
   .toast{pointer-events:auto;display:flex;gap:10px;padding:11px 13px;border-radius:20px;
     background:var(--panelT);backdrop-filter:blur(16px) saturate(1.35);
     box-shadow:var(--shadow);will-change:transform,opacity}
 
   /* osd */
-  .osd{bottom:64px;left:50%;width:230px;margin-left:-115px;display:flex;align-items:center;
+  .osd{bottom:calc(var(--gap) + var(--icon) + var(--dock-pad)*2 + 8px);left:50%;width:230px;margin-left:-115px;display:flex;align-items:center;
     gap:11px;padding:10px 15px;border-radius:999px;z-index:55;pointer-events:none!important;
     background:var(--panelT);backdrop-filter:blur(16px) saturate(1.35);box-shadow:var(--shadow)}
   .osd>iconify-icon{font-size:15px;color:var(--tx)}
@@ -528,8 +531,9 @@
   .sess-row{display:flex;gap:20px}
   .sbtn{appearance:none;border:0;background:transparent;display:flex;flex-direction:column;
     align-items:center;gap:10px;cursor:pointer;padding:6px;border-radius:12px}
-  .sbtn .sic{width:64px;height:64px;border-radius:var(--rp);display:grid;place-items:center;
-    background:var(--panel);box-shadow:var(--shadow-sm);font-size:24px;
+  .sbtn .sic{width:calc(var(--icon)*1.4);height:calc(var(--icon)*1.4);border-radius:var(--rp);
+    display:grid;place-items:center;
+    background:var(--panel);box-shadow:var(--shadow-sm);font-size:calc(var(--icon)*.52);
     transition:transform .35s var(--ovr),background .2s}
   .sbtn:hover .sic,.sbtn:focus-visible .sic{transform:translateY(-5px) scale(1.06);background:var(--panel2)}
   .sbtn:active .sic{transform:scale(.92)}
@@ -559,6 +563,7 @@
   <button data-demo="media">play / pause</button>
   <button data-demo="fail">failure tour</button>
   <button data-demo="bar">gapless bar</button>
+  <button data-demo="barh">bar 42</button>
   <span class="hint"><b>try:</b> chevrons drill into Wi-Fi / Bluetooth / volume (Esc = back) ·
     ':' commands or '=2+2' in the launcher · Del dismisses a focused notification</span>
 </div>
@@ -1089,8 +1094,8 @@ const CMDS=[
 ];
 
 /* ================= windows / WM ================= */
-const WORK={side:10,bottom:10};
-function workTop(){return $("desk").classList.contains("gapless")?44:56;}
+function cssPx(n){return parseFloat(getComputedStyle($("desk")).getPropertyValue(n))||0;}
+function workTop(){return cssPx("--panel-top")-2;}
 const WMZ={z:10};
 const WINDOWS=[];
 let focusedWin=null;
@@ -1151,7 +1156,7 @@ function winSprings(w){
 }
 function zoneRect(zone){
   const dr=deskR(),W=dr.width,H=dr.height;
-  const x0=WORK.side,y0=workTop(),x1=W-WORK.side,y1=H-WORK.bottom;
+  const e=cssPx("--edge"),x0=e,y0=workTop(),x1=W-e,y1=H-Math.max(cssPx("--gap"),2);
   if(zone==="left")return{x:x0,y:y0,w:(x1-x0)/2-4,h:y1-y0};
   if(zone==="right")return{x:x0+(x1-x0)/2+4,y:y0,w:(x1-x0)/2-4,h:y1-y0};
   return{x:x0,y:y0,w:x1-x0,h:y1-y0};
@@ -2341,6 +2346,12 @@ document.querySelectorAll(".demo button").forEach(b=>{
       const on=$("desk").classList.toggle("gapless");
       b.textContent=on?"floating bar":"gapless bar";
       try{localStorage.setItem("kobel-bar",on?"g":"f");}catch(e){}
+    }
+    else if(k==="barh"){
+      const cur2=cssPx("--bar-h");
+      const nxt=cur2>=48?36:cur2>=42?48:42;
+      $("desk").style.setProperty("--bar-h",nxt+"px");
+      b.textContent="bar "+nxt;
     }
   });
 });
