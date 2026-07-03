@@ -1247,7 +1247,7 @@ APPS.forEach((a,i)=>{
   });
   function dots(){
     const box=b.querySelector(".dots");
-    const n=a.run?Math.min(a.wins||1,3):0;
+    const n=a.run?Math.min(a.wins||1,4):0;
     const live=Array.from(box.children).filter(d=>!d.classList.contains("dying"));
     while(live.length>n){
       const d=live.pop();
