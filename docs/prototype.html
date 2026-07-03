@@ -136,7 +136,8 @@
     display:flex;gap:3px;height:5px;align-items:center;justify-content:center}
   .dbtn .dots i{width:4px;height:4px;border-radius:99px;background:var(--dim);
     corner-shape:round;
-    transition:width .34s var(--ovr),background .25s,opacity .3s,scale .34s var(--ovr)}
+    transition:width .34s var(--ovr),height .34s var(--ovr),background .25s,opacity .3s,scale .34s var(--ovr)}
+  .dbtn .dots i.mini{width:2.5px;height:2.5px;opacity:.75}
   .dbtn .dots i.on{width:12px;background:var(--leaf)}
   .dbtn .dots i.dying{width:0!important;opacity:0;scale:.3}
   .dtip{position:absolute;z-index:60;background:var(--panel);border-radius:10px;padding:6px 11px;
@@ -1247,7 +1248,8 @@ APPS.forEach((a,i)=>{
   });
   function dots(){
     const box=b.querySelector(".dots");
-    const n=a.run?Math.min(a.wins||1,4):0;
+    const total=a.run?(a.wins||1):0;
+    const n=Math.min(total,4);
     const live=Array.from(box.children).filter(d=>!d.classList.contains("dying"));
     while(live.length>n){
       const d=live.pop();
@@ -1260,8 +1262,16 @@ APPS.forEach((a,i)=>{
       d.style.width="0px";box.appendChild(d);live.push(d);
       requestAnimationFrame(()=>{d.style.width="";});
     }
+    let start=0;
+    if(total>4){
+      const cur=a.cur||0;
+      start=Math.min(Math.max(cur-1,0),total-4);
+    }
     live.forEach((d,w)=>{
-      d.classList.toggle("on",!!a.focused&&w===Math.min(a.cur||0,n-1));
+      const idx=start+w;
+      d.classList.toggle("on",!!a.focused&&idx===(a.cur||0));
+      d.classList.toggle("mini",total>4&&
+        ((w===0&&start>0)||(w===n-1&&start+4<total)));
     });
   }
   a._dots=dots;dots();
