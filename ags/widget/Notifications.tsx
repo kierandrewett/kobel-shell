@@ -52,8 +52,11 @@ export function Toasts(monitor: Gdk.Monitor) {
   })
   return <window
     name="toasts" namespace="kobel-toasts" gdkmonitor={monitor}
+    exclusivity={Astal.Exclusivity.NORMAL}
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT}>
-    <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+    {/* fixed toast column width so the card can't stretch to its hexpand text column */}
+    <box orientation={Gtk.Orientation.VERTICAL} spacing={8}
+      widthRequest={NCARD_W + 26} halign={Gtk.Align.END}>
       {bind(live).as(ids => ids.map(id => {
         const n = nd().get_notification(id)
         return n ? <box class="toast"><Card n={n} /></box> : <box />

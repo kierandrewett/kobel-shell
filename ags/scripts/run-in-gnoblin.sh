@@ -40,7 +40,11 @@ export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
 DK="$(mktemp -d /tmp/kobel-ags.XXXXXX)"
 mkdir -p "$DK"/{data,config,cache,home,bin}
 export HOME="$DK/home" XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
-export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=memory GTK_A11Y=none NO_AT_BRIDGE=1
+# dconf (not memory) so the shell's SetFeature reaches the SEPARATE-process fdo
+# notification daemon via dconf's cross-process change signal — memory gsettings is
+# per-process, so `gnoblinctl disable notifications` never releases the fdo bus name
+# and gnome-shell keeps owning notifications. dconf DB is isolated under XDG_CONFIG_HOME.
+export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=dconf GTK_A11Y=none NO_AT_BRIDGE=1
 DISP="kobel-ags-$$"
 CONF="$(python3 "$GNOBLIN/scripts/devkit_dbus.py" "$DK" "$GNOBLIN")" || exit 1
 export DISP DK OUT AGSDIR BUNDLE TOGGLE LAYER_PRELOAD PREFIX

@@ -12,10 +12,14 @@ echo "== shell up on $DISP =="
 export WAYLAND_DISPLAY="$DISP" GDK_BACKEND=wayland
 gnoblinctl disable osd 2>/dev/null || true
 gnoblinctl disable notifications 2>/dev/null || true
+if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
+  sleep 1
+  echo "NOTIF-OWNER-AFTER-DISABLE: $(busctl --user --no-pager call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetNameOwner s org.freedesktop.Notifications 2>&1 | head -1)"
+fi
 
 # KOBEL_TEST_NOTIFD=1 enables the real notifd (bus was freed above) so the drawer/toasts
 # can be rendered; otherwise notifd is skipped (default, avoids blocking on a busy bus).
-SKIP="${KOBEL_TEST_NOTIFD:+}"; SKIP="${SKIP:-1}"
+if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then SKIP=""; else SKIP="1"; fi
 KOBEL_ICONS="/home/kieran/dev/kobel-shell/ags/icons" KOBEL_SKIP_NOTIFD="$SKIP" stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
 AP=$!
 sleep 8
@@ -33,6 +37,11 @@ fi
 [ -n "${TOGGLE:-}" ] && { astal -i kobel -t "$TOGGLE" 2>/dev/null || true; sleep 3; }
 for _ in 1 2 3; do pkill -9 -f gnome-tour 2>/dev/null; sleep 0.3; done
 
+if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
+  echo "NOTIF-OWNER-AFTER-AGS: $(busctl --user --no-pager call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetNameOwner s org.freedesktop.Notifications 2>&1 | head -1)"
+  echo "AGS-UNIQUE-NAME: gjs pid=$AP"
+  busctl --user --no-pager list 2>/dev/null | grep -iE 'Notif' | head
+fi
 kill -0 $AP 2>/dev/null && echo "== ags alive ==" || { echo "== ags DIED =="; tail -6 "$DK/ags.log"; }
 gdbus call --session --dest org.gnome.Shell.Screenshot \
   --object-path /org/gnome/Shell/Screenshot \
