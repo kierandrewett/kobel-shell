@@ -85,14 +85,26 @@ function MediaWidget() {
 
 export default function Dock(monitor: Gdk.Monitor) {
   const apps = new Apps.Apps()
+  // Resolve pinned entries by desktop-id (entry), not fuzzy name match. Fall back to
+  // the first fuzzy hit, then to a synthetic entry so the tile still shows in the
+  // devkit where the .desktop may be absent.
+  const resolve = (id: string): Apps.Application | null => {
+    const all = apps.get_list()
+    return all.find(a => a.entry === `${id}.desktop` || a.entry === id)
+      ?? all.find(a => a.entry?.toLowerCase().includes(id.toLowerCase().split(".").pop()!))
+      ?? apps.fuzzy_query(id.split(".").pop()!)[0]
+      ?? null
+  }
+  const found = PINNED.map(resolve)
   return <window
-    name="dock" namespace="kobel-dock"
+    name="dock" namespace="kobel-dock" class="dock-window"
     gdkmonitor={monitor} anchor={Astal.WindowAnchor.BOTTOM}>
     <box class="dock" spacing={4}>
-      {PINNED.map(id => {
-        const app = apps.fuzzy_query(id)[0]
-        return app ? <DockButton app={app} /> : <box />
-      })}
+      {found.map((app, i) =>
+        app ? <DockButton app={app} />
+            : <button class="dbtn" tooltipText={PINNED[i]}>
+                <image class="icon-tile" iconName="application-x-executable" pixelSize={32} />
+              </button>)}
       <box class="sep" />
       <MediaWidget />
     </box>

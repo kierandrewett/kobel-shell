@@ -1,5 +1,18 @@
 // kobel-shell entry — AGS v2 / astal4
 import { App } from "astal/gtk4"
+import Gtk from "gi://Gtk?version=4.0"
+// astal `construct` sets static props via Object.assign(widget, props) and bindings via
+// setProp → set_class. GtkWidget has neither a `class` GObject prop nor set_class, so
+// `class="..."` silently no-ops (the real prop is `css-classes`, an array). Define a
+// `class` accessor routing BOTH paths to set_css_classes, so `class="a b"` works.
+Object.defineProperty((Gtk.Widget as any).prototype, "class", {
+  configurable: true,
+  set(v: string) { this.set_css_classes(String(v).split(/\s+/).filter(Boolean)) },
+  get() { return this.get_css_classes().join(" ") },
+})
+;(Gtk.Widget.prototype as any).set_class = function (v: string) {
+  this.set_css_classes(String(v).split(/\s+/).filter(Boolean))
+}
 import style from "./style/main.scss"
 import { tokenCss, tokens } from "./config"
 import * as gnoblin from "./services/gnoblin"

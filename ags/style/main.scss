@@ -15,14 +15,21 @@ $rose:   #ef86a0;
 $roseink: #571b2e;
 $amber:  #edbb64;
 
-* { all: unset; font-family: "Inter", "InterVariable", sans-serif; }
+// NOTE: never `* { all: unset }` here — that's a web reset that breaks GTK4's own
+// background/border rendering. Set only what we mean to.
+window { font-family: "Inter", "InterVariable", sans-serif; font-size: 13px; }
 .tn { font-feature-settings: "tnum"; }
 
-window.bar, window.dock { background: transparent; }
+// layer windows are transparent; the child sheet carries the rounded surface
+window, .bar-window, .dock-window, .qs-window, .drawer-window,
+.launcher-window, .calendar-window, .session-window { background: transparent; }
 
 .bar {
   background: $panel; color: $mut;
-  padding: 0 7px;
+  margin: 10px 12px 0 12px;
+  border-radius: 14px;
+  padding: 0 8px;
+  min-height: 42px;
   .title { color: $mut; font-size: 12.5px; }
   .clock { color: $tx; font-size: 13.5px; font-weight: 600; }
   .date  { color: $mut; font-size: 11.5px; }
@@ -36,7 +43,10 @@ window.bar, window.dock { background: transparent; }
 
 .dock {
   background: $panel;
-  .icon-tile { border-radius: 12px;
+  margin-bottom: 10px;
+  padding: 5px;
+  border-radius: 16px;
+  .icon-tile { min-width: 44px; min-height: 44px; padding: 6px; border-radius: 12px;
     &:hover { background: rgba(255,255,255,0.09); } }
   // DOTS ARE ABSOLUTE OVERLAYS — Gtk.Overlay only, never siblings. (Kieran's law)
   .dots { margin-bottom: 2px;
