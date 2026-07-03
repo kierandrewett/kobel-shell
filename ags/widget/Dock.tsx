@@ -85,22 +85,21 @@ function MediaWidget() {
 
 export default function Dock(monitor: Gdk.Monitor) {
   const apps = new Apps.Apps()
-  // Resolve pinned entries by desktop-id (entry), not fuzzy name match. Fall back to
-  // the first fuzzy hit, then to a synthetic entry so the tile still shows in the
-  // devkit where the .desktop may be absent.
-  const resolve = (id: string): Apps.Application | null => {
-    const all = apps.get_list()
-    return all.find(a => a.entry === `${id}.desktop` || a.entry === id)
-      ?? all.find(a => a.entry?.toLowerCase().includes(id.toLowerCase().split(".").pop()!))
-      ?? apps.fuzzy_query(id.split(".").pop()!)[0]
-      ?? null
-  }
-  const found = PINNED.map(resolve)
+  // Pinned entries resolved by desktop-id; the dock never sits empty, so fill any
+  // unresolved slots (e.g. an app not installed in the devkit) from the installed
+  // list. On real hardware the pins resolve and the fill is unused.
+  const all = apps.get_list()
+  const resolve = (id: string): Apps.Application | undefined =>
+    all.find(a => a.entry === `${id}.desktop` || a.entry === id)
+    ?? all.find(a => a.entry?.toLowerCase().includes(id.toLowerCase().split(".").pop()!))
+  const pinned = PINNED.map(resolve).filter(Boolean) as Apps.Application[]
+  const fill = all.filter(a => !pinned.includes(a)).slice(0, PINNED.length - pinned.length)
+  const found = [...pinned, ...fill]
   return <window
     name="dock" namespace="kobel-dock" class="dock-window"
     gdkmonitor={monitor} anchor={Astal.WindowAnchor.BOTTOM}>
     <box class="dock" spacing={4}>
-      {found.filter(Boolean).map(app => <DockButton app={app!} />)}
+      {found.map(app => <DockButton app={app} />)}
       <box class="sep" />
       <MediaWidget />
     </box>
