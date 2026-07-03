@@ -60,7 +60,7 @@ App.start({
           App.add_window?.(w)
           if (show) w.present()
         }
-      } catch (e) { printerr(`kobel: ${name} FAILED: ${e}`) }
+      } catch (e) { printerr(`kobel: ${name} FAILED: ${e}\n${(e as any)?.stack ?? ""}`) }
     }
     const monitors = App.get_monitors()
     const targets = monitors.length ? monitors : [undefined as any]

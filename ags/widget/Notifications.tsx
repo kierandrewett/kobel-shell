@@ -69,8 +69,9 @@ export function Toasts(monitor: Gdk.Monitor) {
 }
 
 function MediaCard() {
-  const player = Mpris.get_default().players[0]
-  if (!player) return <box />
+  let player: any = null
+  try { player = Mpris.get_default()?.players?.[0] ?? null } catch { player = null }
+  if (!player) return <box visible={false} />
   return <box class="ncard media" spacing={11}>
     <image pixelSize={46} iconName="kobel-music-symbolic" />
     <box orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
@@ -88,6 +89,13 @@ function MediaCard() {
 
 export function Drawer() {
   if (skip()) return null
+  const nfd = nd()
+  // Drive the list from a Variable off get_notifications() + signals, not a property
+  // bind — AstalNotifd's `notifications` isn't reliably bindable across GJS versions.
+  const list = Variable<Notifd.Notification[]>(nfd.get_notifications() ?? [])
+  const refresh = () => list.set(nfd.get_notifications() ?? [])
+  nfd.connect("notified", refresh)
+  nfd.connect("resolved", refresh)
   return <window
     name="drawer" namespace="kobel-drawer" class="drawer-window" visible={false}
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
@@ -97,21 +105,19 @@ export function Drawer() {
       <MediaCard />
       <box class="nhead">
         <label hexpand halign={Gtk.Align.START} label="Notifications" />
-        <label class="tn sub" label={bind(nd(), "notifications").as(n => `${n.length || ""}`)} />
+        <label class="tn sub" label={bind(list).as(n => `${n.length || ""}`)} />
         <button class="nclear" onClicked={() =>
-          nd().notifications.forEach(n => n.dismiss())}>
+          nfd.get_notifications().forEach(n => n.dismiss())}>
           <box spacing={5}><image iconName="kobel-trash-symbolic" /><label label="Clear" /></box>
         </button>
       </box>
-      <scrolledwindow vexpand>
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-          {bind(nd(), "notifications").as(ns => ns.length
-            ? ns.map(n => <Card n={n} />)
-            : [<box class="ncard empty" halign={Gtk.Align.CENTER}>
-                <label label="All caught up ✓" />
-              </box>])}
-        </box>
-      </scrolledwindow>
+      <box orientation={Gtk.Orientation.VERTICAL} spacing={8} vexpand>
+        {bind(list).as(ns => (ns && ns.length)
+          ? ns.map(n => <Card n={n} />)
+          : [<box class="ncard empty" halign={Gtk.Align.CENTER}>
+              <label label="All caught up ✓" />
+            </box>])}
+      </box>
     </box>
   </window>
 }
