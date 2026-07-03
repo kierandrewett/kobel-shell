@@ -208,8 +208,8 @@
   .calev b{display:block;font-size:12.5px;font-weight:650}
   .calev span{font-size:11.5px;color:var(--mut);font-style:italic}
   .chips{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-  .chipb{position:relative;display:flex;min-width:0;align-items:center;gap:9px;
-    padding:9px 8px 9px 12px;border-radius:var(--rt);background:var(--panel2);
+  .chipb{position:relative;display:flex;min-width:0;align-items:center;min-height:54px;
+    border-radius:var(--rt);background:var(--panel2);
     text-align:left;border:0;transition:background .22s,transform .3s var(--ovr)}
   button.chipb,.chipm{cursor:pointer}
   .chipb:hover{background:var(--chip)}
@@ -226,13 +226,6 @@
   .chipb.busy{background:var(--panel2)}
   .chipb.busy .cl span{color:var(--amber)}
   .chipb.pill{border-radius:999px}
-  .chipb.tall{grid-column:2;grid-row:1/3;border-radius:24px}
-  .chipb.tall .chipm{flex-direction:column;align-items:stretch;
-    justify-content:space-between;gap:10px;padding:12px}
-  .chipb.tall .ti{width:36px;height:36px;border-radius:99px;background:rgb(0 0 0/.22);
-    display:grid;place-items:center;color:var(--mut);flex:none;font-size:17px}
-  .chipb.tall.on .ti{background:rgb(255 255 255/.38);color:var(--ink)}
-  .chipb.tall .chevb{position:absolute;top:8px;right:8px;height:30px;margin:0;border-left:0;border-radius:99px;background:rgb(0 0 0/.14)}
   .chevb{appearance:none;border:0;background:transparent;width:30px;height:30px;flex:none;
     border-radius:9px;display:grid;place-items:center;color:var(--dim);cursor:pointer;
     transition:background .15s;font-size:15px}
@@ -246,9 +239,6 @@
   .chipb .chevb:hover{background:rgb(0 0 0/.16)}
   .chipb.pill .chevb{border-radius:0 999px 999px 0}
   .chipb.on .chevb{color:var(--ink)}
-  .rounds{display:flex;gap:10px;margin-top:8px}
-  .rbig{appearance:none;border:0;flex:1;display:flex;flex-direction:column;align-items:center;
-    gap:5px;background:transparent;padding:0;cursor:pointer;position:relative}
   .rmv{position:absolute;top:-6px;left:-6px;width:20px;height:20px;border-radius:99px;
     background:var(--rose);color:var(--rose-ink);display:none;place-items:center;
     font-size:11px;cursor:pointer;z-index:3;box-shadow:var(--shadow-sm)}
@@ -264,13 +254,6 @@
   .addt:hover{background:var(--chip)}
   .addt iconify-icon{font-size:14px;color:var(--mut)}
   .rbtn.act{background:var(--leaf);color:var(--ink)}
-  .rbig .rc{width:100%;height:44px;border-radius:999px;background:var(--panel2);
-    display:grid;place-items:center;color:var(--mut);font-size:17px;
-    transition:background .22s,color .22s,transform .3s var(--ovr)}
-  .rbig:hover .rc{background:var(--chip)}
-  .rbig:active .rc{transform:scale(.95)}
-  .rbig.on .rc{background:var(--leaf);color:var(--ink)}
-  .rbig em{font-style:normal;font-size:10px;color:var(--mut)}
   .sliders{display:flex;flex-direction:column;margin:10px 0 0}
   .srow{display:flex;align-items:center;gap:10px;padding:0 2px;min-height:42px;position:relative}
   .srow>iconify-icon{font-size:16px;color:var(--mut);flex:none}
@@ -558,7 +541,6 @@
             <button class="rbtn" id="qs-edit" title="Edit tiles"><iconify-icon icon="heroicons:pencil"></iconify-icon></button>
             <button class="rbtn" id="g-reload" title="Soft-reload gnoblin"><iconify-icon icon="lucide:leaf"></iconify-icon></button>
             <button class="rbtn" title="Lock"><iconify-icon icon="heroicons:lock-closed"></iconify-icon></button>
-            <button class="rbtn" id="u-out" title="Log out"><iconify-icon icon="heroicons:arrow-right-start-on-rectangle"></iconify-icon></button>
             <button class="rbtn danger" id="u-power" title="Session"><iconify-icon icon="heroicons:power"></iconify-icon></button>
           </div>
           <div class="qt-edit">
@@ -572,7 +554,6 @@
           <button class="gbtn" id="g-reconnect">Reconnect</button>
         </div>
         <div class="chips st" id="qs-chips" style="--i:0"></div>
-        <div class="rounds st" id="qs-rounds" style="--i:1"></div>
         <div class="sliders st" id="qs-sliders" style="--i:2"></div>
         <div id="qs-addwrap"><b>Add tiles</b><div class="qs-add" id="qs-add"></div></div>
       </div>
@@ -882,8 +863,6 @@ $("b-clock").addEventListener("click",e=>openP("cal",e.currentTarget));
 $("b-bell").addEventListener("click",e=>openP("nc",e.currentTarget));
 $("b-power").addEventListener("click",e=>openSession(e.currentTarget));
 $("u-power").addEventListener("click",e=>openSession(e.currentTarget));
-$("u-out").addEventListener("click",()=>{closeAll();
-  toast({title:"session",body:"Log out — (prototype, not really)",icon:"leaf"});});
 
 /* session: keyboard nav + confirm */
 function resetConfirms(){
@@ -1088,16 +1067,16 @@ $("b-vol").addEventListener("click",e=>{e.stopPropagation();setVol(vol);});
 const tstate={wifi:true,bt:true,save:false,dark:true,silent:false,night:false,
   plane:false,hotspot:false,caffeine:false,record:false};
 const CATALOG={
-  wifi:{kind:"pill",label:"Wi-Fi",icon:"heroicons:wifi",sub:["chompers-5G","Off"],x:"wifi"},
-  bt:{kind:"tall",label:"Bluetooth",icon:"tabler:bluetooth",sub:["WH-1000XM5","Off"],x:"bt"},
-  save:{kind:"pill",label:"Power Saver",icon:"heroicons:bolt",sub:["On","Off"]},
-  plane:{kind:"pill",label:"Airplane",icon:"lucide:plane",sub:["On","Off"]},
-  hotspot:{kind:"pill",label:"Hotspot",icon:"tabler:access-point",sub:["Sharing","Off"]},
-  dark:{kind:"round",label:"Dark",icon:"heroicons:moon"},
-  silent:{kind:"round",label:"Silent",icon:"heroicons:bell-slash"},
-  night:{kind:"round",label:"Night",icon:"heroicons:sun"},
-  caffeine:{kind:"round",label:"Caffeine",icon:"lucide:coffee"},
-  record:{kind:"round",label:"Record",icon:"heroicons:video-camera"},
+  wifi:{label:"Wi-Fi",icon:"heroicons:wifi",sub:["chompers-5G","Off"],x:"wifi"},
+  bt:{label:"Bluetooth",icon:"tabler:bluetooth",sub:["WH-1000XM5","Off"],x:"bt"},
+  dark:{label:"Dark Style",icon:"heroicons:moon"},
+  silent:{label:"Silent",icon:"heroicons:bell-slash"},
+  save:{label:"Power Saver",icon:"heroicons:bolt",sub:["On","Off"]},
+  night:{label:"Night Light",icon:"heroicons:sun"},
+  plane:{label:"Airplane",icon:"lucide:plane",sub:["On","Off"]},
+  hotspot:{label:"Hotspot",icon:"tabler:access-point",sub:["Sharing","Off"]},
+  caffeine:{label:"Caffeine",icon:"lucide:coffee"},
+  record:{label:"Record",icon:"heroicons:video-camera"},
   volume:{kind:"slider",label:"Volume",icon:"heroicons:speaker-wave",x:"mix",val:64},
   brightness:{kind:"slider",label:"Brightness",icon:"heroicons:sun",val:80},
   mic:{kind:"slider",label:"Microphone",icon:"heroicons:microphone",val:70}
@@ -1112,9 +1091,6 @@ function saveTiles(){try{localStorage.setItem("kobel-qs",JSON.stringify(qsTiles)
 function tileHTML(id){
   const t=CATALOG[id];
   const rmv='<span class="rmv" data-rm="'+id+'" role="button" title="Remove">'+ph("heroicons:x-mark")+"</span>";
-  if(t.kind==="round")
-    return '<button class="rbig'+(tstate[id]?" on":"")+'" data-t="'+id+'" title="'+t.label+'">'
-      +'<span class="rc">'+ph(t.icon)+'</span><em>'+t.label+"</em>"+rmv+"</button>";
   if(t.kind==="slider")
     return '<div class="srow" id="c-'+id+'">'+ph(t.icon)
       +'<div class="slider" id="s-'+id+'" role="slider" tabindex="0" aria-label="'+t.label
@@ -1124,25 +1100,23 @@ function tileHTML(id){
       +(t.x?'<button class="chevb" data-x="'+t.x+'" title="Per-app volume">'+ph("heroicons:chevron-right")+"</button>"
            :'<span style="width:30px;flex:none"></span>')
       +rmv+"</div>";
-  const tall=t.kind==="tall";
-  return '<div class="chipb '+(tall?"tall":"pill")+(tstate[id]?" on":"")+'" id="c-'+id+'">'
-    +'<button class="chipm" data-t="'+id+'">'
-    +(tall?'<span class="ti">'+ph(t.icon)+"</span>":ph(t.icon))
-    +'<span class="cl"><b>'+t.label+'</b><span data-on="'+t.sub[0]+'" data-off="'+t.sub[1]+'">'
-    +(tstate[id]?t.sub[0]:t.sub[1])+"</span></span></button>"
+  return '<div class="chipb pill'+(tstate[id]?" on":"")+'" id="c-'+id+'">'
+    +'<button class="chipm" data-t="'+id+'">'+ph(t.icon)
+    +'<span class="cl"><b>'+t.label+"</b>"
+    +(t.sub?'<span data-on="'+t.sub[0]+'" data-off="'+t.sub[1]+'">'+(tstate[id]?t.sub[0]:t.sub[1])+"</span>":"")
+    +"</span></button>"
     +(t.x?'<button class="chevb" data-x="'+t.x+'" title="'+t.label+'">'+ph("heroicons:chevron-right")+"</button>":"")
     +rmv+"</div>";
 }
-function fillTiles(chipBox,roundBox,slideBox){
-  chipBox.innerHTML="";roundBox.innerHTML="";slideBox.innerHTML="";
+function fillTiles(chipBox,slideBox){
+  chipBox.innerHTML="";slideBox.innerHTML="";
   qsTiles.forEach(id=>{
     const t=CATALOG[id];if(!t)return;
-    (t.kind==="round"?roundBox:t.kind==="slider"?slideBox:chipBox)
-      .insertAdjacentHTML("beforeend",tileHTML(id));
+    (t.kind==="slider"?slideBox:chipBox).insertAdjacentHTML("beforeend",tileHTML(id));
   });
 }
 function renderTiles(){
-  fillTiles($("qs-chips"),$("qs-rounds"),$("qs-sliders"));
+  fillTiles($("qs-chips"),$("qs-sliders"));
   sVol=null;
   qsTiles.filter(id=>CATALOG[id]&&CATALOG[id].kind==="slider").forEach(id=>{
     const el=$("s-"+id),t=CATALOG[id];
@@ -1172,7 +1146,7 @@ $("p-qs").addEventListener("click",e=>{
   if(ad){qsTiles.push(ad.dataset.add);saveTiles();renderTiles();renderAdd();return;}
   const cv=e.target.closest(".chevb");
   if(cv&&cv.dataset.x){drill(cv.dataset.x);return;}
-  const el=e.target.closest(".chipm,.rbig");
+  const el=e.target.closest(".chipm");
   if(!el||!el.dataset.t)return;
   const k=el.dataset.t;
   if(k==="wifi"&&!tstate.wifi){wifiConnect("chompers-5G");return;}
