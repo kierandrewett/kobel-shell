@@ -52,8 +52,27 @@
     box-shadow:0 30px 80px rgb(0 0 0/.55);background:#8e85dd;user-select:none}
   #wall{position:absolute;inset:0;width:100%;height:100%}
 
-  .win{position:absolute;left:4.5%;bottom:11%;width:32%;border-radius:var(--rt);
-    background:oklch(16% .014 300 / .97);box-shadow:var(--shadow);z-index:5}
+  .win{position:absolute;border-radius:var(--rt);background:oklch(16% .014 300 / .97);
+    box-shadow:var(--shadow-sm);z-index:5;user-select:none;
+    transition:opacity .18s,scale .18s,box-shadow .25s}
+  .win.focused{box-shadow:var(--shadow)}
+  .win.minned{opacity:0;scale:.94;pointer-events:none}
+  .win .tb{cursor:grab}
+  .win .tb:active{cursor:grabbing}
+  .wbt{appearance:none;border:0;background:transparent;color:var(--dim);width:22px;height:22px;
+    border-radius:7px;display:grid;place-items:center;cursor:pointer;font-size:11px;flex:none;
+    transition:background .15s,color .15s}
+  .wbt:hover{background:var(--panel2);color:var(--tx)}
+  .wclose:hover{background:var(--rose);color:var(--rose-ink)}
+  .win .tb .grow{flex:1}
+  #snapprev{position:absolute;background:rgb(255 255 255/.10);border-radius:14px;opacity:0;
+    pointer-events:none;z-index:4;
+    transition:opacity .18s,left .22s var(--ovr),top .22s var(--ovr),
+      width .22s var(--ovr),height .22s var(--ovr)}
+  .fgrid{display:flex;gap:8px;flex-wrap:wrap;padding:8px 0 4px}
+  .fgrid span{display:flex;align-items:center;gap:7px;background:var(--panel2);
+    border-radius:9px;padding:7px 11px;font-size:11.5px;color:var(--tx)}
+  .fgrid iconify-icon{color:oklch(64% .12 250);font-size:14px}
   .win .tb{height:32px;display:flex;align-items:center;gap:7px;padding:0 13px;color:var(--dim);font-size:11px}
   .win .tb i{width:9px;height:9px;border-radius:99px;background:var(--chip)}
   .win .bd{padding:4px 16px 16px;font-size:12px;line-height:1.95;color:var(--mut)}
@@ -481,8 +500,14 @@
 <div class="desktop" id="desk">
   <canvas id="wall"></canvas>
 
-  <div class="win">
-    <div class="tb"><i style="background:var(--rose)"></i><i></i><i></i>&nbsp; kieran@gnoblin: ~/dev/kobel-shell</div>
+  <div id="snapprev"></div>
+
+  <div class="win" data-app="Terminal" style="left:4.5%;top:52%;width:32%">
+    <div class="tb"><i style="background:var(--rose)"></i><i></i><i></i>&nbsp; kieran@gnoblin: ~/dev/kobel-shell
+      <span class="grow"></span>
+      <button class="wbt wmin" title="Minimise"><iconify-icon icon="heroicons:minus"></iconify-icon></button>
+      <button class="wbt wclose" title="Close"><iconify-icon icon="heroicons:x-mark"></iconify-icon></button>
+    </div>
     <div class="bd">
       <div class="blocks">
         <b style="background:oklch(72% .12 300)"></b><b style="background:oklch(88% .02 320)"></b>
@@ -492,6 +517,35 @@
       <span class="g">❯</span> gnoblinctl disable osd<br>
       <span class="c">osd disabled</span> — kobel owns it<br>
       <span class="g">❯</span> qs -p ~/dev/kobel-shell
+    </div>
+  </div>
+
+  <div class="win" data-app="Terminal" style="left:41%;top:22%;width:29%">
+    <div class="tb"><i style="background:var(--rose)"></i><i></i><i></i>&nbsp; btop — kieran@gnoblin
+      <span class="grow"></span>
+      <button class="wbt wmin" title="Minimise"><iconify-icon icon="heroicons:minus"></iconify-icon></button>
+      <button class="wbt wclose" title="Close"><iconify-icon icon="heroicons:x-mark"></iconify-icon></button>
+    </div>
+    <div class="bd">
+      <span class="g">❯</span> btop<br>
+      <span class="c">cpu</span> ▂▄▆█▆▄▂ 14% &nbsp;·&nbsp; <span class="c">mem</span> ▃▃▄▄▅ 38%<br>
+      <span class="c">net</span> ↓ 2.1 MB/s ↑ 340 KB/s
+    </div>
+  </div>
+
+  <div class="win" data-app="Files" style="left:57%;top:50%;width:29%">
+    <div class="tb"><i style="background:var(--rose)"></i><i></i><i></i>&nbsp; Files — ~/dev
+      <span class="grow"></span>
+      <button class="wbt wmin" title="Minimise"><iconify-icon icon="heroicons:minus"></iconify-icon></button>
+      <button class="wbt wclose" title="Close"><iconify-icon icon="heroicons:x-mark"></iconify-icon></button>
+    </div>
+    <div class="bd">
+      <div class="fgrid">
+        <span><iconify-icon icon="heroicons:folder"></iconify-icon>gnoblin</span>
+        <span><iconify-icon icon="heroicons:folder"></iconify-icon>kobel-shell</span>
+        <span><iconify-icon icon="heroicons:folder"></iconify-icon>dotfiles</span>
+        <span><iconify-icon icon="heroicons:folder"></iconify-icon>scratch</span>
+      </div>
     </div>
   </div>
 
@@ -955,6 +1009,163 @@ const CMDS=[
   {c:"lock",d:"Lock the session",k:"Super L"}
 ];
 
+/* ================= windows / WM ================= */
+const WORK={top:56,side:10,bottom:10};
+const WMZ={z:10};
+const WINDOWS=[];
+let focusedWin=null;
+function deskR(){return $("desk").getBoundingClientRect();}
+function allAppWins(n){return WINDOWS.filter(w=>w.app===n);}
+function dockSync(){
+  APPS.forEach(a=>{
+    const ws=allAppWins(a.n);
+    a.run=ws.length>0;
+    a.wins=ws.length;
+    a.focused=!!focusedWin&&focusedWin.app===a.n&&!focusedWin.min;
+    a.cur=a.focused?ws.indexOf(focusedWin):0;
+    if(a._dots)a._dots();
+  });
+  if(typeof setTitle==="function")setTitle();
+}
+function focusWindow(w){
+  if(!w)return;
+  if(w.min){w.min=false;w.el.style.display="";
+    requestAnimationFrame(()=>w.el.classList.remove("minned"));}
+  WMZ.z++;
+  if(WMZ.z>26){
+    WINDOWS.slice().sort((a,b)=>(+a.el.style.zIndex||5)-(+b.el.style.zIndex||5))
+      .forEach((x,i)=>{x.el.style.zIndex=10+i;});
+    WMZ.z=10+WINDOWS.length;
+  }
+  w.el.style.zIndex=WMZ.z;
+  focusedWin=w;
+  WINDOWS.forEach(x=>x.el.classList.toggle("focused",x===w));
+  dockSync();
+}
+function minimizeWin(w){
+  if(!w)return;
+  w.min=true;
+  w.el.classList.add("minned");
+  setTimeout(()=>{if(w.min)w.el.style.display="none";},190);
+  if(focusedWin===w)focusedWin=null;
+  dockSync();
+  announce(w.app+" minimised");
+}
+function closeWin(w){
+  const i=WINDOWS.indexOf(w);
+  if(i>=0)WINDOWS.splice(i,1);
+  w.el.remove();
+  if(focusedWin===w)focusedWin=null;
+  dockSync();
+}
+function winSprings(w){
+  if(w.sp)return w.sp;
+  const st=w.el.style;
+  w.sp={
+    x:new Spring(0).on(v=>{st.left=v.toFixed(1)+"px";}),
+    y:new Spring(0).on(v=>{st.top=v.toFixed(1)+"px";}),
+    w:new Spring(0).on(v=>{st.width=v.toFixed(1)+"px";}),
+    h:new Spring(0).on(v=>{if(w.snap)st.height=v.toFixed(1)+"px";})
+  };
+  return w.sp;
+}
+function zoneRect(zone){
+  const dr=deskR(),W=dr.width,H=dr.height;
+  const x0=WORK.side,y0=WORK.top,x1=W-WORK.side,y1=H-WORK.bottom;
+  if(zone==="left")return{x:x0,y:y0,w:(x1-x0)/2-4,h:y1-y0};
+  if(zone==="right")return{x:x0+(x1-x0)/2+4,y:y0,w:(x1-x0)/2-4,h:y1-y0};
+  return{x:x0,y:y0,w:x1-x0,h:y1-y0};
+}
+function snapTo(w,zone){
+  const dr=deskR(),r=w.el.getBoundingClientRect();
+  if(!w.snap)w.freeW=r.width;
+  w.snap=zone;
+  const t=zoneRect(zone),sp=winSprings(w);
+  w.el.style.height=r.height+"px";
+  sp.x.jump(r.left-dr.left);sp.y.jump(r.top-dr.top);
+  sp.w.jump(r.width);sp.h.jump(r.height);
+  sp.x.cfg(430,28).set(t.x);sp.y.cfg(430,28).set(t.y);
+  sp.w.cfg(430,30).set(t.w);sp.h.cfg(430,30).set(t.h);
+  announce(w.app+(zone==="max"?" maximised":" snapped "+zone));
+}
+function showPrev(zone){
+  const sp=$("snapprev");
+  if(!zone){sp.style.opacity="0";return;}
+  const t=zoneRect(zone);
+  sp.style.opacity="1";
+  sp.style.left=t.x+"px";sp.style.top=t.y+"px";
+  sp.style.width=t.w+"px";sp.style.height=t.h+"px";
+}
+function wireWin(w){
+  const tb=w.el.querySelector(".tb");
+  w.el.addEventListener("pointerdown",()=>{if(focusedWin!==w)focusWindow(w);});
+  w.el.querySelector(".wmin").addEventListener("click",e=>{e.stopPropagation();minimizeWin(w);});
+  w.el.querySelector(".wclose").addEventListener("click",e=>{e.stopPropagation();closeWin(w);});
+  tb.addEventListener("pointerdown",e=>{
+    if(e.target.closest(".wbt"))return;
+    e.preventDefault();
+    focusWindow(w);
+    const dr=deskR();
+    let r=w.el.getBoundingClientRect();
+    let ox=e.clientX-r.left,oy=e.clientY-r.top;
+    if(w.sp){w.sp.x.jump(r.left-dr.left);w.sp.y.jump(r.top-dr.top);w.sp.w.jump(r.width);}
+    if(w.snap){
+      const ratio=ox/r.width;
+      w.el.style.height="";
+      w.snap=null;
+      const nw=w.freeW||r.width*.6;
+      ox=nw*ratio;
+      w.el.style.width=nw+"px";
+      if(w.sp)w.sp.w.jump(nw);
+    }
+    const st=w.el.style;
+    st.left=(r.left-dr.left)+"px";st.top=(r.top-dr.top)+"px";
+    st.bottom="";st.right="";
+    if(!w.snap&&!st.width)st.width=r.width+"px";
+    tb.setPointerCapture(e.pointerId);
+    let zone=null;
+    const mv=ev=>{
+      st.left=Math.round(ev.clientX-dr.left-ox)+"px";
+      st.top=Math.max(WORK.top-8,Math.round(ev.clientY-dr.top-oy))+"px";
+      zone=(ev.clientX-dr.left)<34?"left"
+        :(dr.right-ev.clientX)<34?"right"
+        :(ev.clientY-dr.top)<66?"max":null;
+      showPrev(zone);
+    };
+    const up=()=>{
+      tb.removeEventListener("pointermove",mv);
+      showPrev(null);
+      if(zone)snapTo(w,zone);
+    };
+    tb.addEventListener("pointermove",mv);
+    tb.addEventListener("pointerup",up,{once:true});
+  });
+}
+document.querySelectorAll(".win").forEach(el=>{
+  const w={el,app:el.dataset.app,min:false,snap:null,freeW:0};
+  WINDOWS.push(w);wireWin(w);
+});
+function createWindow(a){
+  const el=document.createElement("div");
+  el.className="win";el.dataset.app=a.n;
+  const count=allAppWins(a.n).length;
+  el.style.left=(16+count*5+Math.random()*26)+"%";
+  el.style.top=(18+Math.random()*20)+"%";
+  el.style.width="30%";
+  el.innerHTML='<div class="tb"><i style="background:var(--rose)"></i><i></i><i></i>&nbsp; '
+    +escH(a.n)
+    +'<span class="grow"></span>'
+    +'<button class="wbt wmin" title="Minimise">'+ph("heroicons:minus")+"</button>"
+    +'<button class="wbt wclose" title="Close">'+ph("heroicons:x-mark")+"</button></div>"
+    +'<div class="bd"><span class="g">❯</span> '+escH(a.n)+' started<br>'
+    +'<span class="c">ready</span> — kobel demo window</div>';
+  $("desk").appendChild(el);
+  const w={el,app:a.n,min:false,snap:null,freeW:0};
+  WINDOWS.push(w);wireWin(w);
+  focusWindow(w);
+  return w;
+}
+
 /* ================= dock ================= */
 const dock=$("dock");
 function setTitle(){
@@ -996,23 +1207,16 @@ APPS.forEach((a,i)=>{
     });
   }
   a._dots=dots;dots();
-  function focusApp(pulse){
-    APPS.forEach(x=>{if(x!==a&&x.focused){x.focused=false;if(x._dots)x._dots();}});
-    a.focused=true;dots();setTitle();
-    if(pulse!==false){
-      di.style.background="rgb(255 255 255/.16)";
-      setTimeout(()=>{di.style.background="";},180);
-    }
-  }
-  function minimize(){
-    a.focused=false;dots();setTitle();
-    di.style.opacity=".45";
-    setTimeout(()=>{di.style.opacity="";},240);
-    announce(a.n+" minimised");
+  function pulse(){
+    di.style.background="rgb(255 255 255/.16)";
+    setTimeout(()=>{di.style.background="";},180);
   }
   function cycle(dir){
-    a.cur=((a.cur||0)+dir+a.wins)%a.wins;
-    if(!a.focused)focusApp(false);
+    const ws=allAppWins(a.n);
+    if(ws.length<2)return;
+    let i=ws.indexOf(focusedWin);
+    i=((i<0?0:i)+dir+ws.length)%ws.length;
+    focusWindow(ws[i]);
     const out=dic.cloneNode(true);
     out.classList.add("dout");
     di.appendChild(out);
@@ -1023,11 +1227,9 @@ APPS.forEach((a,i)=>{
     ox.cfg(520,28);ox.done=()=>out.remove();ox.set(dir*42);
     slx.jump(-dir*42);
     slx.cfg(430,24);slx.set(0);
-    dots();setTitle();
-    announce(a.n+" — window "+(a.cur+1)+" of "+a.wins);
+    announce(a.n+" — window "+((a.cur||0)+1)+" of "+a.wins);
   }
-  function launch(){
-    a.run=true;a.wins=1;a.cur=0;
+  function launchIcon(){
     const r=di.getBoundingClientRect(),dr=$("desk").getBoundingClientRect();
     const ghost=di.cloneNode(true);
     ghost.classList.add("dghost");
@@ -1040,22 +1242,27 @@ APPS.forEach((a,i)=>{
     gs.on(gap);go.on(gap);
     gs.cfg(120,16).set(3);
     go.cfg(150,22);go.done=()=>ghost.remove();go.set(0);
-    focusApp(false);
-    toast({title:"launcher",body:"Launching "+a.n+"…",icon:"leaf"});
   }
   b.addEventListener("click",()=>{
-    if(!a.run)launch();
-    else if(!a.focused)focusApp();
-    else if(a.wins>1)cycle(1);
-    else minimize();
+    const ws=allAppWins(a.n);
+    if(!ws.length){
+      launchIcon();
+      createWindow(a);
+      toast({title:"launcher",body:"Launching "+a.n+"…",icon:"leaf"});
+    }else if(!a.focused){
+      const top=ws.slice().sort((x,y)=>(+y.el.style.zIndex||0)-(+x.el.style.zIndex||0))[0];
+      focusWindow(top);pulse();
+    }else if(ws.length>1)cycle(1);
+    else minimizeWin(focusedWin);
   });
   b.addEventListener("wheel",e=>{
-    if(!a.run||(a.wins||1)<2)return;
+    if(allAppWins(a.n).length<2)return;
     e.preventDefault();
     cycle(e.deltaY>0?1:-1);
   },{passive:false});
 });
-setTitle();
+dockSync();
+if(WINDOWS.length)focusWindow(WINDOWS[0]);
 
 /* ================= clock / calendar ================= */
 function tick(){
@@ -1836,6 +2043,8 @@ function resetLauncher(){lq.value="";filter();}
 function launch(name){
   bump(name);
   closeAll();resetLauncher();
+  const a=APPS.find(x=>x.n===name);
+  if(a)createWindow(a);
   toast({title:"launcher",body:"Launching "+name+"…",icon:"leaf"});
 }
 function runCmd(c){
