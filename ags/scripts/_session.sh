@@ -27,14 +27,15 @@ if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
   gdbus call --session --dest org.freedesktop.Notifications \
     --object-path /org/freedesktop/Notifications \
     --method org.freedesktop.Notifications.Notify \
-    "Spotify" 0 "" "Now Playing" "Weightless — Marconi Union" "[]" "{}" 5000 >/dev/null 2>&1 || true
+    "Spotify" 0 "" "Now Playing" "Weightless — Marconi Union" "[]" "{}" 0 >/dev/null 2>&1 || true
   gdbus call --session --dest org.freedesktop.Notifications \
     --object-path /org/freedesktop/Notifications \
     --method org.freedesktop.Notifications.Notify \
-    "Calendar" 0 "" "Daily Standup" "Starting in 5 minutes" "[]" "{}" 5000 >/dev/null 2>&1 || true
+    "Calendar" 0 "" "Daily Standup" "Starting in 5 minutes" "[]" "{}" 0 >/dev/null 2>&1 || true
   sleep 2
 fi
 [ -n "${TOGGLE:-}" ] && { astal -i kobel -t "$TOGGLE" 2>/dev/null || true; sleep 3; }
+[ -n "${KOBEL_TEST_NOTIFD:-}" ] && echo "WINDOWS: $(astal -i kobel --list 2>&1 | tr '\n' ' ')"
 for _ in 1 2 3; do pkill -9 -f gnome-tour 2>/dev/null; sleep 0.3; done
 
 if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
