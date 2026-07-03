@@ -162,8 +162,8 @@
   .lfoot b{color:var(--mut);font-weight:600}
 
   /* quick settings + drilldown */
-  .qs{top:58px;right:12px;width:354px;padding:12px}
-  .qsviews{position:relative;overflow:hidden;will-change:height}
+  .qs{top:58px;right:12px;width:354px;padding:12px;overflow:hidden}
+  .qsviews{position:relative;overflow:visible;will-change:height}
   .view{position:absolute;top:0;left:0;right:0;will-change:transform,opacity}
   .qclock{display:flex;align-items:flex-start;padding:2px 4px 10px}
   .qclock b{font-size:30px;line-height:1;font-weight:600;letter-spacing:-.01em}
@@ -171,7 +171,13 @@
   .qclock .qb{margin-left:auto;display:flex;gap:6px;align-items:center;padding-top:6px;
     font-size:11.5px;font-weight:600;color:var(--mut)}
   .qclock .qb i{font-size:15px}
-  .qtop{display:flex;align-items:center;gap:7px;padding:0 2px 11px}
+  .qtop{position:relative;height:43px;margin-bottom:1px}
+  .qt-main,.qt-edit{position:absolute;inset:0 2px 11px;display:flex;align-items:center;gap:7px;
+    transition:opacity .28s var(--ovr),transform .34s var(--ovr)}
+  .qt-edit{opacity:0;transform:translateX(26px);pointer-events:none}
+  .editing .qt-edit{opacity:1;transform:none;pointer-events:auto}
+  .editing .qt-main{opacity:0;transform:translateX(-26px);pointer-events:none}
+  .qt-edit b{flex:1;text-align:center;font-size:14px;font-weight:650}
   .qtop .qb{display:flex;gap:6px;align-items:center;font-size:11.5px;font-weight:600;color:var(--mut)}
   .qtop .qb iconify-icon{font-size:15px}
   .rbtn.err{background:var(--amber);color:var(--ink)}
@@ -247,9 +253,9 @@
     background:var(--rose);color:var(--rose-ink);display:none;place-items:center;
     font-size:11px;cursor:pointer;z-index:3;box-shadow:var(--shadow-sm)}
   .rmv iconify-icon{font-size:11px}
-  .eview{pointer-events:none}
-  .eview .rmv{pointer-events:auto;display:grid}
-  #qs-addwrap{margin-top:12px;padding-top:10px;border-top:1px solid var(--panel2)}
+  .editing .rmv{display:grid}
+  #qs-addwrap{display:none;margin-top:12px;padding-top:10px;border-top:1px solid var(--panel2)}
+  .editing #qs-addwrap{display:block}
   #qs-addwrap>b{display:block;font-size:11px;font-weight:650;color:var(--mut);padding:0 2px 8px}
   .qs-add{display:flex;flex-wrap:wrap;gap:7px}
   .addt{appearance:none;border:0;display:flex;align-items:center;gap:7px;
@@ -546,13 +552,19 @@
     <div class="qsviews" id="qsviews">
       <div class="view" id="qv-root">
         <div class="qtop st" style="--i:0">
-          <span class="qb tn"><iconify-icon icon="heroicons:battery-100"></iconify-icon>100% · 3h 02m</span>
-          <span class="grow"></span>
-          <button class="rbtn" id="qs-edit" title="Edit tiles"><iconify-icon icon="heroicons:pencil"></iconify-icon></button>
-          <button class="rbtn" id="g-reload" title="Soft-reload gnoblin"><iconify-icon icon="lucide:leaf"></iconify-icon></button>
-          <button class="rbtn" title="Lock"><iconify-icon icon="heroicons:lock-closed"></iconify-icon></button>
-          <button class="rbtn" id="u-out" title="Log out"><iconify-icon icon="heroicons:arrow-right-start-on-rectangle"></iconify-icon></button>
-          <button class="rbtn danger" id="u-power" title="Session"><iconify-icon icon="heroicons:power"></iconify-icon></button>
+          <div class="qt-main">
+            <span class="qb tn"><iconify-icon icon="heroicons:battery-100"></iconify-icon>100% · 3h 02m</span>
+            <span class="grow"></span>
+            <button class="rbtn" id="qs-edit" title="Edit tiles"><iconify-icon icon="heroicons:pencil"></iconify-icon></button>
+            <button class="rbtn" id="g-reload" title="Soft-reload gnoblin"><iconify-icon icon="lucide:leaf"></iconify-icon></button>
+            <button class="rbtn" title="Lock"><iconify-icon icon="heroicons:lock-closed"></iconify-icon></button>
+            <button class="rbtn" id="u-out" title="Log out"><iconify-icon icon="heroicons:arrow-right-start-on-rectangle"></iconify-icon></button>
+            <button class="rbtn danger" id="u-power" title="Session"><iconify-icon icon="heroicons:power"></iconify-icon></button>
+          </div>
+          <div class="qt-edit">
+            <button class="ibtn" id="qs-edit-done" title="Done editing"><iconify-icon icon="heroicons:chevron-left"></iconify-icon></button>
+            <b>Edit tiles</b><span style="width:31px;flex:none"></span>
+          </div>
         </div>
         <div class="gbanner" id="g-banner" role="status" style="display:none">
           <iconify-icon icon="lucide:leaf"></iconify-icon>
@@ -562,6 +574,7 @@
         <div class="chips st" id="qs-chips" style="--i:0"></div>
         <div class="rounds st" id="qs-rounds" style="--i:1"></div>
         <div class="sliders st" id="qs-sliders" style="--i:2"></div>
+        <div id="qs-addwrap"><b>Add tiles</b><div class="qs-add" id="qs-add"></div></div>
       </div>
       <div class="view" id="qv-sub">
         <div class="dhead">
@@ -844,12 +857,14 @@ function closeAll(){
     const si=$("sess-inner");si.classList.remove("open");si.style.pointerEvents="none";
     resetConfirms();}
   scrim.style.display="none";setInert(false);
+  $("p-qs").classList.remove("editing");
   $("lq").blur();
   if(invoker&&invoker.focus){invoker.focus();invoker=null;}
 }
 scrim.addEventListener("click",closeAll);
 addEventListener("keydown",e=>{
   if(e.key!=="Escape")return;
+  if(cur==="qs"&&$("p-qs").classList.contains("editing")){setEditing(false);return;}
   if(cur==="qs"&&drilled){undrill();return;}
   closeAll();
 });
@@ -1137,24 +1152,24 @@ function renderTiles(){
     if(id==="volume")sVol=inst;
   });
 }
-function renderEdit(){
-  const body=$("q-body");
-  body.innerHTML='<div class="eview"><div class="chips" id="e-chips"></div>'
-    +'<div class="rounds" id="e-rounds"></div><div class="sliders" id="e-sliders"></div></div>'
-    +'<div id="qs-addwrap"><b>Add tiles</b><div class="qs-add" id="qs-add"></div></div>';
-  fillTiles($("e-chips"),$("e-rounds"),$("e-sliders"));
-  const add=$("qs-add");
+function renderAdd(){
+  const add=$("qs-add");add.innerHTML="";
   Object.keys(CATALOG).filter(id=>!qsTiles.includes(id)).forEach(id=>{
     add.insertAdjacentHTML("beforeend",
       '<button class="addt" data-add="'+id+'">'+ph(CATALOG[id].icon)+CATALOG[id].label+"</button>");
   });
   if(!add.children.length)add.innerHTML='<span style="font-size:11px;color:var(--dim)">All tiles placed</span>';
 }
+function setEditing(on){
+  $("p-qs").classList.toggle("editing",on);
+  if(on)renderAdd();
+  announce(on?"Editing quick settings tiles":"Done editing");
+}
 $("p-qs").addEventListener("click",e=>{
   const rm=e.target.closest(".rmv");
-  if(rm){qsTiles=qsTiles.filter(x=>x!==rm.dataset.rm);saveTiles();renderTiles();if(drilled==="edit")renderEdit();qFit(false);return;}
+  if(rm){qsTiles=qsTiles.filter(x=>x!==rm.dataset.rm);saveTiles();renderTiles();renderAdd();return;}
   const ad=e.target.closest(".addt");
-  if(ad){qsTiles.push(ad.dataset.add);saveTiles();renderTiles();if(drilled==="edit")renderEdit();qFit(false);return;}
+  if(ad){qsTiles.push(ad.dataset.add);saveTiles();renderTiles();renderAdd();return;}
   const cv=e.target.closest(".chevb");
   if(cv&&cv.dataset.x){drill(cv.dataset.x);return;}
   const el=e.target.closest(".chipm,.rbig");
@@ -1166,7 +1181,8 @@ $("p-qs").addEventListener("click",e=>{
   const sub=el.querySelector(".cl span");
   if(sub)sub.textContent=tstate[k]?sub.dataset.on:sub.dataset.off;
 });
-$("qs-edit").addEventListener("click",()=>drill("edit"));
+$("qs-edit").addEventListener("click",()=>setEditing(true));
+$("qs-edit-done").addEventListener("click",()=>setEditing(false));
 renderTiles();
 
 /* drilldown: whole-panel subview with height spring */
@@ -1220,11 +1236,6 @@ function buildSub(kind){
       +btRow("game-controller","DualSense","paired",false)
       +"</div>";
     hookRows(body);
-  }else if(kind==="edit"){
-    $("q-title").textContent="Edit tiles";
-    $("q-ctl").innerHTML="";
-    renderEdit();
-    return;
   }else{
     $("q-title").textContent="Volume";
     $("q-ctl").innerHTML="";
@@ -1689,7 +1700,7 @@ if(hash){
   else if(hash==="fail"){setGnob(false);setMediaEmpty(true);openP("qs");}
   else if(hash==="drill"){openP("qs");drill("bt");}
   else if(hash==="cal")openP("cal");
-  else if(hash==="qsedit"){openP("qs");drill("edit");}
+  else if(hash==="qsedit"){openP("qs");setEditing(true);}
   for(const s of Array.from(live))s.jump(s.t);
 }
 qFit(true);
