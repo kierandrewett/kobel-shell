@@ -1020,8 +1020,8 @@ APPS.forEach((a,i)=>{
       out.style.transform="translateX("+v.toFixed(2)+"px)";
       out.style.opacity=Math.max(0,1-Math.abs(v)/40).toFixed(3);
     });
-    ox.cfg(520,28);ox.done=()=>out.remove();ox.set(-dir*42);
-    slx.jump(dir*42);
+    ox.cfg(520,28);ox.done=()=>out.remove();ox.set(dir*42);
+    slx.jump(-dir*42);
     slx.cfg(430,24);slx.set(0);
     dots();setTitle();
     announce(a.n+" — window "+(a.cur+1)+" of "+a.wins);
