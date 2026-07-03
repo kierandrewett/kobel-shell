@@ -13,7 +13,7 @@ export WAYLAND_DISPLAY="$DISP" GDK_BACKEND=wayland
 gnoblinctl disable osd 2>/dev/null || true
 gnoblinctl disable notifications 2>/dev/null || true
 
-KOBEL_SKIP_NOTIFD=1 stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
+KOBEL_ICONS="/home/kieran/dev/kobel-shell/ags/icons" KOBEL_SKIP_NOTIFD=1 stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
 AP=$!
 sleep 8
 [ -n "${TOGGLE:-}" ] && { astal -i kobel -t "$TOGGLE" 2>/dev/null || true; sleep 3; }

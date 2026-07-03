@@ -30,7 +30,7 @@ function Card({ n }: { n: Notifd.Notification }) {
         {40} label={n.body} />
     </box>
     <button class="nx" onClicked={() => n.dismiss()}>
-      <image iconName="window-close-symbolic" />
+      <image iconName="kobel-close-symbolic" />
     </button>
   </box>
 }
@@ -62,17 +62,17 @@ function MediaCard() {
   const player = Mpris.get_default().players[0]
   if (!player) return <box />
   return <box class="ncard media" spacing={11}>
-    <image pixelSize={46} iconName="emblem-music-symbolic" />
+    <image pixelSize={46} iconName="kobel-music-symbolic" />
     <box orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
       <label halign={Gtk.Align.START} ellipsize={3} label={bind(player, "title")} />
       <label class="sub" halign={Gtk.Align.START} label={bind(player, "artist")} />
     </box>
-    <button onClicked={() => player.previous()}><image iconName="media-skip-backward-symbolic" /></button>
+    <button onClicked={() => player.previous()}><image iconName="kobel-skip-back-symbolic" /></button>
     <button onClicked={() => player.play_pause()}>
       <image iconName={bind(player, "playback_status").as(s =>
-        s === Mpris.PlaybackStatus.PLAYING ? "media-playback-pause-symbolic" : "media-playback-start-symbolic")} />
+        s === Mpris.PlaybackStatus.PLAYING ? "kobel-pause-symbolic" : "kobel-play-symbolic")} />
     </button>
-    <button onClicked={() => player.next()}><image iconName="media-skip-forward-symbolic" /></button>
+    <button onClicked={() => player.next()}><image iconName="kobel-skip-fwd-symbolic" /></button>
   </box>
 }
 
@@ -90,7 +90,7 @@ export function Drawer() {
         <label class="tn sub" label={bind(nd(), "notifications").as(n => `${n.length || ""}`)} />
         <button class="nclear" onClicked={() =>
           nd().notifications.forEach(n => n.dismiss())}>
-          <box spacing={5}><image iconName="user-trash-symbolic" /><label label="Clear" /></box>
+          <box spacing={5}><image iconName="kobel-trash-symbolic" /><label label="Clear" /></box>
         </button>
       </box>
       <scrolledwindow vexpand>

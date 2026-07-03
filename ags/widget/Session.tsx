@@ -4,13 +4,13 @@ import { Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, execAsync, timeout } from "astal"
 
 const ACTIONS = [
-  { id: "lock", label: "Lock", icon: "system-lock-screen-symbolic",
+  { id: "lock", label: "Lock", icon: "kobel-lock-symbolic",
     confirm: false, run: () => execAsync("loginctl lock-session") },
-  { id: "logout", label: "Log out", icon: "system-log-out-symbolic",
+  { id: "logout", label: "Log out", icon: "kobel-logout-symbolic",
     confirm: false, run: () => execAsync("gnome-session-quit --logout --no-prompt") },
-  { id: "restart", label: "Restart", icon: "view-refresh-symbolic",
+  { id: "restart", label: "Restart", icon: "kobel-reload-symbolic",
     confirm: true, run: () => execAsync("systemctl reboot") },
-  { id: "shutdown", label: "Shut down", icon: "system-shutdown-symbolic",
+  { id: "shutdown", label: "Shut down", icon: "kobel-power-symbolic",
     confirm: true, red: true, run: () => execAsync("systemctl poweroff") },
 ]
 

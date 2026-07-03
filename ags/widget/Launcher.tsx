@@ -17,17 +17,17 @@ interface Row {
 }
 
 const ACTIONS = [
-  { n: "Suspend", icon: "weather-clear-night-symbolic", d: "Sleep — resume instantly",
+  { n: "Suspend", icon: "kobel-moon-symbolic", d: "Sleep — resume instantly",
     al: ["sleep"], run: () => execAsync("systemctl suspend") },
-  { n: "Lock", icon: "system-lock-screen-symbolic", d: "Lock the session",
+  { n: "Lock", icon: "kobel-lock-symbolic", d: "Lock the session",
     al: ["lock screen"], run: () => execAsync("loginctl lock-session") },
-  { n: "Log Out", icon: "system-log-out-symbolic", d: "End this session",
+  { n: "Log Out", icon: "kobel-logout-symbolic", d: "End this session",
     al: ["exit", "sign out", "logout"], run: () => App.toggle_window("session") },
-  { n: "Restart", icon: "view-refresh-symbolic", d: "Reboot the machine",
+  { n: "Restart", icon: "kobel-reload-symbolic", d: "Reboot the machine",
     al: ["reboot"], run: () => App.toggle_window("session") },
-  { n: "Shut Down", icon: "system-shutdown-symbolic", d: "Power off",
+  { n: "Shut Down", icon: "kobel-power-symbolic", d: "Power off",
     al: ["poweroff", "halt"], run: () => App.toggle_window("session") },
-  { n: "Soft-reload gnoblin", icon: "emblem-synchronizing-symbolic",
+  { n: "Soft-reload gnoblin", icon: "kobel-reload-symbolic",
     d: "Reload the shell — windows survive", al: [],
     run: () => execAsync("gnoblinctl reload") },
 ]
@@ -53,7 +53,7 @@ export default function Launcher() {
       return [{
         section: "gnoblinctl",
         rows: CMDS.filter(c => c.c.startsWith(cq)).map(c => ({
-          name: `:${c.c}`, icon: "utilities-terminal-symbolic", hint: c.d, score: 99,
+          name: `:${c.c}`, icon: "kobel-terminal-symbolic", hint: c.d, score: 99,
           markup: `:${c.c}`, run: () => execAsync(`gnoblinctl ${c.c}`),
         })),
       }]
@@ -65,7 +65,7 @@ export default function Launcher() {
         const v = Function(`"use strict";return(${qt.replace(/^=/, "")})`)()
         if (Number.isFinite(v)) out.push({
           section: "calculator",
-          rows: [{ name: String(v), icon: "accessories-calculator-symbolic",
+          rows: [{ name: String(v), icon: "kobel-calculator-symbolic",
             hint: `${qt.replace(/^=/, "")} =`, score: 98, markup: String(v),
             run: () => execAsync(["wl-copy", String(v)]) }],
         })
@@ -95,7 +95,7 @@ export default function Launcher() {
     if (rest(actRows).length) out.push({ section: "actions", rows: rest(actRows).slice(0, 3) })
     out.push({
       section: "web",
-      rows: [{ name: `Search the web for “${qt}”`, icon: "web-browser-symbolic",
+      rows: [{ name: `Search the web for “${qt}”`, icon: "kobel-globe-symbolic",
         hint: "", score: 0, markup: `Search the web for “${qt}”`,
         run: () => execAsync(["xdg-open", `https://duckduckgo.com/?q=${encodeURIComponent(qt)}`]) }],
     })
@@ -139,7 +139,7 @@ export default function Launcher() {
     }}>
     <box class="sheet launcher" orientation={Gtk.Orientation.VERTICAL} spacing={6}>
       <box class="field">
-        <image iconName="system-search-symbolic" />
+        <image iconName="kobel-magnifying-glass-symbolic" />
         <overlay hexpand>
           <entry
             placeholderText="Search — apps, files, actions · ':' cmds · '=' maths"

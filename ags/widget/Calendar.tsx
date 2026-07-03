@@ -10,10 +10,10 @@ const now = new Date()
 const key = (y: number, m: number, d: number) => `${y}-${m + 1}-${d}`
 export const EVENTS: Record<string, Ev[]> = {
   [key(now.getFullYear(), now.getMonth(), now.getDate())]:
-    [{ t: "09:45", n: "Daily Standup", icon: "camera-video-symbolic" }],
+    [{ t: "09:45", n: "Daily Standup", icon: "kobel-video-symbolic" }],
   [key(now.getFullYear(), now.getMonth(), 11)]:
-    [{ t: "10:30", n: "Kieran Birthday", icon: "emblem-favorite-symbolic" },
-     { t: "13:00", n: "London Thing", icon: "mark-location-symbolic" }],
+    [{ t: "10:30", n: "Kieran Birthday", icon: "kobel-cake-symbolic" },
+     { t: "13:00", n: "London Thing", icon: "kobel-pin-symbolic" }],
 }
 
 const view = Variable({ y: now.getFullYear(), m: now.getMonth() })
@@ -76,7 +76,7 @@ function EventsCard() {
       const head = <label class="evhead" halign={Gtk.Align.START}
         label={d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} />
       if (!evs.length) return [head,
-        <box spacing={8}><image iconName="x-office-calendar-symbolic" />
+        <box spacing={8}><image iconName="kobel-calendar-symbolic" />
           <label class="sub" label="No events" /></box>]
       return [head, ...evs.map(e =>
         <box class="evrow" spacing={10}>
@@ -106,7 +106,7 @@ export default function Calendar() {
         <button onClicked={() => {
           const v = view.get()
           view.set(v.m ? { y: v.y, m: v.m - 1 } : { y: v.y - 1, m: 11 })
-        }}><image iconName="go-previous-symbolic" /></button>
+        }}><image iconName="kobel-chevron-left-symbolic" /></button>
         <button class="month" onClicked={() =>
           view.set({ y: now.getFullYear(), m: now.getMonth() })}>
           <label label={bind(view).as(v =>
@@ -116,7 +116,7 @@ export default function Calendar() {
         <button onClicked={() => {
           const v = view.get()
           view.set(v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 })
-        }}><image iconName="go-next-symbolic" /></button>
+        }}><image iconName="kobel-chevron-right-symbolic" /></button>
       </centerbox>
       <Grid />
       <EventsCard />

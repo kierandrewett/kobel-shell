@@ -77,7 +77,7 @@ function MediaWidget() {
   // dock widget proof-of-concept: album glyph + live progress, click = play/pause
   return <button class="dbtn dwidget" onClicked={() => execAsync("playerctl play-pause")}>
     <overlay>
-      <image class="icon-tile" iconName="emblem-music-symbolic" pixelSize={20} />
+      <image class="icon-tile" iconName="kobel-music-symbolic" pixelSize={20} />
       <levelbar type="overlay" class="mprog" valign={Gtk.Align.END} value={0.34} />
     </overlay>
   </button>

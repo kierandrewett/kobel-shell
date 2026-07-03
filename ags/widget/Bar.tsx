@@ -37,13 +37,13 @@ function StatusPill() {
     onClicked={() => App.toggle_window("quicksettings")}>
     <box spacing={10}>
       <image class="net-icon" iconName={net?.wifi
-        ? bind(net.wifi, "icon_name").as(i => i ?? "network-wireless-symbolic")
-        : "network-wired-symbolic"} />
+        ? bind(net.wifi, "icon_name").as(i => i ?? "kobel-wifi-symbolic")
+        : "kobel-wifi-symbolic"} />
       <image iconName={speaker
-        ? bind(speaker, "volume_icon").as(i => i ?? "audio-volume-high-symbolic")
-        : "audio-volume-high-symbolic"} />
+        ? bind(speaker, "volume_icon").as(i => i ?? "kobel-speaker-wave-symbolic")
+        : "kobel-speaker-wave-symbolic"} />
       <box spacing={5}>
-        <image iconName={bat ? bind(bat, "battery_icon_name") : "battery-symbolic"} />
+        <image iconName={bat ? bind(bat, "battery_icon_name") : "kobel-battery-symbolic"} />
         <label class="tn" label={bat
           ? bind(bat, "percentage").as(p => `${Math.round(p * 100)}%`)
           : "100%"} />
@@ -58,7 +58,7 @@ function Bell() {
   // Variable an async init fills in.
   return <button onClicked={() => App.toggle_window("drawer")}>
     <overlay>
-      <image iconName="preferences-system-notifications-symbolic" />
+      <image iconName="kobel-bell-symbolic" />
       <label type="overlay" halign={Gtk.Align.END} valign={Gtk.Align.START}
         class="badge tn" visible={bind(unread).as(n => n > 0)}
         label={bind(unread).as(n => n > 9 ? "9+" : `${n}`)} />
@@ -78,7 +78,7 @@ export default function Bar(monitor: Gdk.Monitor) {
     <centerbox class="bar">
       <box spacing={4}>
         <button onClicked={() => App.toggle_window("launcher")}>
-          <image iconName="system-search-symbolic" />
+          <image iconName="kobel-magnifying-glass-symbolic" />
         </button>
         <FocusedTitle />
       </box>
@@ -96,7 +96,7 @@ export default function Bar(monitor: Gdk.Monitor) {
         <StatusPill />
         <Bell />
         <button onClicked={() => App.toggle_window("session")}>
-          <image iconName="system-shutdown-symbolic" />
+          <image iconName="kobel-power-symbolic" />
         </button>
       </box>
     </centerbox>

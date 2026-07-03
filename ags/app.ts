@@ -1,6 +1,7 @@
 // kobel-shell entry — AGS v2 / astal4
 import { App } from "astal/gtk4"
 import Gtk from "gi://Gtk?version=4.0"
+import Gdk from "gi://Gdk?version=4.0"
 // astal `construct` sets static props via Object.assign(widget, props) and bindings via
 // setProp → set_class. GtkWidget has neither a `class` GObject prop nor set_class, so
 // `class="..."` silently no-ops (the real prop is `css-classes`, an array). Define a
@@ -27,12 +28,29 @@ import OSD from "./widget/OSD"
 import Session from "./widget/Session"
 
 printerr("KOBEL: module top reached")
+
+// Custom icon set — the exact Heroicons/Lucide/Tabler the prototype uses, as
+// recolorable symbolic SVGs. Registered on the default icon theme so iconName
+// "kobel-wifi-symbolic" etc. resolve. Path override via KOBEL_ICONS for the devkit.
+import GLibIcons from "gi://GLib"
+const ICON_DIR = GLibIcons.getenv("KOBEL_ICONS")
+  ?? GLibIcons.build_filenamev([GLibIcons.get_current_dir(), "icons"])
+
 App.start({
   instanceName: "kobel",
-  css: style + tokenCss(tokens),
+  icons: ICON_DIR,
   main() {
     gnoblin.init()
     notifdSvc.init()
+    // Load our stylesheet at USER priority (highest) so it beats Adwaita's theme
+    // rules — astal's own css option applies too low, letting Adwaita win on e.g.
+    // `scale > trough` (fat sliders). This provider is authoritative.
+    try {
+      const prov = new Gtk.CssProvider()
+      prov.load_from_string(style + tokenCss(tokens))
+      Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default()!, prov, 800 /* USER priority */)
+    } catch (e) { printerr(`kobel: css provider failed: ${e}`) }
     // astal4 JSX <window> is created hidden (visible=false). Persistent chrome must
     // be present()ed; on-demand surfaces stay hidden and are shown by toggle_window.
     const make = (name: string, fn: () => any, show: boolean) => {
