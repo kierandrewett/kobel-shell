@@ -93,3 +93,23 @@ user wallpaper; the shell's neutrals assume warm/violet art but don't require it
 No glassmorphism, no border+shadow ghost cards, no >16px radii, no gradient
 monogram icons, no dashed borders, no gradient text, no eyebrow labels, accent
 never decorative. If a new surface needs one of these, redesign the surface.
+
+## v3 addenda (post-critique rebuild)
+
+- **Dock**: bottom-center opaque slab; flat icon tiles, spring magnify (k420 d22, scale 1.16 / y −4),
+  running dot → focused 14px leaf pill. Pinned + running, separator before unpinned.
+- **Notifications**: right **slide-out drawer** (full height, x-axis spring) with calendar + today
+  button; toasts float over content macOS-style at 82% opacity + blur — **the one sanctioned
+  translucency**, contingent on a gnoblin blur window-rule (the archived C++ stack proved the effect).
+  OSD shares the treatment. Toasts route straight to the drawer when any panel is open or Silent is on.
+- **Control centre**: chips grow chevron-expandable sections (Wi-Fi networks with signal + connect
+  flow, BT devices, per-app mixer under volume) — height springs, chevron rotates 90°.
+- **Quiet accent**: leaf fills = active chips, slider fills, primary buttons, today, badge, focus ring.
+  EQ/stats/avatar/art/decorative = neutral. Amber = anomaly (connecting…, gnoblin disconnected).
+- **Failure states are canon**: media-empty ("Nothing playing" + Open Music), Wi-Fi connecting/…,
+  gnoblin disconnected (amber row, "Reconnect", "osd handed back to gnome"), launcher no-results
+  ("↵ to search the web"). Failure tour: the 4th demo button or `#fail`.
+- **Keyboard path**: everything is a real button; sliders are `role=slider` with arrow keys; session
+  has arrow-nav + focus trap entry + two-step confirm on Restart/Shut down; Del dismisses a focused
+  notification; focus returns to the invoker on close.
+- OSD is display-only (pointer-events: none), compact, above the dock.
