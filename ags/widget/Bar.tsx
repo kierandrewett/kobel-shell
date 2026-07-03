@@ -68,9 +68,12 @@ function Bell() {
 
 export default function Bar(monitor: Gdk.Monitor) {
   const { TOP, LEFT, RIGHT } = Astal.WindowAnchor
+  // Floating bar: layer-shell margins inset it from the edges; the .bar child is the
+  // rounded surface. Exclusive so tiled windows respect it (zone = margin + height).
   return <window
     name="bar" namespace="kobel-bar" class="bar-window"
     gdkmonitor={monitor} exclusivity={Astal.Exclusivity.EXCLUSIVE}
+    marginTop={10} marginLeft={12} marginRight={12}
     anchor={TOP | LEFT | RIGHT}>
     <centerbox class="bar">
       <box spacing={4}>
