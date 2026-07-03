@@ -172,8 +172,10 @@ scale > trough > slider {
   border-radius: 999px; background-color: $tx;
   box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
+// CDP: srow padding-left 12, right 2, gap 9 (widget spacing)
+.srow { padding: 0 2px 0 12px; }
 .srow image { color: $mut; -gtk-icon-size: 17px; }
-.srow .chev { min-width: 30px; color: $dim; border-radius: 9px;
+.srow .chev { padding: 6px 8px; color: $dim; border-radius: 9px;   // padding-driven, was min-w 30
   &:hover { background-color: $panel2; } }
 
 // gnoblin banner

@@ -45,7 +45,7 @@ function Sliders() {
   const speaker = Wp.get_default()?.default_speaker ?? null
   if (!speaker) return <box />
   return <box class="sliders" orientation={Gtk.Orientation.VERTICAL} spacing={2}>
-    <box class="srow" spacing={10}>
+    <box class="srow" spacing={9}>
       <image iconName={bind(speaker, "volume_icon").as(i => i ?? "kobel-speaker-wave-symbolic")} />
       <slider hexpand class="slider" value={bind(speaker, "volume")}
         onChangeValue={(_s, v) => { speaker.volume = v }} />
@@ -53,7 +53,7 @@ function Sliders() {
         <image iconName="kobel-chevron-right-symbolic" />
       </button>
     </box>
-    <box class="srow" spacing={10}>
+    <box class="srow" spacing={9}>
       <image iconName="kobel-brightness-symbolic" />
       <slider hexpand class="slider" value={0.8}
         onChangeValue={(_s, v) => execAsync(`brightnessctl set ${Math.round(v * 100)}%`)} />
