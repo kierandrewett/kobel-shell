@@ -78,7 +78,8 @@
   .swoop{animation:swoop .38s var(--ovr)}
   @keyframes swoop{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
   .bcenter{appearance:none;border:0;background:transparent;display:flex;align-items:baseline;
-    gap:8px;padding:6px 12px;border-radius:9px;cursor:pointer;transition:background .16s}
+    gap:8px;padding:6px 12px;border-radius:9px;cursor:pointer;transition:background .16s;
+    position:absolute;left:50%;top:50%;translate:-50% -50%}
   .bcenter:hover{background:var(--panel2)}
   .clk{font-size:13.5px;font-weight:600;color:var(--tx)}
   .bdate{font-size:11.5px;color:var(--mut)}
@@ -176,7 +177,19 @@
   .ibtn.lang{width:auto;padding:0 8px;font-size:11px;font-weight:650}
   .nc .media{margin:0 0 10px;background:var(--panel);box-shadow:var(--shadow)}
   .calp{top:58px;left:50%;width:330px;margin-left:-165px;padding:10px}
-  .calp .cal{margin:0;background:transparent;padding:2px 4px 6px}
+  .calhero{padding:4px 8px 8px;line-height:1.25}
+  .calhero span{display:block;font-size:11.5px;color:var(--mut)}
+  .calhero b{font-size:19px;font-weight:650}
+  .calmon{appearance:none;border:0;background:transparent;flex:1;font:650 13px var(--font);
+    color:var(--tx);cursor:pointer;padding:4px;border-radius:8px;transition:background .15s}
+  .calmon:hover{background:var(--panel2)}
+  .calviews{position:relative;overflow:hidden}
+  .calviews .calgrid{position:absolute;top:0;left:0;right:0;will-change:transform,opacity}
+  .wk{font-size:9px;font-weight:600;color:var(--dim);background:var(--panel2);border-radius:6px;
+    width:22px;height:20px;display:grid;place-items:center;margin:2px auto}
+  .calev{margin-top:10px;padding:10px 12px;border-radius:var(--rt);background:var(--panel2)}
+  .calev b{display:block;font-size:12.5px;font-weight:650}
+  .calev span{font-size:11.5px;color:var(--mut);font-style:italic}
   .chips{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
   .chipb{position:relative;display:flex;min-width:0;align-items:center;gap:9px;
     padding:9px 8px 9px 12px;border-radius:var(--rt);background:var(--panel2);cursor:pointer;
@@ -299,7 +312,7 @@
   /* drilldown subview */
   .dhead{display:flex;align-items:center;gap:8px;padding:0 0 10px}
   .dhead b{flex:1;text-align:center;font-size:14px;font-weight:650}
-  .dhead .sp{width:31px;flex:none}
+  .dhead .dctl{min-width:31px;flex:none;display:flex;justify-content:flex-end;align-items:center}
   .drow{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:var(--rt);
     background:var(--panel2);margin-bottom:8px}
   .drow b{flex:1;font-size:13px;font-weight:600}
@@ -334,10 +347,11 @@
   .calhead b{flex:1;font-size:12.5px;font-weight:650;padding-left:3px}
   .calhead .ibtn{width:26px;height:26px;font-size:13px}
   .calhead .ibtn:hover{background:var(--chip)}
-  .calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;text-align:center}
+  .calgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:2px 1px;text-align:center;align-items:center}
   .calgrid .dow{font-size:9.5px;font-weight:600;color:var(--dim);padding:3px 0 5px}
-  .calgrid .day{font-size:11px;color:var(--tx);padding:4px 0;border-radius:7px}
-  .calgrid .day.out{color:var(--dim)}
+  .calgrid .day{font-size:11px;color:var(--tx);width:25px;height:24px;display:grid;
+    place-items:center;border-radius:99px;margin:0 auto;font-weight:600}
+  .calgrid .day.out{color:var(--dim);font-weight:400}
   .calgrid .day.today{background:var(--leaf);color:var(--ink);font-weight:700}
   .nhead{display:flex;align-items:baseline;gap:8px;padding:2px 6px 9px;flex:none;
     text-shadow:0 1px 6px rgb(10 8 20/.55)}
@@ -453,10 +467,9 @@
     <button class="ibtn" id="b-launch" title="Launcher (Super)"><iconify-icon icon="heroicons:magnifying-glass"></iconify-icon></button>
     <div class="ftitle" id="ftitle">zed — Bar.qml</div>
     <div class="grow"></div>
-    <button class="bcenter" id="b-clock" title="Calendar &amp; notifications">
+    <button class="bcenter" id="b-clock" title="Calendar">
       <span class="clk tn" id="clk">10:42</span><span class="bdate" id="bdate">Fri 3 Jul</span>
     </button>
-    <div class="grow"></div>
     <span class="tray">
       <button class="ibtn" title="Discord"><iconify-icon icon="simple-icons:discord"></iconify-icon></button>
       <button class="ibtn" title="Steam"><iconify-icon icon="simple-icons:steam"></iconify-icon></button>
@@ -554,7 +567,7 @@
         <div class="dhead">
           <button class="ibtn" id="q-back" title="Back"><iconify-icon icon="heroicons:chevron-left"></iconify-icon></button>
           <b id="q-title">Wi-Fi</b>
-          <span class="sp"></span>
+          <span class="dctl" id="q-ctl"></span>
         </div>
         <div id="q-body"></div>
       </div>
@@ -563,15 +576,17 @@
 
   <!-- ============ CALENDAR ============ -->
   <section class="p sheet calp" id="p-cal">
-    <div class="cal st" style="--i:0">
-      <div class="calhead">
-        <b id="cal-title">July 2026</b>
-        <button class="ibtn" id="cal-prev" title="Previous month"><iconify-icon icon="heroicons:chevron-left"></iconify-icon></button>
-        <button class="ibtn" id="cal-today" title="Today"><iconify-icon icon="heroicons:calendar"></iconify-icon></button>
-        <button class="ibtn" id="cal-next" title="Next month"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
-      </div>
-      <div class="calgrid tn" id="cal-grid"></div>
+    <div class="calhero st" style="--i:0"><span id="ch-day">Friday</span><b id="ch-date">3 July 2026</b></div>
+    <div class="calhead st" style="--i:1">
+      <button class="ibtn" id="cal-prev" title="Previous month"><iconify-icon icon="heroicons:chevron-left"></iconify-icon></button>
+      <button class="calmon tn" id="cal-title" title="Jump to today">July</button>
+      <button class="ibtn" id="cal-next" title="Next month"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
     </div>
+    <div class="calviews st" id="calviews" style="--i:2">
+      <div class="calgrid tn" id="cal-g0"></div>
+      <div class="calgrid tn" id="cal-g1" style="opacity:0"></div>
+    </div>
+    <div class="calev st" style="--i:3"><b>Today</b><span>No events</span></div>
   </section>
 
   <!-- ============ NOTIFICATION DRAWER ============ -->
@@ -936,30 +951,62 @@ function tick(){
   const d=new Date();
   $("clk").textContent=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
   $("bdate").textContent=d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
+  $("ch-day").textContent=d.toLocaleDateString("en-GB",{weekday:"long"});
+  $("ch-date").textContent=d.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
 }
 tick();setInterval(tick,10000);
 const now0=new Date();let calY=now0.getFullYear(),calM=now0.getMonth();
-function renderCal(){
-  const grid=$("cal-grid");grid.innerHTML="";
+function isoWeek(d){
+  const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const dn=(t.getUTCDay()+6)%7;t.setUTCDate(t.getUTCDate()-dn+3);
+  const f=new Date(Date.UTC(t.getUTCFullYear(),0,4));
+  return 1+Math.round(((t-f)/864e5-3+((f.getUTCDay()+6)%7))/7);
+}
+const calG=[$("cal-g0"),$("cal-g1")];let calA=0;
+function renderCalInto(el){
+  el.innerHTML='<span class="dow"></span>';
   for(const d of["M","T","W","T","F","S","S"])
-    grid.insertAdjacentHTML("beforeend",'<span class="dow">'+d+"</span>");
+    el.insertAdjacentHTML("beforeend",'<span class="dow">'+d+"</span>");
   const first=new Date(calY,calM,1),start=(first.getDay()+6)%7,
         days=new Date(calY,calM+1,0).getDate(),
         prevDays=new Date(calY,calM,0).getDate(),today=new Date();
   for(let i=0;i<42;i++){
+    if(i%7===0){
+      const wd=new Date(calY,calM,i-start+1);
+      el.insertAdjacentHTML("beforeend",'<span class="wk">'+isoWeek(wd)+"</span>");
+    }
     const d=i-start+1;let label,cls="day";
-    if(d<1){label=prevDays+d;cls+=" out";}
+    if(d<1)      {label=prevDays+d;cls+=" out";}
     else if(d>days){label=d-days;cls+=" out";}
     else{label=d;
       if(d===today.getDate()&&calM===today.getMonth()&&calY===today.getFullYear())cls+=" today";}
-    grid.insertAdjacentHTML("beforeend",'<span class="'+cls+'">'+label+"</span>");
+    el.insertAdjacentHTML("beforeend",'<span class="'+cls+'">'+String(label).padStart(2,"0")+"</span>");
   }
-  $("cal-title").textContent=first.toLocaleString("en",{month:"long"})+" "+calY;
+  $("cal-title").textContent=first.toLocaleString("en",{month:"long"})
+    +(calY!==now0.getFullYear()?" "+calY:"");
 }
-$("cal-prev").addEventListener("click",()=>{calM--;if(calM<0){calM=11;calY--;}renderCal();});
-$("cal-next").addEventListener("click",()=>{calM++;if(calM>11){calM=0;calY++;}renderCal();});
-$("cal-today").addEventListener("click",()=>{calY=now0.getFullYear();calM=now0.getMonth();renderCal();});
-renderCal();
+function calSlide(dir){
+  const from=calG[calA],to=calG[1-calA];calA=1-calA;
+  renderCalInto(to);
+  $("calviews").style.height=to.scrollHeight+"px";
+  const pr=new Spring(0).on(v=>{
+    from.style.transform="translateX("+(-dir*70*v).toFixed(1)+"px)";
+    from.style.opacity=Math.max(0,1-v*1.4).toFixed(3);
+    to.style.transform="translateX("+(dir*70*(1-v)).toFixed(1)+"px)";
+    to.style.opacity=v.toFixed(3);
+  });
+  pr.cfg(430,30).set(1);
+}
+$("cal-prev").addEventListener("click",()=>{calM--;if(calM<0){calM=11;calY--;}calSlide(-1);});
+$("cal-next").addEventListener("click",()=>{calM++;if(calM>11){calM=0;calY++;}calSlide(1);});
+$("cal-title").addEventListener("click",()=>{
+  const ty=now0.getFullYear(),tm=now0.getMonth();
+  if(calY===ty&&calM===tm)return;
+  const dir=(calY*12+calM)<(ty*12+tm)?1:-1;
+  calY=ty;calM=tm;calSlide(dir);
+});
+renderCalInto(calG[0]);
+requestAnimationFrame(()=>{$("calviews").style.height=calG[0].scrollHeight+"px";});
 
 /* ================= sliders ================= */
 function slider(root,onInput){
@@ -1065,19 +1112,20 @@ document.querySelectorAll(".chevb[data-x]").forEach(c=>{
 });
 const NETS=[{n:"chompers-5G",s:"wifi-high"},{n:"chompers-2G",s:"wifi-medium"},{n:"BT-Hub-9F2",s:"wifi-low"}];
 let wifiNet="chompers-5G",wifiBusy=null;
-function swRow(label,key){
-  return '<div class="drow"><b>'+label+'</b>'
-    +'<button class="sw'+(tstate[key]?" on":"")+'" data-sw="'+key+'" role="switch" aria-checked="'+tstate[key]+'"><i></i></button></div>';
+function swBtn(key){
+  return '<button class="sw'+(tstate[key]?" on":"")+'" data-sw="'+key+'" role="switch" aria-checked="'+tstate[key]+'"><i></i></button>';
 }
 function buildSub(kind){
   const body=$("q-body");
   if(kind==="wifi"){
     $("q-title").textContent="Wi-Fi";
-    body.innerHTML=swRow("Wi-Fi","wifi")+'<div class="dlist" id="d-nets"></div>';
+    $("q-ctl").innerHTML=swBtn("wifi");
+    body.innerHTML='<div class="dlist" id="d-nets"></div>';
     renderNets();
   }else if(kind==="bt"){
     $("q-title").textContent="Bluetooth";
-    body.innerHTML=swRow("Bluetooth","bt")+'<div class="dlist">'
+    $("q-ctl").innerHTML=swBtn("bt");
+    body.innerHTML='<div class="dlist">'
       +btRow("headphones","WH-1000XM5","connected",true)
       +btRow("keyboard","MX Keys Mini","paired",false)
       +btRow("game-controller","DualSense","paired",false)
@@ -1085,6 +1133,7 @@ function buildSub(kind){
     hookRows(body);
   }else{
     $("q-title").textContent="Volume";
+    $("q-ctl").innerHTML="";
     body.innerHTML='<div class="dlist" id="d-mix"></div>';
     [["Music","music-notes",64],["Firefox","globe",40],["Zed","code",15]].forEach(m=>{
       const row=document.createElement("div");row.className="mixrow";
@@ -1095,7 +1144,7 @@ function buildSub(kind){
       slider(row.querySelector(".slider"),()=>{}).set(m[2],false);
     });
   }
-  body.querySelectorAll(".sw").forEach(sw=>{
+  qsub.querySelectorAll(".sw").forEach(sw=>{
     sw.addEventListener("click",()=>{
       const k=sw.dataset.sw;tstate[k]=!tstate[k];
       sw.classList.toggle("on",tstate[k]);
