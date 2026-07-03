@@ -57,10 +57,23 @@ function Grid() {
             if (s.getDate() === d && s.getMonth() === v.m && s.getFullYear() === v.y)
               cls.push("sel")
           }
+          const hasEv = !out && !!EVENTS[key(v.y, v.m, d)]
+          // day sits at its natural 24×24 centred in the grid column (not filling it),
+          // so today's leaf fill is a tight circle rather than a column-wide oval
           cells.push(out
-            ? <label class={cls.join(" ")} label={`${label}`} />
-            : <button class={cls.join(" ")} label={`${label}`}
-                onClicked={() => sel.set(new Date(v.y, v.m, d))} />)
+            ? <label class={cls.join(" ")} halign={Gtk.Align.CENTER} label={`${label}`} />
+            : <button class={cls.join(" ")}
+                halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER}
+                onClicked={() => sel.set(new Date(v.y, v.m, d))}>
+                {hasEv
+                  ? <overlay>
+                      <label label={`${label}`} />
+                      {/* 3px event dot, absolute bottom-center (GTK has no ::after) */}
+                      <box type="overlay" class="evdot"
+                        halign={Gtk.Align.CENTER} valign={Gtk.Align.END} />
+                    </overlay>
+                  : <label label={`${label}`} />}
+              </button>)
         }
         rows.push(<box homogeneous>{cells}</box>)
       }
