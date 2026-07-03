@@ -281,20 +281,23 @@ scale > trough > slider {
 }
 
 // ============ NOTIFICATIONS ============
+// CDP/source: card .inner pad 11/12 r20 bg panel gap10; toast pad 11/13 r20 bg panelT (blur);
+// nhead pad 8/8/8/14 r14; title 13.5/650; nx 22×22 r99; when 10px dim.
 .drawer { background: transparent; }
-.toast { background-color: rgba(16,14,20,0.86); border-radius: 20px; padding: 12px 13px;
+.toast { background-color: rgba(16,13,20,0.82); border-radius: 20px; padding: 11px 13px;
          box-shadow: 0 18px 40px rgba(5,3,10,0.45); }
 .ncard {
-  background-color: $panel; border-radius: 18px; padding: 12px;
+  background-color: $panel; border-radius: 20px; padding: 11px 12px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.3);
   label { font-size: 12.5px; font-weight: 650; }
   .body { color: $mut; font-size: 11.8px; font-weight: 400; }
   .when { color: $dim; font-size: 10px; }
-  .nx { min-width: 22px; min-height: 22px; border-radius: 99px; color: $dim;
+  // close button: padding-driven 22×22 (11px icon-ish + padding)
+  .nx { padding: 5px; border-radius: 99px; color: $dim;
     &:hover { background-color: $chip; color: $rose; } }
 }
 .nhead {
-  background-color: $panel; border-radius: 14px; padding: 9px 9px 9px 14px; margin-bottom: 8px;
+  background-color: $panel; border-radius: 14px; padding: 8px 8px 8px 14px; margin-bottom: 8px;
   label { font-size: 13.5px; font-weight: 650; }
   .nclear { color: $rose; font-size: 11.5px; font-weight: 600; border-radius: 8px;
             padding: 5px 10px; &:hover { background-color: $panel2; } }
