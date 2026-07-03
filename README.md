@@ -23,6 +23,17 @@ services/Gnoblin.qml singleton over gnoblin's control protocol (via gnoblinctl)
 Needs a running **gnoblin** session (patched gnome-shell + mutter) and `gnoblinctl`
 on `PATH`.
 
+**Easiest (nested devkit).** From the gnoblin repo, `just gnome-devkit` opens a nested
+gnoblin session + a terminal wired to it. In that terminal:
+
+```sh
+qs -p ~/dev/kobel-shell
+```
+
+and the bar appears inside the nested gnoblin.
+
+**Real session.** In a gnoblin session:
+
 ```sh
 qs -p ~/dev/kobel-shell
 # or register it: ln -s ~/dev/kobel-shell ~/.config/quickshell/kobel-shell && qs -c kobel-shell
