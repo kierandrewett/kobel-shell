@@ -340,7 +340,7 @@
   
 
   /* notification drawer */
-  .nc{top:10px;right:10px;bottom:10px;width:348px;padding:0;display:flex;flex-direction:column;
+  .nc{top:58px;right:12px;bottom:12px;width:348px;padding:0;display:flex;flex-direction:column;
     background:transparent;box-shadow:none;border-radius:0}
   .cal{padding:10px 12px 12px;border-radius:var(--rt);background:var(--panel2);margin-bottom:11px;flex:none}
   .calhead{display:flex;align-items:center;gap:4px;margin-bottom:8px}
@@ -362,7 +362,7 @@
     display:flex;align-items:center;gap:5px;transition:background .15s}
   .nclear:hover{background:var(--panel2)}
   .nclear i{font-size:12px}
-  .nlist{display:flex;flex-direction:column;overflow-y:auto;min-height:0}
+  .nlist{display:flex;flex-direction:column;overflow-y:auto;min-height:0;padding:2px 16px 24px;margin:-2px -16px -12px}
   .ncard{will-change:transform,opacity,height}
   .ncard .inner{display:flex;gap:10px;padding:11px 12px;margin-bottom:8px;border-radius:20px;
     background:var(--panel);box-shadow:var(--shadow-sm);cursor:grab;position:relative;align-items:flex-start}
@@ -390,7 +390,7 @@
 
   /* toasts */
   .toasts{position:absolute;top:58px;right:12px;z-index:62;display:flex;flex-direction:column;
-    gap:8px;pointer-events:none;width:330px}
+    gap:8px;pointer-events:none;width:348px}
   .toast{pointer-events:auto;display:flex;gap:10px;padding:11px 13px;border-radius:20px;
     background:var(--panelT);backdrop-filter:blur(16px) saturate(1.35);
     box-shadow:var(--shadow);will-change:transform,opacity}
@@ -1264,7 +1264,40 @@ function syncBadge(pop){
   else badgeS.cfg(440,32).set(0);
 }
 syncBadge(false);
-function markRead(){unread=0;syncBadge(false);renderNC();}
+function markRead(){unread=0;syncBadge(false);adoptToasts();}
+const liveToasts=[];
+function addCardAnimated(n){
+  store.unshift(n);renderNC();
+  const card=$("nlist").firstElementChild;if(!card)return;
+  const inner=card.querySelector(".inner");
+  const h=card.offsetHeight;
+  card.style.height="0px";card.style.overflow="hidden";
+  const hs=new Spring(0).on(v=>{card.style.height=Math.max(0,v).toFixed(1)+"px";});
+  hs.done=()=>{card.style.height="";card.style.overflow="";};
+  hs.cfg(380,28).set(h);
+  const xs=new Spring(46).on(v=>{inner.style.transform="translateX("+v.toFixed(1)+"px)";
+    inner.style.opacity=Math.max(0,1-v/60).toFixed(3);});
+  xs.done=()=>{inner.style.transform="";inner.style.opacity="";};
+  xs.cfg(360,24).set(0);
+}
+function adoptToasts(){
+  if(!liveToasts.length){renderNC();return;}
+  const adopts=liveToasts.splice(0);
+  const rects=new Map();
+  for(const t of adopts){clearTimeout(t.timer);rects.set(t.n,t.el.getBoundingClientRect());}
+  for(const t of adopts)store.unshift(t.n);
+  renderNC();
+  const cards=Array.from($("nlist").children);
+  adopts.forEach(t=>{
+    const i=store.indexOf(t.n);const card=cards[i];if(!card)return;
+    const inner=card.querySelector(".inner");
+    const to=inner.getBoundingClientRect(),from=rects.get(t.n);
+    const ys=new Spring(from.top-to.top).on(v=>{inner.style.transform="translateY("+v.toFixed(1)+"px)";});
+    ys.done=()=>{inner.style.transform="";};
+    ys.cfg(420,30).set(0);
+  });
+  for(const t of adopts)t.el.remove();
+}
 function cardHTML(n){
   return '<div class="inner" tabindex="0">'
     +'<div class="nic" style="background:'+(ICBG[n.icon]||ICBG.leaf)+'">'+ph(ICONS[n.icon]||"leaf")+'</div>'
@@ -1360,10 +1393,16 @@ $("n-clear").addEventListener("click",()=>{
 });
 function toast(n){
   n.when="now";
-  if(tstate.silent||cur){
+  if(tstate.silent){
     store.unshift(n);unread++;syncBadge(true);
     bellR.cfg(330,7).kick(-330);bellR.set(0);
     if(cur==="nc"){renderNC();unread=0;syncBadge(false);}
+    return;
+  }
+  if(cur==="nc"){addCardAnimated(n);return;}
+  if(cur){
+    store.unshift(n);unread++;syncBadge(true);
+    bellR.cfg(330,7).kick(-330);bellR.set(0);
     return;
   }
   const el=document.createElement("div");el.className="toast";
@@ -1377,14 +1416,18 @@ function toast(n){
     el.style.opacity=o.x.toFixed(3);};
   x.on(ap);o.on(ap);s.on(ap);
   x.cfg(360,23).set(0);s.cfg(360,21).set(1);o.cfg(320,29).set(1);
-  let hideT=setTimeout(dismiss,3800);
-  el.addEventListener("pointerenter",()=>clearTimeout(hideT));
-  el.addEventListener("pointerleave",()=>{hideT=setTimeout(dismiss,1400);});
+  const rec={el,n,timer:0};liveToasts.push(rec);
+  rec.timer=setTimeout(dismiss,3800);
+  el.addEventListener("pointerenter",()=>clearTimeout(rec.timer));
+  el.addEventListener("pointerleave",()=>{rec.timer=setTimeout(dismiss,1400);});
   function dismiss(){
+    const idx=liveToasts.indexOf(rec);
+    if(idx<0)return;
+    liveToasts.splice(idx,1);
     x.cfg(440,36).set(70);o.cfg(400,38);
     o.done=()=>{el.remove();
-      store.unshift(n);unread++;syncBadge(true);
-      if(cur==="nc"){renderNC();unread=0;syncBadge(false);}
+      if(cur==="nc"){addCardAnimated(n);}
+      else{store.unshift(n);unread++;syncBadge(true);}
     };
     o.set(0);
   }
