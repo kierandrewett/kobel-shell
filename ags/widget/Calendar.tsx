@@ -103,17 +103,17 @@ export default function Calendar() {
           label={new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} />
       </box>
       <centerbox>
-        <button startWidget onClicked={() => {
+        <button onClicked={() => {
           const v = view.get()
           view.set(v.m ? { y: v.y, m: v.m - 1 } : { y: v.y - 1, m: 11 })
         }}><image iconName="go-previous-symbolic" /></button>
-        <button centerWidget class="month" onClicked={() =>
+        <button class="month" onClicked={() =>
           view.set({ y: now.getFullYear(), m: now.getMonth() })}>
           <label label={bind(view).as(v =>
             new Date(v.y, v.m).toLocaleString("en", { month: "long" })
             + (v.y !== now.getFullYear() ? ` ${v.y}` : ""))} />
         </button>
-        <button endWidget onClicked={() => {
+        <button onClicked={() => {
           const v = view.get()
           view.set(v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 })
         }}><image iconName="go-next-symbolic" /></button>

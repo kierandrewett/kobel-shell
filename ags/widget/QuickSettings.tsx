@@ -42,10 +42,11 @@ function Chip(props: {
 }
 
 function Sliders() {
-  const speaker = Wp.get_default()!.default_speaker!
+  const speaker = Wp.get_default()?.default_speaker ?? null
+  if (!speaker) return <box />
   return <box orientation={Gtk.Orientation.VERTICAL}>
     <box spacing={9}>
-      <image iconName={bind(speaker, "volume_icon")} />
+      <image iconName={bind(speaker, "volume_icon").as(i => i ?? "audio-volume-high-symbolic")} />
       <slider hexpand class="slider" value={bind(speaker, "volume")}
         onChangeValue={(_s, v) => { speaker.volume = v }} />
       <button class="chev" onClicked={() => drill.set("mix")}>
@@ -88,11 +89,11 @@ function Root() {
     </box>
     <GnoblinBanner />
     <box class="chips" homogeneous spacing={8}>
-      <Chip id="wifi" label="Wi-Fi" icon="network-wireless-symbolic"
-        active={bind(net.wifi!, "enabled")}
-        sub={bind(net.wifi!, "ssid").as(s => s ?? "Off")}
+      {net.wifi && <Chip id="wifi" label="Wi-Fi" icon="network-wireless-symbolic"
+        active={bind(net.wifi, "enabled")}
+        sub={bind(net.wifi, "ssid").as(s => s ?? "Off")}
         onToggled={() => { net.wifi!.enabled = !net.wifi!.enabled }}
-        onDrill={() => drill.set("wifi")} />
+        onDrill={() => drill.set("wifi")} />}
       <Chip id="bt" label="Bluetooth" icon="bluetooth-active-symbolic"
         active={bind(bt, "is_powered")}
         sub={bind(bt, "devices").as(d =>
@@ -109,15 +110,14 @@ function DrillView() {
   const net = Network.get_default()
   return <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
     <centerbox>
-      <button startWidget onClicked={() => drill.set(null)}>
+      <button onClicked={() => drill.set(null)}>
         <image iconName="go-previous-symbolic" /></button>
-      <label centerWidget label={bind(drill).as(d =>
+      <label label={bind(drill).as(d =>
         d === "wifi" ? "Wi-Fi" : d === "bt" ? "Bluetooth" : "Volume")} />
-      <box endWidget widthRequest={46} halign={Gtk.Align.END}>
-        {/* header switch, per prototype */}
-        <switch active={bind(net.wifi!, "enabled")}
+      <box widthRequest={46} halign={Gtk.Align.END}>
+        {net.wifi && <switch active={bind(net.wifi, "enabled")}
           visible={bind(drill).as(d => d === "wifi")}
-          onNotifyActive={s => { net.wifi!.enabled = s.active }} />
+          onNotifyActive={s => { net.wifi!.enabled = s.active }} />}
       </box>
     </centerbox>
     {/* wifi: AP list w/ Connected/Connect-on-hover · bt: devices · mix: Master + per-app */}

@@ -7,8 +7,8 @@ import Battery from "gi://AstalBattery"
 import Wp from "gi://AstalWp"
 import Network from "gi://AstalNetwork"
 import Tray from "gi://AstalTray"
-import Notifd from "gi://AstalNotifd"
 import { connected, windows } from "../services/gnoblin"
+import { unread } from "../services/notifd"
 
 const time = Variable(GLib.DateTime.new_now_local()).poll(10_000,
   () => GLib.DateTime.new_now_local())
@@ -29,36 +29,39 @@ function FocusedTitle() {
 }
 
 function StatusPill() {
-  const wp = Wp.get_default()!
+  const speaker = Wp.get_default()?.default_speaker ?? null
   const net = Network.get_default()
   const bat = Battery.get_default()
   return <button
     class={bind(connected).as(c => c ? "status" : "status err")}
     onClicked={() => App.toggle_window("quicksettings")}>
     <box spacing={10}>
-      <image class="net-icon" iconName={bind(net, "primary").as(() =>
-        net.wifi?.icon_name ?? "network-wired-symbolic")} />
-      <image iconName={bind(wp.default_speaker!, "volume_icon")} />
+      <image class="net-icon" iconName={net?.wifi
+        ? bind(net.wifi, "icon_name").as(i => i ?? "network-wireless-symbolic")
+        : "network-wired-symbolic"} />
+      <image iconName={speaker
+        ? bind(speaker, "volume_icon").as(i => i ?? "audio-volume-high-symbolic")
+        : "audio-volume-high-symbolic"} />
       <box spacing={5}>
-        <image iconName={bind(bat, "battery_icon_name")} />
-        <label class="tn" label={bind(bat, "percentage").as(p =>
-          `${Math.round(p * 100)}%`)} />
+        <image iconName={bat ? bind(bat, "battery_icon_name") : "battery-symbolic"} />
+        <label class="tn" label={bat
+          ? bind(bat, "percentage").as(p => `${Math.round(p * 100)}%`)
+          : "100%"} />
       </box>
     </box>
   </button>
 }
 
 function Bell() {
-  const notifd = Notifd.get_default()
+  // Badge hydrates once notifd is available (deferred — get_default() can block on a
+  // headless/contended bus; never call it during construction). unread() is a plain
+  // Variable an async init fills in.
   return <button onClicked={() => App.toggle_window("drawer")}>
     <overlay>
-      <image iconName={bind(notifd, "dont_disturb").as(d =>
-        d ? "notifications-disabled-symbolic" : "preferences-system-notifications-symbolic")} />
-      <label
-        type="overlay" halign={Gtk.Align.END} valign={Gtk.Align.START}
-        class="badge tn"
-        visible={bind(notifd, "notifications").as(n => n.length > 0)}
-        label={bind(notifd, "notifications").as(n => n.length > 9 ? "9+" : `${n.length}`)} />
+      <image iconName="preferences-system-notifications-symbolic" />
+      <label type="overlay" halign={Gtk.Align.END} valign={Gtk.Align.START}
+        class="badge tn" visible={bind(unread).as(n => n > 0)}
+        label={bind(unread).as(n => n > 9 ? "9+" : `${n}`)} />
     </overlay>
   </button>
 }
@@ -70,19 +73,19 @@ export default function Bar(monitor: Gdk.Monitor) {
     gdkmonitor={monitor} exclusivity={Astal.Exclusivity.EXCLUSIVE}
     anchor={TOP | LEFT | RIGHT}>
     <centerbox class="bar">
-      <box startWidget spacing={4}>
+      <box spacing={4}>
         <button onClicked={() => App.toggle_window("launcher")}>
           <image iconName="system-search-symbolic" />
         </button>
         <FocusedTitle />
       </box>
-      <button centerWidget onClicked={() => App.toggle_window("calendar")}>
+      <button onClicked={() => App.toggle_window("calendar")}>
         <box spacing={8}>
           <label class="clock tn" label={bind(time).as(t => t.format("%H:%M")!)} />
           <label class="date" label={bind(time).as(t => t.format("%a %-d %b")!)} />
         </box>
       </button>
-      <box endWidget spacing={4}>
+      <box spacing={4}>
         {bind(Tray.get_default(), "items").as(items => items.map(item =>
           <menubutton tooltipText={item.tooltip_markup} menuModel={item.menu_model}>
             <image gicon={bind(item, "gicon")} />

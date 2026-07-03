@@ -4,11 +4,17 @@
 // a toast is live and it's ADOPTED into the stack; toasts arriving while open
 // insert as cards; Silent routes straight to the store.
 import { App, Astal, Gdk, Gtk } from "astal/gtk4"
-import { Variable, bind, timeout } from "astal"
+import { Variable, bind, timeout, GLib } from "astal"
 import Notifd from "gi://AstalNotifd"
 import Mpris from "gi://AstalMpris"
 
-const notifd = Notifd.get_default()
+// Lazy singleton — calling get_default() at module scope blocks the import while
+// AstalNotifd tries to acquire org.freedesktop.Notifications (hangs if gnome-shell
+// still owns it). Deferring to first use lets the module import cleanly; the bus is
+// released by `gnoblinctl disable notifications` before the daemon actually claims it.
+let _notifd: Notifd.Notifd | null = null
+const nd = () => (_notifd ??= Notifd.get_default())
+const skip = () => !!GLib.getenv("KOBEL_SKIP_NOTIFD")
 const TOAST_MS = 3800
 
 function Card({ n }: { n: Notifd.Notification }) {
@@ -30,12 +36,13 @@ function Card({ n }: { n: Notifd.Notification }) {
 }
 
 export function Toasts(monitor: Gdk.Monitor) {
+  if (skip()) return null
   // Only render notifications younger than TOAST_MS while the drawer is CLOSED —
   // opening the drawer "adopts" them (they simply continue life as drawer cards,
   // which is the FLIP handoff expressed in retained-mode terms).
   const live = Variable<number[]>([])
-  notifd.connect("notified", (_n, id) => {
-    if (App.get_window("drawer")?.visible || notifd.dont_disturb) return
+  nd().connect("notified", (_n, id) => {
+    if (App.get_window("drawer")?.visible || nd().dont_disturb) return
     live.set([...live.get(), id])
     timeout(TOAST_MS, () => live.set(live.get().filter(x => x !== id)))
   })
@@ -44,7 +51,7 @@ export function Toasts(monitor: Gdk.Monitor) {
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT}>
     <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
       {bind(live).as(ids => ids.map(id => {
-        const n = notifd.get_notification(id)
+        const n = nd().get_notification(id)
         return n ? <box class="toast"><Card n={n} /></box> : <box />
       }))}
     </box>
@@ -70,6 +77,7 @@ function MediaCard() {
 }
 
 export function Drawer() {
+  if (skip()) return null
   return <window
     name="drawer" namespace="kobel-drawer" class="drawer-window" visible={false}
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
@@ -79,15 +87,15 @@ export function Drawer() {
       <MediaCard />
       <box class="nhead">
         <label hexpand halign={Gtk.Align.START} label="Notifications" />
-        <label class="tn sub" label={bind(notifd, "notifications").as(n => `${n.length || ""}`)} />
+        <label class="tn sub" label={bind(nd(), "notifications").as(n => `${n.length || ""}`)} />
         <button class="nclear" onClicked={() =>
-          notifd.notifications.forEach(n => n.dismiss())}>
+          nd().notifications.forEach(n => n.dismiss())}>
           <box spacing={5}><image iconName="user-trash-symbolic" /><label label="Clear" /></box>
         </button>
       </box>
       <scrolledwindow vexpand>
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-          {bind(notifd, "notifications").as(ns => ns.length
+          {bind(nd(), "notifications").as(ns => ns.length
             ? ns.map(n => <Card n={n} />)
             : [<box class="ncard empty" halign={Gtk.Align.CENTER}>
                 <label label="All caught up ✓" />
