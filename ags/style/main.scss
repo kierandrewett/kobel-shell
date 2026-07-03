@@ -95,21 +95,23 @@ image { -gtk-icon-style: regular; }
 // sheet gets cut off. The margin enlarges the window buffer (shadow room) AND is the
 // floating gap from the screen edge; the shadow is tuned to fit within it.
 .sheet {
-  background-color: $panel; border-radius: 22px; padding: 14px;
-  margin: 26px;
-  // shadow extent (blur + |offset|) must stay < margin or the layer surface clips it
-  box-shadow: 0 6px 18px rgba(5,3,10,0.55), 0 1px 5px rgba(0,0,0,0.4);
+  background-color: $panel; border-radius: 24px; padding: 12px;
+  margin: 38px;
+  // Prototype shadow is 0 18px 40px oklch(.08 .02 300/.45) + 0 2px 8px rgba(0,0,0,.35).
+  // Reproduced as closely as the layer-surface margin allows (extent must stay < margin).
+  box-shadow: 0 15px 34px rgba(8,5,16,0.45), 0 2px 8px rgba(0,0,0,0.35);
 }
 
 // ============ QUICK SETTINGS ============
-.qs { min-width: 342px; }
+// Exact values from CDP-extracted prototype computed styles (docs/prototype.html).
+.qs { min-width: 351px; }
 
-// compact top row
+// compact top row — prototype: 32×32 rbtns, r99, gap not margin, margin-bottom 1px
 .qs-top {
-  margin-bottom: 4px;
+  margin-bottom: 1px;
   .meta { color: $mut; font-size: 11.5px; font-weight: 600; }
   .rbtn {
-    min-width: 32px; min-height: 32px; border-radius: 999px;
+    min-width: 32px; min-height: 32px; border-radius: 99px;
     background-color: $chip; color: $mut; margin-left: 6px;
     &:hover { background-color: $hover; color: $tx; }
     &.danger:hover { background-color: $rose; color: $roseink; }
@@ -117,14 +119,15 @@ image { -gtk-icon-style: regular; }
   }
 }
 
-// rounded-rectangle tiles (matches prototype: ~16px radius, chunky, NOT pills)
+// pill tiles — prototype computed: border-radius 999px, min-height 54px,
+// chipm padding 9px 8px 9px 12px, gap 9px, label 12.5px/650, sub 10.5px/400 mt0
 .chip {
-  background-color: $panel2; border-radius: 16px; min-height: 62px;
+  background-color: $panel2; border-radius: 999px; min-height: 54px;
   transition: background-color 220ms;
-  > button { padding: 11px 11px 11px 14px; border-radius: 16px; }
-  image { color: $mut; -gtk-icon-size: 18px; margin-right: 2px; }
-  label { font-size: 13px; font-weight: 650; color: $tx; }
-  .sub { color: $mut; font-size: 11px; font-weight: 400; margin-top: 2px; }
+  > button { padding: 9px 8px 9px 12px; border-radius: 999px; }
+  image { color: $mut; -gtk-icon-size: 18px; }
+  label { font-size: 12.5px; font-weight: 650; color: $tx; }
+  .sub { color: $mut; font-size: 10.5px; font-weight: 400; margin-top: 0; }
   &:hover { background-color: $chip; }
 
   &.on {
@@ -137,7 +140,7 @@ image { -gtk-icon-style: regular; }
   }
 
   .chev {
-    min-width: 34px; border-radius: 0 16px 16px 0;
+    min-width: 32px; border-radius: 0 999px 999px 0;
     color: $dim; border-left: 1px solid rgba(0,0,0,0.16);
     image { -gtk-icon-size: 15px; color: inherit; }
     &:hover { background-color: rgba(0,0,0,0.14); }
@@ -158,7 +161,7 @@ scale > trough > progress {
   min-height: 6px; border-radius: 999px; background-color: $leaf;
 }
 scale > trough > slider {
-  min-width: 18px; min-height: 18px; margin: -7px;
+  min-width: 17px; min-height: 17px; margin: -6px;   /* prototype knob 17×17 */
   border-radius: 999px; background-color: $tx;
   box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }

@@ -76,10 +76,11 @@ function GnoblinBanner() {
 // local-state toggles (no real backend for these in the devkit)
 const tSave = Variable(false), tDark = Variable(true), tSilent = Variable(false), tNight = Variable(false)
 
-function ToggleChip(props: { label: string, icon: string, sub: [string, string], v: Variable<boolean> }) {
+// Prototype toggle chips are label-only, vertically centered — state is shown by the
+// leaf fill, not a sub-line (only Wi-Fi/Bluetooth carry a sub).
+function ToggleChip(props: { label: string, icon: string, v: Variable<boolean> }) {
   return <Chip id={props.label} label={props.label} icon={props.icon}
     active={bind(props.v)}
-    sub={bind(props.v).as(on => on ? props.sub[0] : props.sub[1])}
     onToggled={() => props.v.set(!props.v.get())} />
 }
 
@@ -115,12 +116,12 @@ function Root() {
         onDrill={() => drill.set("bt")} />
     </box>
     <box class="chips" homogeneous spacing={8}>
-      <ToggleChip label="Power Saver" icon="kobel-bolt-symbolic" sub={["On", "Off"]} v={tSave} />
-      <ToggleChip label="Dark Style" icon="kobel-moon-symbolic" sub={["kobel-sakura", "Light"]} v={tDark} />
+      <ToggleChip label="Power Saver" icon="kobel-bolt-symbolic" v={tSave} />
+      <ToggleChip label="Dark Style" icon="kobel-moon-symbolic" v={tDark} />
     </box>
     <box class="chips" homogeneous spacing={8}>
-      <ToggleChip label="Silent" icon="kobel-bell-slash-symbolic" sub={["Muted", "Off"]} v={tSilent} />
-      <ToggleChip label="Night Light" icon="kobel-sun-symbolic" sub={["Until 07:00", "Off"]} v={tNight} />
+      <ToggleChip label="Silent" icon="kobel-bell-slash-symbolic" v={tSilent} />
+      <ToggleChip label="Night Light" icon="kobel-sun-symbolic" v={tNight} />
     </box>
     <Sliders />
   </box>
