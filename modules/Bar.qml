@@ -11,6 +11,11 @@ import "../services" as Services
 PanelWindow {
     id: bar
 
+    // Variants feeds each delegate its per-screen data as `modelData`; bind the
+    // window to that screen so there's one bar per monitor.
+    property var modelData
+    screen: modelData
+
     // Identify to gnoblin's window-rules by namespace (quickshell:<name>).
     WlrLayershell.namespace: "quickshell:bar"
     WlrLayershell.layer: WlrLayer.Top
