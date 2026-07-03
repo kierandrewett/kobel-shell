@@ -137,6 +137,25 @@
   .dbtn .dots i{width:4px;height:4px;border-radius:99px;background:var(--dim);
     corner-shape:round;transition:width .3s var(--ovr),background .25s}
   .dbtn .dots i.on{width:12px;background:var(--leaf)}
+  .dbtn .dots i.dying{width:0!important;opacity:0}
+  .dtip{position:absolute;z-index:60;background:var(--panel);border-radius:10px;padding:6px 11px;
+    font-size:11.5px;font-weight:600;color:var(--tx);box-shadow:var(--shadow-sm);pointer-events:none;
+    translate:-50% 0;opacity:0;transform:translateY(5px);white-space:nowrap;
+    transition:opacity .15s,transform .22s var(--ovr)}
+  .dtip.show{opacity:1;transform:none}
+  .cmenu{position:absolute;z-index:65;min-width:180px;background:var(--panel);border-radius:12px;
+    padding:5px;box-shadow:var(--shadow);opacity:0;transform:scale(.96) translateY(5px);
+    transform-origin:bottom center;visibility:hidden;
+    transition:opacity .16s,transform .24s var(--ovr)}
+  .cmenu.show{opacity:1;transform:none}
+  .cmi{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;
+    color:var(--tx);font:600 12px var(--font);padding:8px 10px;border-radius:8px;
+    cursor:pointer;text-align:left}
+  .cmi:hover{background:var(--panel2)}
+  .cmi iconify-icon{font-size:14px;color:var(--mut);flex:none}
+  .cmi.danger:hover{background:var(--rose);color:var(--rose-ink)}
+  .cmi.danger:hover iconify-icon{color:var(--rose-ink)}
+  .csep{height:1px;background:var(--panel2);margin:4px 8px}
   .dsep{width:1px;height:34px;background:var(--chip);margin:0 3px;align-self:center}
 
   /* ---------- panels ---------- */
@@ -920,6 +939,7 @@ addEventListener("keydown",e=>{
   if(e.key===" "&&e.ctrlKey){e.preventDefault();
     cur==="launch"?closeAll():openP("launch");return;}
   if(e.key!=="Escape")return;
+  if(cmOpen){closeMenu();return;}
   if(cur==="qs"&&$("p-qs").classList.contains("editing")){setEditing(false);return;}
   if(cur==="qs"&&drilled){undrill();return;}
   closeAll();
@@ -1172,10 +1192,41 @@ function setTitle(){
   const f=APPS.find(x=>x.focused);
   $("ftitle").textContent=f?(f.wins>1?f.n+" — window "+((f.cur||0)+1)+"/"+f.wins:f.n):"desktop";
 }
+const dtip=document.createElement("div");dtip.className="dtip";$("desk").appendChild(dtip);
+const cmenu=document.createElement("div");cmenu.className="cmenu";$("desk").appendChild(cmenu);
+let cmOpen=false;
+function closeMenu(){
+  if(!cmOpen)return;
+  cmOpen=false;cmenu.classList.remove("show");
+  setTimeout(()=>{if(!cmOpen)cmenu.style.visibility="hidden";},180);
+}
+function openMenu(items,x,y){
+  cmenu.innerHTML="";
+  items.forEach(it=>{
+    if(it==="-"){cmenu.insertAdjacentHTML("beforeend",'<div class="csep"></div>');return;}
+    const btn=document.createElement("button");
+    btn.className="cmi"+(it.danger?" danger":"");
+    btn.innerHTML=ph(it.icon)+escH(it.label);
+    btn.addEventListener("click",()=>{closeMenu();it.act();});
+    cmenu.appendChild(btn);
+  });
+  cmenu.style.visibility="visible";
+  const dw=deskR().width,mw=cmenu.offsetWidth,mh=cmenu.offsetHeight;
+  cmenu.style.left=Math.max(8,Math.min(dw-mw-8,x-mw/2))+"px";
+  cmenu.style.top=(y-mh-10)+"px";
+  requestAnimationFrame(()=>cmenu.classList.add("show"));
+  cmOpen=true;
+  setTimeout(()=>{
+    document.addEventListener("pointerdown",function h(ev){
+      document.removeEventListener("pointerdown",h);
+      if(!cmenu.contains(ev.target))closeMenu();
+    });
+  },0);
+}
 APPS.forEach((a,i)=>{
   if(i===4){const sp=document.createElement("span");sp.className="dsep";dock.appendChild(sp);}
   const b=document.createElement("button");
-  b.className="dbtn";b.title=a.n;
+  b.className="dbtn";
   b.innerHTML='<span class="di"><span class="dic">'
     +'<span class="dg" style="background:'+a.bg+'">'+ph(a.g)+"</span>"
     +(a.ic?'<img src="'+a.ic+'" alt="" draggable="false">':"")
@@ -1196,13 +1247,18 @@ APPS.forEach((a,i)=>{
   function dots(){
     const box=b.querySelector(".dots");
     const n=a.run?Math.min(a.wins||1,3):0;
-    while(box.children.length>n)box.lastChild.remove();
-    while(box.children.length<n){
+    const live=Array.from(box.children).filter(d=>!d.classList.contains("dying"));
+    while(live.length>n){
+      const d=live.pop();
+      d.classList.remove("on");d.classList.add("dying");
+      setTimeout(()=>d.remove(),320);
+    }
+    while(live.length<n){
       const d=document.createElement("i");
-      d.style.width="0px";box.appendChild(d);
+      d.style.width="0px";box.appendChild(d);live.push(d);
       requestAnimationFrame(()=>{d.style.width="";});
     }
-    Array.from(box.children).forEach((d,w)=>{
+    live.forEach((d,w)=>{
       d.classList.toggle("on",!!a.focused&&w===Math.min(a.cur||0,n-1));
     });
   }
@@ -1265,6 +1321,43 @@ APPS.forEach((a,i)=>{
       focusWindow(top);pulse();
     }
   },{passive:false});
+  let tipT=0;
+  b.addEventListener("pointerenter",()=>{
+    clearTimeout(tipT);
+    tipT=setTimeout(()=>{
+      if(cmOpen)return;
+      const r=b.getBoundingClientRect(),dr=deskR();
+      dtip.textContent=a.n;
+      dtip.style.left=(r.left-dr.left+r.width/2)+"px";
+      dtip.style.top=(r.top-dr.top-36)+"px";
+      dtip.classList.add("show");
+    },320);
+  });
+  b.addEventListener("pointerleave",()=>{clearTimeout(tipT);dtip.classList.remove("show");});
+  b.addEventListener("pointerdown",()=>{clearTimeout(tipT);dtip.classList.remove("show");});
+  b.addEventListener("mousedown",e=>{if(e.button===1)e.preventDefault();});
+  b.addEventListener("auxclick",e=>{
+    if(e.button!==1)return;
+    e.preventDefault();
+    createWindow(a);
+    announce(a.n+" — new window");
+  });
+  b.addEventListener("contextmenu",e=>{
+    e.preventDefault();
+    dtip.classList.remove("show");
+    const r=b.getBoundingClientRect(),dr=deskR();
+    const ws=allAppWins(a.n);
+    const items=[{label:"New Window",icon:"heroicons:plus",act:()=>createWindow(a)}];
+    if(ws.length){
+      items.push("-");
+      ws.forEach((w,wi)=>items.push({label:a.n+" — window "+(wi+1),
+        icon:"heroicons:window",act:()=>focusWindow(w)}));
+      items.push("-");
+      items.push({label:"Quit "+a.n,icon:"heroicons:x-mark",danger:true,
+        act:()=>{ws.slice().forEach(closeWin);}});
+    }
+    openMenu(items,r.left-dr.left+r.width/2,r.top-dr.top-4);
+  });
 });
 dockSync();
 if(WINDOWS.length)focusWindow(WINDOWS[0]);
