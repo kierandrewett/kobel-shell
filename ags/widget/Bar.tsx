@@ -35,7 +35,7 @@ function StatusPill() {
   return <button
     class={bind(connected).as(c => c ? "status" : "status err")}
     onClicked={() => App.toggle_window("quicksettings")}>
-    <box spacing={9}>
+    <box spacing={10}>
       <image class="net-icon" iconName="kobel-wifi-symbolic" />
       <image iconName="kobel-speaker-wave-symbolic" />
       <box spacing={6}>
