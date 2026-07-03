@@ -97,14 +97,18 @@
     background:var(--panel);border-radius:20px;box-shadow:var(--shadow-sm)}
   .dbtn{appearance:none;border:0;background:transparent;padding:0;cursor:pointer;
     display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
-  .dghost{position:absolute;top:0;left:50%;margin-left:-20px;width:40px;height:40px;
+  .dghost{position:absolute;top:0;left:50%;margin-left:-22px;width:44px;height:44px;
     pointer-events:none;z-index:2;will-change:transform,opacity}
-  .dbtn .di{width:40px;height:40px;border-radius:var(--rt);display:grid;place-items:center;
-    will-change:transform;color:#fff;font-size:21px}
-  .dbtn .dot{display:block;width:4px;height:4px;border-radius:99px;background:transparent;
-    transition:background .25s,width .3s var(--ovr)}
-  .dbtn.running .dot{background:var(--mut)}
-  .dbtn.focused .dot{width:14px;background:var(--leaf)}
+  .dbtn .di{width:44px;height:44px;border-radius:var(--rt);position:relative;
+    display:grid;place-items:center;will-change:transform}
+  .dbtn .dg{position:absolute;inset:2px;border-radius:10px;display:grid;place-items:center;
+    color:#fff;font-size:21px}
+  .dbtn .di img{position:absolute;inset:2px;width:40px;height:40px;object-fit:contain;
+    -webkit-user-drag:none}
+  .dbtn .dots{display:flex;gap:3px;height:5px;align-items:center;justify-content:center;min-width:4px}
+  .dbtn .dots i{width:4px;height:4px;border-radius:99px;background:var(--dim);
+    corner-shape:round;transition:width .3s var(--ovr),background .25s}
+  .dbtn .dots i.on{width:12px;background:var(--leaf)}
   .dsep{width:1px;height:34px;background:var(--chip);margin:0 3px;align-self:center}
 
   /* ---------- panels ---------- */
@@ -885,12 +889,18 @@ const IC={"terminal-window":"heroicons:command-line",folder:"heroicons:folder",
   headphones:"lucide:headphones",keyboard:"lucide:keyboard","game-controller":"lucide:gamepad-2"};
 function ph(n){return '<iconify-icon icon="'+(IC[n]||n)+'"></iconify-icon>';}
 const APPS=[
-  {n:"Terminal",g:"terminal-window",bg:"oklch(30% .02 300)",run:true},
-  {n:"Files",g:"folder",bg:"oklch(64% .12 250)",run:true},
-  {n:"Firefox",g:"globe",bg:"oklch(70% .15 55)",run:true,focused:true},
-  {n:"Zed",g:"code",bg:"oklch(64% .14 290)",run:true},
-  {n:"Music",g:"music-notes",bg:"oklch(70% .13 5)"},
-  {n:"Settings",g:"gear-six",bg:"oklch(58% .12 130)"}
+  {n:"Terminal",g:"terminal-window",bg:"oklch(30% .02 300)",run:true,wins:2,
+   ic:"file:///usr/share/icons/hicolor/scalable/apps/org.gnome.Ptyxis.svg"},
+  {n:"Files",g:"folder",bg:"oklch(64% .12 250)",run:true,wins:1,
+   ic:"file:///usr/share/icons/hicolor/scalable/apps/org.gnome.Nautilus.svg"},
+  {n:"Firefox",g:"globe",bg:"oklch(70% .15 55)",run:true,wins:3,focused:true,
+   ic:"file:///usr/share/icons/hicolor/256x256/apps/firefox.png"},
+  {n:"Zed",g:"code",bg:"oklch(64% .14 290)",run:true,wins:1,
+   ic:"file:///home/kieran/.local/zed.app/share/icons/hicolor/512x512/apps/zed.png"},
+  {n:"Spotify",g:"music-notes",bg:"oklch(70% .13 5)",
+   ic:"file:///var/lib/flatpak/exports/share/icons/hicolor/scalable/apps/com.spotify.Client.svg"},
+  {n:"Settings",g:"gear-six",bg:"oklch(58% .12 130)",
+   ic:"file:///usr/share/icons/hicolor/scalable/apps/org.gnome.Settings.svg"}
 ];
 const FILES=[
   {n:"Bar.qml",p:"~/dev/kobel-shell/modules"},
@@ -908,17 +918,61 @@ const CMDS=[
 
 /* ================= dock ================= */
 const dock=$("dock");
+function setTitle(){
+  const f=APPS.find(x=>x.focused);
+  $("ftitle").textContent=f?(f.wins>1?f.n+" — window "+((f.cur||0)+1)+"/"+f.wins:f.n):"desktop";
+}
 APPS.forEach((a,i)=>{
   if(i===4){const sp=document.createElement("span");sp.className="dsep";dock.appendChild(sp);}
   const b=document.createElement("button");
-  b.className="dbtn"+(a.run?" running":"")+(a.focused?" focused":"");
-  b.title=a.n;
-  b.innerHTML='<span class="di" style="background:'+a.bg+'">'+ph(a.g)+'</span><span class="dot"></span>';
+  b.className="dbtn";b.title=a.n;
+  b.innerHTML='<span class="di">'
+    +'<span class="dg" style="background:'+a.bg+'">'+ph(a.g)+"</span>"
+    +(a.ic?'<img src="'+a.ic+'" alt="" draggable="false">':"")
+    +'</span><span class="dots"></span>';
   dock.appendChild(b);
+  const img=b.querySelector("img");
+  if(img){
+    img.addEventListener("error",()=>img.remove());
+    const dg=b.querySelector(".dg");
+    if(img.complete&&img.naturalWidth)dg.remove();
+    else img.addEventListener("load",()=>dg.remove());
+  }
   const di=b.querySelector(".di");
-  b.addEventListener("click",()=>{
-    document.querySelectorAll(".dbtn").forEach(x=>x.classList.remove("focused"));
-    b.classList.add("focused");b.classList.add("running");
+  const sc=new Spring(1),ty=new Spring(0),rot=new Spring(0);
+  const ap=()=>{di.style.transform="translateY("+ty.x.toFixed(2)+"px) rotate("
+    +rot.x.toFixed(2)+"deg) scale("+sc.x.toFixed(3)+")";};
+  sc.on(ap);ty.on(ap);rot.on(ap);
+  function dots(){
+    const box=b.querySelector(".dots");box.innerHTML="";
+    if(!a.run)return;
+    const n=Math.min(a.wins||1,3);
+    for(let w=0;w<n;w++){
+      const d=document.createElement("i");
+      if(a.focused&&w===Math.min(a.cur||0,n-1))d.className="on";
+      box.appendChild(d);
+    }
+  }
+  a._dots=dots;dots();
+  function focusApp(){
+    APPS.forEach(x=>{if(x!==a&&x.focused){x.focused=false;if(x._dots)x._dots();}});
+    a.focused=true;dots();setTitle();
+    ty.cfg(430,15);ty.kick(-95);ty.set(0);
+  }
+  function minimize(){
+    a.focused=false;dots();setTitle();
+    ty.cfg(420,19);ty.kick(55);ty.set(0);
+    sc.cfg(520,17);sc.kick(-5);sc.set(1);
+    announce(a.n+" minimised");
+  }
+  function cycle(dir){
+    a.cur=((a.cur||0)+dir+a.wins)%a.wins;
+    rot.cfg(320,12);rot.kick(dir*170);rot.set(0);
+    if(!a.focused)focusApp();else{dots();setTitle();}
+    announce(a.n+" — window "+(a.cur+1)+" of "+a.wins);
+  }
+  function launch(){
+    a.run=true;a.wins=1;a.cur=0;
     const ghost=di.cloneNode(true);
     ghost.classList.add("dghost");
     b.appendChild(ghost);
@@ -928,9 +982,22 @@ APPS.forEach((a,i)=>{
     gs.on(gap);go.on(gap);
     gs.cfg(120,16).set(3);
     go.cfg(150,22);go.done=()=>ghost.remove();go.set(0);
-    toast({title:"launcher",body:(a.run?"Focusing ":"Launching ")+a.n+"…",icon:"leaf"});
+    focusApp();
+    toast({title:"launcher",body:"Launching "+a.n+"…",icon:"leaf"});
+  }
+  b.addEventListener("click",()=>{
+    if(!a.run)launch();
+    else if(!a.focused)focusApp();
+    else if(a.wins>1)cycle(1);
+    else minimize();
   });
+  b.addEventListener("wheel",e=>{
+    if(!a.run||(a.wins||1)<2)return;
+    e.preventDefault();
+    cycle(e.deltaY>0?1:-1);
+  },{passive:false});
 });
+setTitle();
 
 /* ================= clock / calendar ================= */
 function tick(){
