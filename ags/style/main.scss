@@ -177,7 +177,6 @@ scale > trough > slider {
   button { min-width: 31px; min-height: 31px; border-radius: 9px; color: $mut;
     &:hover { background-color: $panel2; color: $tx; } }
   label { font-weight: 650; font-size: 14px; }
-  switch { margin-left: auto; }
 }
 
 // ============ LAUNCHER ============
@@ -233,7 +232,7 @@ scale > trough > slider {
   .day {
     background: none; background-color: transparent;
     color: $tx; font-size: 11px; font-weight: 600;
-    min-width: 25px; min-height: 25px; border-radius: 99px; margin: 1px auto;
+    min-width: 25px; min-height: 25px; border-radius: 99px; margin: 1px;
     &:hover { background-color: $panel2; }
     &.we, &.out { color: $dim; }
     &.out { font-weight: 400; }
