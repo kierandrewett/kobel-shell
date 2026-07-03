@@ -17,19 +17,23 @@ const nd = () => (_notifd ??= Notifd.get_default())
 const skip = () => !!GLib.getenv("KOBEL_SKIP_NOTIFD")
 const TOAST_MS = 3800
 
+// Notification cards are a defined width (prototype `pw` ≈ QS panel) so the toast
+// doesn't stretch to the hexpand text column; the drawer cards fill the same width.
+const NCARD_W = 327
 function Card({ n }: { n: Notifd.Notification }) {
-  return <box class="ncard" spacing={10}>
-    <image iconName={n.app_icon || "dialog-information-symbolic"} pixelSize={24} />
+  return <box class="ncard" spacing={10} widthRequest={NCARD_W}>
+    <image iconName={n.app_icon || "dialog-information-symbolic"} pixelSize={24}
+      valign={Gtk.Align.START} />
     <box orientation={Gtk.Orientation.VERTICAL} hexpand>
       <box>
-        <label halign={Gtk.Align.START} hexpand label={n.summary} />
+        <label halign={Gtk.Align.START} hexpand ellipsize={3} label={n.summary} />
         <label class="when tn" label={new Date(n.time * 1000)
           .toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} />
       </box>
-      <label class="body" halign={Gtk.Align.START} wrap maxWidthChars=
-        {40} label={n.body} />
+      <label class="body" halign={Gtk.Align.START} xalign={0} wrap
+        maxWidthChars={40} label={n.body} />
     </box>
-    <button class="nx" onClicked={() => n.dismiss()}>
+    <button class="nx" valign={Gtk.Align.START} onClicked={() => n.dismiss()}>
       <image iconName="kobel-close-symbolic" />
     </button>
   </box>

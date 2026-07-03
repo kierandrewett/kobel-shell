@@ -13,9 +13,23 @@ export WAYLAND_DISPLAY="$DISP" GDK_BACKEND=wayland
 gnoblinctl disable osd 2>/dev/null || true
 gnoblinctl disable notifications 2>/dev/null || true
 
-KOBEL_ICONS="/home/kieran/dev/kobel-shell/ags/icons" KOBEL_SKIP_NOTIFD=1 stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
+# KOBEL_TEST_NOTIFD=1 enables the real notifd (bus was freed above) so the drawer/toasts
+# can be rendered; otherwise notifd is skipped (default, avoids blocking on a busy bus).
+SKIP="${KOBEL_TEST_NOTIFD:+}"; SKIP="${SKIP:-1}"
+KOBEL_ICONS="/home/kieran/dev/kobel-shell/ags/icons" KOBEL_SKIP_NOTIFD="$SKIP" stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
 AP=$!
 sleep 8
+if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
+  gdbus call --session --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.Notify \
+    "Spotify" 0 "" "Now Playing" "Weightless — Marconi Union" "[]" "{}" 5000 >/dev/null 2>&1 || true
+  gdbus call --session --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.Notify \
+    "Calendar" 0 "" "Daily Standup" "Starting in 5 minutes" "[]" "{}" 5000 >/dev/null 2>&1 || true
+  sleep 2
+fi
 [ -n "${TOGGLE:-}" ] && { astal -i kobel -t "$TOGGLE" 2>/dev/null || true; sleep 3; }
 for _ in 1 2 3; do pkill -9 -f gnome-tour 2>/dev/null; sleep 0.3; done
 
