@@ -1256,9 +1256,14 @@ APPS.forEach((a,i)=>{
     else minimizeWin(focusedWin);
   });
   b.addEventListener("wheel",e=>{
-    if(allAppWins(a.n).length<2)return;
+    const ws=allAppWins(a.n);
+    if(!ws.length)return;
     e.preventDefault();
-    cycle(e.deltaY>0?1:-1);
+    if(ws.length>1){cycle(e.deltaY>0?1:-1);return;}
+    if(!a.focused){
+      const top=ws.slice().sort((x,y)=>(+y.el.style.zIndex||0)-(+x.el.style.zIndex||0))[0];
+      focusWindow(top);pulse();
+    }
   },{passive:false});
 });
 dockSync();
