@@ -131,7 +131,7 @@ export default function Launcher() {
 
   return <window
     name="launcher" namespace="kobel-launcher" class="launcher-window"
-    anchor={Astal.WindowAnchor.TOP} marginTop={88}
+    anchor={Astal.WindowAnchor.TOP} exclusivity={Astal.Exclusivity.NORMAL}
     keymode={Astal.Keymode.EXCLUSIVE} visible={false}
     onKeyPressed={(self, key, _code, mods) => {
       const flat = results(query.get()).flatMap(s => s.rows)

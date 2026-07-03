@@ -148,7 +148,7 @@ export default function QuickSettings() {
   return <window
     name="quicksettings" namespace="kobel-qs" class="qs-window" visible={false}
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT}
-    marginTop={34} marginRight={-6}
+    exclusivity={Astal.Exclusivity.NORMAL}
     keymode={Astal.Keymode.ON_DEMAND}
     onKeyPressed={(self, key) => {
       if (key !== Gdk.KEY_Escape) return false
