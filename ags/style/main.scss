@@ -195,12 +195,14 @@ scale > trough > slider {
 
 // ============ LAUNCHER ============
 .launcher { min-width: 567px; padding: 8px; }  // CDP: 567/pad8/r24 (via .sheet)
+// CDP exact: field pad 3/12 r12 search 16px; tile pad 5/0 r10, icon 42×42 r12;
+// widget card pad 10/12 r12.
 .field {
-  background-color: $panel2; border-radius: 12px; padding: 4px 12px; margin-bottom: 6px;
+  background-color: $panel2; border-radius: 12px; padding: 3px 12px; margin-bottom: 6px;
   image { color: $dim; -gtk-icon-size: 17px; }
   entry {
     background: none; border: none; box-shadow: none; outline: none;
-    color: $tx; font-size: 14.5px; caret-color: $leaf; padding: 6px 4px;
+    color: $tx; font-size: 16px; caret-color: $leaf; padding: 6px 4px;
   }
   entry placeholder { color: $mut; }
   .kbd { background-color: $chip; color: $mut; border-radius: 6px;
@@ -208,14 +210,16 @@ scale > trough > slider {
 }
 .tiles { padding: 6px 2px 8px; }
 .tile {
-  padding: 5px 4px; border-radius: 12px;
-  .icon-tile { min-width: 52px; min-height: 52px; padding: 0; }
+  padding: 5px 0; border-radius: 10px;
+  .icon-tile { min-width: 42px; min-height: 42px; border-radius: 12px; padding: 0; }
   label { color: $mut; font-size: 10.5px; margin-top: 8px; }
   &:hover { background-color: $panel2; label { color: $tx; } }
 }
+.lfoot { padding: 7px 10px 3px; color: $dim; font-size: 11px;
+  b { color: $mut; font-weight: 650; } }
 .lwidgets { padding: 2px; }
 .widget {
-  background-color: $panel2; border-radius: 12px; padding: 11px 13px;
+  background-color: $panel2; border-radius: 12px; padding: 10px 12px;
   label { color: $tx; font-size: 12.5px; font-weight: 650; }
   .hint { color: $mut; font-size: 11px; font-weight: 400; }
 }

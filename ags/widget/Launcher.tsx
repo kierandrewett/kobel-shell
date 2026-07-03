@@ -221,6 +221,16 @@ export default function Launcher() {
           }),
         ]))}
       </box>
+
+      {/* footer hint row — matches prototype .lfoot */}
+      <box class="lfoot">
+        <box spacing={12} hexpand halign={Gtk.Align.START}>
+          <label useMarkup label="<b>:reload</b> soft-reload" />
+          <label useMarkup label="<b>:osd</b> toggle" />
+          <label useMarkup label="<b>:grants</b> screen access" />
+        </box>
+        <label label="↑↓ select · ↵ run" halign={Gtk.Align.END} />
+      </box>
     </box>
   </window>
 }
