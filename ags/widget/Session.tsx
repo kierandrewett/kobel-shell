@@ -45,10 +45,10 @@ export default function Session() {
             onClicked={self => press(a, () => self.get_root()?.hide?.())}>
             <box orientation={Gtk.Orientation.VERTICAL} spacing={10}
               class={bind(armed).as(x => x === a.id ? "confirm" : "")}>
-              <box class="sic" widthRequest={59} heightRequest={59}
+              <box class="sic"
                 halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER}>
                 <image iconName={a.icon} pixelSize={26}
-                  halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} hexpand vexpand />
+                  halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} />
               </box>
               <label label={bind(armed).as(x => x === a.id ? "Press again" : a.label)} />
             </box>
