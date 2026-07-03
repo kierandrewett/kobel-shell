@@ -95,8 +95,9 @@ image { -gtk-icon-style: regular; }
 // floating gap from the screen edge; the shadow is tuned to fit within it.
 .sheet {
   background-color: $panel; border-radius: 22px; padding: 14px;
-  margin: 18px;
-  box-shadow: 0 9px 24px rgba(5,3,10,0.55), 0 2px 6px rgba(0,0,0,0.4);
+  margin: 26px;
+  // shadow extent (blur + |offset|) must stay < margin or the layer surface clips it
+  box-shadow: 0 6px 18px rgba(5,3,10,0.55), 0 1px 5px rgba(0,0,0,0.4);
 }
 
 // ============ QUICK SETTINGS ============
