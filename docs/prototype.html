@@ -140,7 +140,7 @@
     color:#fff;font-size:18px}
   .di img{position:absolute;inset:6px;width:32px;height:32px;object-fit:contain;
     -webkit-user-drag:none}
-  .dots{position:absolute;left:50%;translate:-50% 0;bottom:-5px;
+  .dots{position:absolute;left:50%;translate:-50% 0;bottom:2px;
     display:flex;gap:3px;height:5px;align-items:center;justify-content:center}
   .dots i{width:4px;height:4px;border-radius:99px;background:var(--dim);
     corner-shape:round;
@@ -280,9 +280,18 @@
   .calviews .calgrid{position:absolute;top:0;left:0;right:0;will-change:transform,opacity}
   .wk{font-size:9px;font-weight:600;color:var(--dim);background:var(--panel2);border-radius:6px;
     width:22px;height:20px;display:grid;place-items:center;margin:2px auto}
-  .calev{margin-top:10px;padding:10px 12px;border-radius:var(--rt);background:var(--panel2)}
-  .calev b{display:block;font-size:12.5px;font-weight:650}
-  .calev span{font-size:11.5px;color:var(--mut);font-style:italic}
+  .calev{margin-top:10px;padding:10px;border-radius:var(--rt);background:var(--panel2)}
+  .calev>b{display:block;font-size:12.5px;font-weight:650;padding:1px 3px 8px}
+  .evrow{display:flex;gap:10px;align-items:center;background:var(--panel);
+    border-radius:10px;padding:8px 10px;margin-bottom:4px}
+  .evrow:last-child{margin-bottom:0}
+  .evic{width:26px;height:26px;border-radius:8px;background:oklch(58% .12 130);color:#fff;
+    display:grid;place-items:center;font-size:13px;flex:none}
+  .evt{flex:1;min-width:0;line-height:1.3}
+  .evt b{display:block;font-size:12px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .evt span{font-size:10.5px;color:var(--mut)}
+  .evempty{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);padding:2px 3px 3px}
+  .evempty iconify-icon{color:var(--dim);font-size:14px}
   .chips{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
   .chipb{position:relative;display:flex;min-width:0;align-items:center;min-height:54px;
     border-radius:var(--rt);background:var(--panel2);
@@ -442,8 +451,17 @@
   .calhead .ibtn:hover{background:var(--chip)}
   .calgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:2px 1px;text-align:center;align-items:center}
   .calgrid .dow{font-size:9.5px;font-weight:600;color:var(--dim);padding:3px 0 5px}
-  .calgrid .day{font-size:11px;color:var(--tx);width:25px;height:24px;display:grid;
-    place-items:center;border-radius:99px;margin:0 auto;font-weight:600}
+  .calgrid .day{appearance:none;border:0;background:transparent;font-family:inherit;padding:0;
+    font-size:11px;color:var(--tx);width:25px;height:24px;display:grid;position:relative;
+    place-items:center;border-radius:99px;margin:0 auto;font-weight:600;
+    transition:background .15s,box-shadow .15s}
+  .calgrid .day:not(.out){cursor:pointer}
+  .calgrid .day:not(.out):not(.today):hover{background:var(--panel2)}
+  .calgrid .day.we{color:var(--dim)}
+  .calgrid .day.sel{box-shadow:inset 0 0 0 1.5px var(--mut)}
+  .calgrid .day.ev::after{content:"";position:absolute;bottom:1.5px;left:50%;translate:-50% 0;
+    width:3px;height:3px;border-radius:99px;background:var(--leaf)}
+  .calgrid .day.today.ev::after{background:var(--ink)}
   .calgrid .day.out{color:var(--dim);font-weight:400}
   .calgrid .day.today{background:var(--leaf);color:var(--ink);font-weight:700}
   .nhead{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;flex:none;
@@ -633,7 +651,7 @@
     </div>
     <div class="lapps" id="lapps"></div>
     <div class="lwidgets st" id="lwidgets" style="--i:1">
-      <div class="lw"><b class="tn" id="lw-date">Friday 3 July</b><span>No events today</span></div>
+      <div class="lw"><b class="tn" id="lw-date">Friday 3 July</b><span id="lw-ev">No events today</span></div>
       <div class="lw lwm">
         <span class="lwart"><iconify-icon icon="heroicons:musical-note"></iconify-icon></span>
         <div class="lwt"><b>Weightless</b><span>Marconi Union</span></div>
@@ -702,7 +720,7 @@
       <div class="calgrid tn" id="cal-g0"></div>
       <div class="calgrid tn" id="cal-g1" style="opacity:0"></div>
     </div>
-    <div class="calev st" style="--i:3"><b>Today</b><span>No events</span></div>
+    <div class="calev st" id="calev" style="--i:3"></div>
   </section>
 
   <!-- ============ NOTIFICATION DRAWER ============ -->
@@ -1434,11 +1452,36 @@ function tick(){
   $("bdate").textContent=d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
   $("ch-day").textContent=d.toLocaleDateString("en-GB",{weekday:"long"});
   const lwd=$("lw-date");
-  if(lwd)lwd.textContent=d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"});
+  if(lwd){
+    lwd.textContent=d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"});
+    const evs=EVENTS[evKey(d.getFullYear(),d.getMonth(),d.getDate())]||[];
+    $("lw-ev").textContent=evs.length?evs[0].t+" · "+evs[0].n:"No events today";
+  }
   $("ch-date").textContent=d.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
 }
 tick();setInterval(tick,10000);
 const now0=new Date();let calY=now0.getFullYear(),calM=now0.getMonth();
+let calSel=new Date(now0.getFullYear(),now0.getMonth(),now0.getDate());
+const evKey=(y,m,d)=>y+"-"+(m+1)+"-"+d;
+const EVENTS={};
+EVENTS[evKey(now0.getFullYear(),now0.getMonth(),now0.getDate())]=
+  [{t:"09:45",n:"Daily Standup",icon:"heroicons:video-camera"}];
+EVENTS[evKey(now0.getFullYear(),now0.getMonth(),11)]=
+  [{t:"10:30",n:"Kieran Birthday",icon:"lucide:cake"},{t:"13:00",n:"London Thing",icon:"heroicons:map-pin"}];
+EVENTS[evKey(now0.getFullYear(),now0.getMonth(),13)]=
+  [{t:"All day",n:"My Birthday 🎂",icon:"lucide:cake"}];
+function renderEvents(){
+  const el=$("calev");if(!el)return;
+  const d=calSel;
+  const evs=EVENTS[evKey(d.getFullYear(),d.getMonth(),d.getDate())]||[];
+  let h="<b>"+d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})+"</b>";
+  if(!evs.length)h+='<div class="evempty">'+ph("heroicons:calendar")+"No events</div>";
+  else evs.forEach(e=>{
+    h+='<div class="evrow"><span class="evic">'+ph(e.icon||"heroicons:calendar")+"</span>"
+      +'<div class="evt"><b>'+escH(e.n)+'</b><span class="tn">'+escH(e.t)+"</span></div></div>";
+  });
+  el.innerHTML=h;
+}
 function isoWeek(d){
   const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
   const dn=(t.getUTCDay()+6)%7;t.setUTCDate(t.getUTCDate()-dn+3);
@@ -1459,11 +1502,17 @@ function renderCalInto(el){
       el.insertAdjacentHTML("beforeend",'<span class="wk">'+isoWeek(wd)+"</span>");
     }
     const d=i-start+1;let label,cls="day";
+    if(i%7>=5)cls+=" we";
     if(d<1)      {label=prevDays+d;cls+=" out";}
     else if(d>days){label=d-days;cls+=" out";}
     else{label=d;
-      if(d===today.getDate()&&calM===today.getMonth()&&calY===today.getFullYear())cls+=" today";}
-    el.insertAdjacentHTML("beforeend",'<span class="'+cls+'">'+String(label).padStart(2,"0")+"</span>");
+      if(d===today.getDate()&&calM===today.getMonth()&&calY===today.getFullYear())cls+=" today";
+      if(EVENTS[evKey(calY,calM,d)])cls+=" ev";
+      if(calSel&&calSel.getDate()===d&&calSel.getMonth()===calM&&calSel.getFullYear()===calY)cls+=" sel";}
+    const lbl=cls.includes("out")?label:String(label).padStart(2,"0");
+    el.insertAdjacentHTML("beforeend",
+      cls.includes("out")?'<span class="'+cls+'">'+lbl+"</span>"
+        :'<button class="'+cls+'" data-d="'+d+'">'+lbl+"</button>");
   }
   $("cal-title").textContent=first.toLocaleString("en",{month:"long"})
     +(calY!==now0.getFullYear()?" "+calY:"");
@@ -1488,7 +1537,15 @@ $("cal-title").addEventListener("click",()=>{
   const dir=(calY*12+calM)<(ty*12+tm)?1:-1;
   calY=ty;calM=tm;calSlide(dir);
 });
+$("calviews").addEventListener("click",e=>{
+  const b=e.target.closest("button.day");
+  if(!b)return;
+  calSel=new Date(calY,calM,+b.dataset.d);
+  renderCalInto(calG[calA]);
+  renderEvents();
+});
 renderCalInto(calG[0]);
+renderEvents();
 requestAnimationFrame(()=>{$("calviews").style.height=calG[0].scrollHeight+"px";});
 
 /* ================= sliders ================= */
