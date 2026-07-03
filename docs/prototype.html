@@ -84,12 +84,12 @@
   .clk{font-size:13.5px;font-weight:600;color:var(--tx)}
   .bdate{font-size:11.5px;color:var(--mut)}
   .grow{flex:1}
-  .status{appearance:none;border:0;display:flex;align-items:center;gap:7px;
+  .status{appearance:none;border:0;display:flex;align-items:center;gap:10px;
     background:var(--panel2);border-radius:999px;padding:0 13px;height:30px;cursor:pointer;
     transition:background .16s}
   .status:hover{background:var(--chip)}
-  .status .si{width:24px;height:30px;display:grid;place-items:center;color:var(--mut);font-size:15px}
-  .status .pct{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--tx);padding-left:1px}
+  .status .si{height:30px;display:grid;place-items:center;color:var(--mut);font-size:16px}
+  .status .pct{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--tx)}
   .status .pct i{font-size:15px;color:var(--mut)}
   .bell{position:relative}
   .badge{position:absolute;top:2px;right:2px;min-width:14px;height:14px;border-radius:99px;
@@ -200,8 +200,9 @@
   .calev span{font-size:11.5px;color:var(--mut);font-style:italic}
   .chips{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
   .chipb{position:relative;display:flex;min-width:0;align-items:center;gap:9px;
-    padding:9px 8px 9px 12px;border-radius:var(--rt);background:var(--panel2);cursor:pointer;
+    padding:9px 8px 9px 12px;border-radius:var(--rt);background:var(--panel2);
     text-align:left;border:0;transition:background .22s,transform .3s var(--ovr)}
+  button.chipb,.chipm{cursor:pointer}
   .chipb:hover{background:var(--chip)}
   .chipb:active{transform:scale(.96)}
   .chipb>iconify-icon,.chipm>iconify-icon{font-size:17px;color:var(--mut);flex:none;transition:color .22s}
@@ -705,6 +706,7 @@ function panel(el,opt){
     el.style.transform=tr+"("+p.x.toFixed(2)+"px) scale("+s.x.toFixed(4)+")";
     el.style.opacity=o.x.toFixed(3);
     el.style.pointerEvents=(o.t>.5&&o.x>.4)?"auto":"none";
+    el.style.visibility=(o.t<.5&&o.x<.02)?"hidden":"visible";
   };
   p.on(apply);s.on(apply);o.on(apply);
   return{
@@ -1456,6 +1458,7 @@ function toast(n){
     const idx=liveToasts.indexOf(rec);
     if(idx<0)return;
     liveToasts.splice(idx,1);
+    el.style.pointerEvents="none";
     x.cfg(440,36).set(70);o.cfg(400,38);
     o.done=()=>{el.remove();
       if(cur==="nc"){addCardAnimated(n);}
