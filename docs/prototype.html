@@ -100,7 +100,9 @@
     display:flex;align-items:flex-end;gap:5px;padding:7px 9px 5px;
     background:var(--panel);border-radius:var(--rp);box-shadow:var(--shadow-sm)}
   .dbtn{appearance:none;border:0;background:transparent;padding:0;cursor:pointer;
-    display:flex;flex-direction:column;align-items:center;gap:3px}
+    display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
+  .dghost{position:absolute;top:0;left:50%;margin-left:-20px;width:40px;height:40px;
+    pointer-events:none;z-index:2;will-change:transform,opacity}
   .dbtn .di{width:40px;height:40px;border-radius:var(--rt);display:grid;place-items:center;
     will-change:transform;color:#fff;font-size:21px}
   .dbtn .dot{display:block;width:4px;height:4px;border-radius:99px;background:transparent;
@@ -913,21 +915,18 @@ APPS.forEach((a,i)=>{
   b.innerHTML='<span class="di" style="background:'+a.bg+'">'+ph(a.g)+'</span><span class="dot"></span>';
   dock.appendChild(b);
   const di=b.querySelector(".di");
-  const sc=new Spring(1),op=new Spring(1);
-  const ap=()=>{
-    di.style.transform="scale("+sc.x.toFixed(3)+")";
-    di.style.opacity=Math.max(0,op.x).toFixed(3);
-    di.style.filter="blur("+((1-Math.max(0,op.x))*7).toFixed(1)+"px)";
-  };
-  sc.on(ap);op.on(ap);
   b.addEventListener("click",()=>{
     document.querySelectorAll(".dbtn").forEach(x=>x.classList.remove("focused"));
     b.classList.add("focused");b.classList.add("running");
-    sc.jump(1);op.jump(1);
-    sc.cfg(120,16).set(3);
-    op.cfg(150,22);
-    op.done=()=>{sc.jump(1);op.jump(1);};
-    op.set(0);
+    const ghost=di.cloneNode(true);
+    ghost.classList.add("dghost");
+    b.appendChild(ghost);
+    const gs=new Spring(1),go=new Spring(1);
+    const gap=()=>{ghost.style.transform="scale("+gs.x.toFixed(3)+")";
+      ghost.style.opacity=Math.max(0,go.x).toFixed(3);};
+    gs.on(gap);go.on(gap);
+    gs.cfg(120,16).set(3);
+    go.cfg(150,22);go.done=()=>ghost.remove();go.set(0);
     toast({title:"launcher",body:(a.run?"Focusing ":"Launching ")+a.n+"…",icon:"leaf"});
   });
 });
