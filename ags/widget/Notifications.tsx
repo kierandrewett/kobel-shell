@@ -16,6 +16,9 @@ let _notifd: Notifd.Notifd | null = null
 const nd = () => (_notifd ??= Notifd.get_default())
 const skip = () => !!GLib.getenv("KOBEL_SKIP_NOTIFD")
 const TOAST_MS = 3800
+// Reactive drawer-open state so the toasts can be ADOPTED (hidden) the instant the
+// drawer opens, without polling a looked-up window's visibility.
+const drawerOpen = Variable(false)
 
 // Notification cards are a defined width (prototype `pw` ≈ QS panel) so the toast
 // doesn't stretch to the hexpand text column; the drawer cards fill the same width.
@@ -45,8 +48,15 @@ export function Toasts(monitor: Gdk.Monitor) {
   // opening the drawer "adopts" them (they simply continue life as drawer cards,
   // which is the FLIP handoff expressed in retained-mode terms).
   const live = Variable<number[]>([])
+  // `shown` = what the toast column renders. Recomputed explicitly on every input
+  // change (Variable.derive didn't produce a reactive binding here). Empty while the
+  // drawer is open (toasts are ADOPTED into the drawer stack).
+  const shown = Variable<number[]>([])
+  const recompute = () => shown.set(drawerOpen.get() ? [] : live.get())
+  live.subscribe(recompute)
+  drawerOpen.subscribe(recompute)
   nd().connect("notified", (_n, id) => {
-    if (App.get_window("drawer")?.visible || nd().dont_disturb) return
+    if (drawerOpen.get() || nd().dont_disturb) return
     live.set([...live.get(), id])
     timeout(TOAST_MS, () => live.set(live.get().filter(x => x !== id)))
   })
@@ -60,7 +70,7 @@ export function Toasts(monitor: Gdk.Monitor) {
     {/* fixed toast column width so the card can't stretch to its hexpand text column */}
     <box orientation={Gtk.Orientation.VERTICAL} spacing={8}
       widthRequest={NCARD_W + 26} halign={Gtk.Align.END}>
-      {bind(live).as(ids => ids.map(id => {
+      {bind(shown).as(ids => ids.map(id => {
         const n = nd().get_notification(id)
         return n ? <box class="toast"><Card n={n} /></box> : <box />
       }))}
@@ -100,6 +110,9 @@ export function Drawer() {
     name="drawer" namespace="kobel-drawer" class="drawer-window" visible={false}
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
     keymode={Astal.Keymode.ON_DEMAND}
+    setup={(self: Gtk.Window) => self.connect("notify::visible", () => {
+      printerr(`kobel: drawer visible=${self.visible}`); drawerOpen.set(self.visible)
+    })}
     onKeyPressed={(self, key) => key === Gdk.KEY_Escape ? (self.hide(), true) : false}>
     <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
       <MediaCard />
