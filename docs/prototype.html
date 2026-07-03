@@ -172,7 +172,7 @@
   .tray{display:flex;align-items:center;gap:1px;margin-right:3px}
   .tray .ibtn{font-size:14px;width:28px}
   .ibtn.lang{width:auto;padding:0 8px;font-size:11px;font-weight:650}
-  .nc .media{margin:0 0 11px}
+  .nc .media{margin:0 0 10px;background:var(--panel);box-shadow:var(--shadow)}
   .calp{top:58px;left:50%;width:330px;margin-left:-165px;padding:10px}
   .calp .cal{margin:0;background:transparent;padding:2px 4px 6px}
   .chips{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
@@ -325,7 +325,8 @@
   
 
   /* notification drawer */
-  .nc{top:10px;right:10px;bottom:10px;width:348px;padding:12px;display:flex;flex-direction:column}
+  .nc{top:10px;right:10px;bottom:10px;width:348px;padding:0;display:flex;flex-direction:column;
+    background:transparent;box-shadow:none;border-radius:0}
   .cal{padding:10px 12px 12px;border-radius:var(--rt);background:var(--panel2);margin-bottom:11px;flex:none}
   .calhead{display:flex;align-items:center;gap:4px;margin-bottom:8px}
   .calhead b{flex:1;font-size:12.5px;font-weight:650;padding-left:3px}
@@ -336,7 +337,8 @@
   .calgrid .day{font-size:11px;color:var(--tx);padding:4px 0;border-radius:7px}
   .calgrid .day.out{color:var(--dim)}
   .calgrid .day.today{background:var(--leaf);color:var(--ink);font-weight:700}
-  .nhead{display:flex;align-items:baseline;gap:8px;padding:2px 4px 9px;flex:none}
+  .nhead{display:flex;align-items:baseline;gap:8px;padding:2px 6px 9px;flex:none;
+    text-shadow:0 1px 6px rgb(10 8 20/.55)}
   .nhead b{font-size:13.5px;font-weight:650}
   .nhead span{font-size:11px;color:var(--dim)}
   .nclear{margin-left:auto;appearance:none;border:0;background:transparent;color:var(--rose);
@@ -347,7 +349,7 @@
   .nlist{display:flex;flex-direction:column;overflow-y:auto;min-height:0}
   .ncard{will-change:transform,opacity,height}
   .ncard .inner{display:flex;gap:10px;padding:11px 12px;margin-bottom:8px;border-radius:14px;
-    background:var(--panel2);cursor:grab;position:relative;align-items:flex-start}
+    background:var(--panel);box-shadow:var(--shadow-sm);cursor:grab;position:relative;align-items:flex-start}
   .ncard .inner:active{cursor:grabbing}
 
   .nic{width:30px;height:30px;border-radius:9px;flex:none;display:grid;place-items:center;
@@ -365,7 +367,8 @@
   .nprog{margin-top:7px;height:4px;border-radius:99px;background:var(--chip);
     position:relative;overflow:hidden}
   .nprog i{position:absolute;inset:0 auto 0 0;background:var(--leaf);border-radius:99px}
-  .nempty{padding:22px 0 16px;text-align:center;color:var(--mut);font-size:12.5px;display:none}
+  .nempty{padding:22px 0 16px;text-align:center;color:var(--tx);font-size:12.5px;display:none;
+    text-shadow:0 1px 6px rgb(10 8 20/.55)}
   .nempty i{font-size:22px;color:var(--mut);display:block;margin:0 auto 8px;width:fit-content}
   .nlist.empty+.nempty{display:block}
 
