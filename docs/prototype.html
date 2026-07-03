@@ -1446,6 +1446,16 @@ dockSync();
 if(WINDOWS.length)focusWindow(WINDOWS[0]);
 
 /* ================= clock / calendar ================= */
+const now0=new Date();let calY=now0.getFullYear(),calM=now0.getMonth();
+let calSel=new Date(now0.getFullYear(),now0.getMonth(),now0.getDate());
+const evKey=(y,m,d)=>y+"-"+(m+1)+"-"+d;
+const EVENTS={};
+EVENTS[evKey(now0.getFullYear(),now0.getMonth(),now0.getDate())]=
+  [{t:"09:45",n:"Daily Standup",icon:"heroicons:video-camera"}];
+EVENTS[evKey(now0.getFullYear(),now0.getMonth(),11)]=
+  [{t:"10:30",n:"Kieran Birthday",icon:"lucide:cake"},{t:"13:00",n:"London Thing",icon:"heroicons:map-pin"}];
+EVENTS[evKey(now0.getFullYear(),now0.getMonth(),13)]=
+  [{t:"All day",n:"My Birthday 🎂",icon:"lucide:cake"}];
 function tick(){
   const d=new Date();
   $("clk").textContent=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
@@ -1460,16 +1470,6 @@ function tick(){
   $("ch-date").textContent=d.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
 }
 tick();setInterval(tick,10000);
-const now0=new Date();let calY=now0.getFullYear(),calM=now0.getMonth();
-let calSel=new Date(now0.getFullYear(),now0.getMonth(),now0.getDate());
-const evKey=(y,m,d)=>y+"-"+(m+1)+"-"+d;
-const EVENTS={};
-EVENTS[evKey(now0.getFullYear(),now0.getMonth(),now0.getDate())]=
-  [{t:"09:45",n:"Daily Standup",icon:"heroicons:video-camera"}];
-EVENTS[evKey(now0.getFullYear(),now0.getMonth(),11)]=
-  [{t:"10:30",n:"Kieran Birthday",icon:"lucide:cake"},{t:"13:00",n:"London Thing",icon:"heroicons:map-pin"}];
-EVENTS[evKey(now0.getFullYear(),now0.getMonth(),13)]=
-  [{t:"All day",n:"My Birthday 🎂",icon:"lucide:cake"}];
 function renderEvents(){
   const el=$("calev");if(!el)return;
   const d=calSel;
