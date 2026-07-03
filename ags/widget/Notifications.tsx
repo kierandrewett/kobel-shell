@@ -114,9 +114,8 @@ export function Drawer() {
     name="drawer" namespace="kobel-drawer" class="drawer-window" visible={false}
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
     keymode={Astal.Keymode.ON_DEMAND}
-    setup={(self: Gtk.Window) => self.connect("notify::visible", () => {
-      printerr(`kobel: drawer visible=${self.visible}`); drawerOpen.set(self.visible)
-    })}
+    setup={(self: Gtk.Window) => self.connect("notify::visible",
+      () => drawerOpen.set(self.visible))}
     onKeyPressed={(self, key) => key === Gdk.KEY_Escape ? (self.hide(), true) : false}>
     <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
       <MediaCard />
