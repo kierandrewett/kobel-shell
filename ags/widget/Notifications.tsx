@@ -25,8 +25,10 @@ const drawerOpen = Variable(false)
 const NCARD_W = 327
 function Card({ n }: { n: Notifd.Notification }) {
   return <box class="ncard" spacing={10} widthRequest={NCARD_W}>
-    <image iconName={n.app_icon || "dialog-information-symbolic"} pixelSize={24}
-      valign={Gtk.Align.START} />
+    {/* app icon in a 30×30 r9 tile (prototype .nic) */}
+    <box class="nic" valign={Gtk.Align.START}>
+      <image iconName={n.app_icon || "dialog-information-symbolic"} pixelSize={20} />
+    </box>
     <box orientation={Gtk.Orientation.VERTICAL} hexpand>
       <box>
         <label halign={Gtk.Align.START} hexpand ellipsize={3} label={n.summary} />
