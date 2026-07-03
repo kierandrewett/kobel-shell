@@ -257,11 +257,13 @@ scale > trough > slider {
 
   // days: plain numbers, NO button chrome — 24×24, size 11, weight 400
   .day {
+    // CDP: in-month 600, out-of-month 400, today 700
     background: none; background-color: transparent;
-    color: $tx; font-size: 11px; font-weight: 400;
+    color: $tx; font-size: 11px; font-weight: 600;
     min-width: 24px; min-height: 24px; border-radius: 99px; margin: 1px;
     &:hover { background-color: $panel2; }
-    &.we, &.out { color: $dim; }
+    &.we { color: $dim; }
+    &.out { color: $dim; font-weight: 400; }
     &.today { background-color: $leaf; color: $ink; font-weight: 700;
               &:hover { background-color: $leaf; } }
     // selection ring only on NON-today days — today's leaf fill is its own indicator
