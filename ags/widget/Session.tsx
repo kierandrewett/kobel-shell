@@ -37,20 +37,23 @@ export default function Session() {
       if (key === Gdk.KEY_Escape) { armed.set(null); self.hide(); return true }
       return false
     }}>
-    <box class="session" halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} spacing={20}>
-      {ACTIONS.map(a =>
-        <button class={a.red ? "sbtn red" : "sbtn"}
-          onClicked={self => press(a, () => self.get_root()?.hide?.())}>
-          <box orientation={Gtk.Orientation.VERTICAL} spacing={10}
-            class={bind(armed).as(x => x === a.id ? "confirm" : "")}>
-            <box class="sic" widthRequest={64} heightRequest={64}
-              halign={Gtk.Align.CENTER}>
-              <image iconName={a.icon} pixelSize={24}
-                halign={Gtk.Align.CENTER} hexpand />
+    {/* .session fills the whole window (the dim); buttons centered inside */}
+    <box class="session" hexpand vexpand>
+      <box halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} spacing={20} hexpand>
+        {ACTIONS.map(a =>
+          <button class={a.red ? "sbtn red" : "sbtn"}
+            onClicked={self => press(a, () => self.get_root()?.hide?.())}>
+            <box orientation={Gtk.Orientation.VERTICAL} spacing={10}
+              class={bind(armed).as(x => x === a.id ? "confirm" : "")}>
+              <box class="sic" widthRequest={64} heightRequest={64}
+                halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER}>
+                <image iconName={a.icon} pixelSize={26}
+                  halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} hexpand vexpand />
+              </box>
+              <label label={bind(armed).as(x => x === a.id ? "Press again" : a.label)} />
             </box>
-            <label label={bind(armed).as(x => x === a.id ? "Press again" : a.label)} />
-          </box>
-        </button>)}
+          </button>)}
+      </box>
     </box>
   </window>
 }

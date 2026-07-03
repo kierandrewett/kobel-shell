@@ -48,6 +48,7 @@ image { -gtk-icon-style: regular; }
   // round icon buttons
   > box > button, .bar-btn {
     min-width: 30px; min-height: 30px; border-radius: 9px; color: $mut;
+    image { -gtk-icon-size: 17px; }
     &:hover { background-color: $panel2; color: $tx; }
   }
   // centered clock button (direct child of the .bar centerbox)
@@ -59,7 +60,7 @@ image { -gtk-icon-style: regular; }
     background-color: $panel2; border-radius: 999px;
     padding: 3px 12px; margin: 0 2px;
     &:hover { background-color: $chip; }
-    image { color: $mut; }
+    image { color: $mut; -gtk-icon-size: 16px; }
     label { color: $tx; font-weight: 600; font-size: 11.5px; }
     &.err .net-icon { color: $amber; }
   }
@@ -154,7 +155,7 @@ scale > trough > slider {
   border-radius: 999px; background-color: $tx;
   box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
-.srow image { color: $mut; -gtk-icon-size: 16px; }
+.srow image { color: $mut; -gtk-icon-size: 17px; }
 .srow .chev { min-width: 30px; color: $dim; border-radius: 9px;
   &:hover { background-color: $panel2; } }
 
@@ -183,7 +184,7 @@ scale > trough > slider {
 .launcher { min-width: 560px; padding: 8px; }
 .field {
   background-color: $panel2; border-radius: 12px; padding: 4px 12px; margin-bottom: 6px;
-  image { color: $dim; -gtk-icon-size: 16px; }
+  image { color: $dim; -gtk-icon-size: 17px; }
   entry {
     background: none; border: none; box-shadow: none; outline: none;
     color: $tx; font-size: 14.5px; caret-color: $leaf; padding: 6px 4px;

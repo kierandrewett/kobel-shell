@@ -1,1 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M15 10.5a3 3 0 1 1-6 0a3 3 0 0 1 6 0"/><path d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0"/></g></svg>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="24"
+   height="24"
+   viewBox="0 0 24 24"
+   version="1.1"
+   id="svg2"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs2" />
+  <g
+     fill="none"
+     stroke="currentColor"
+     stroke-linecap="round"
+     stroke-linejoin="round"
+     stroke-width="1.5"
+     id="g2">
+    <path
+       style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#000000;stroke:none;stroke-linecap:butt;stroke-linejoin:miter;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
+       d="M 12,6.75 C 11.083333,6.75 10.15659,7.0519988 9.4394531,7.6894531 8.7223167,8.3269075 8.25,9.3125004 8.25,10.5 c 0,1.1875 0.4723167,2.173093 1.1894531,2.810547 C 10.15659,13.948001 11.083333,14.25 12,14.25 c 0.916667,0 1.84341,-0.301999 2.560547,-0.939453 C 15.277683,12.673093 15.75,11.6875 15.75,10.5 15.75,9.3125004 15.277683,8.3269075 14.560547,7.6894531 13.84341,7.0519988 12.916667,6.75 12,6.75 Z m 0,1.5 c 0.583333,0 1.15659,0.1980016 1.564453,0.5605469 C 13.972317,9.1730921 14.25,9.6875005 14.25,10.5 c 0,0.812499 -0.277683,1.326908 -0.685547,1.689453 C 13.15659,12.551998 12.583333,12.75 12,12.75 11.416667,12.75 10.84341,12.551998 10.435547,12.189453 10.027683,11.826908 9.75,11.312499 9.75,10.5 9.75,9.6875005 10.027683,9.1730921 10.435547,8.8105469 10.84341,8.4480016 11.416667,8.25 12,8.25 Z"
+       id="path1" />
+    <path
+       style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#000000;stroke:none;stroke-linecap:butt;stroke-linejoin:miter;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
+       d="m 12,2.25 c -4.5474649,0 -8.25,3.7025318 -8.25,8.25 0,7.667063 7.890625,11.908203 7.890625,11.908203 a 0.750075,0.750075 0 0 0 0.71875,0 c 0,0 7.890625,-4.24114 7.890625,-11.908203 0,-4.5474682 -3.702535,-8.25 -8.25,-8.25 z m 0,1.5 c 3.736806,0 6.75,3.0131914 6.75,6.75 0,6.282174 -6.10151,9.927999 -6.75,10.306641 C 11.35151,20.427999 5.25,16.782174 5.25,10.5 5.25,6.7631914 8.2631938,3.75 12,3.75 Z"
+       id="path2" />
+  </g>
+</svg>
