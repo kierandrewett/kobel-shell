@@ -93,10 +93,10 @@
 
   /* ---------- dock ---------- */
   .dock{position:absolute;bottom:10px;left:50%;translate:-50% 0;z-index:30;
-    display:flex;align-items:flex-end;gap:5px;padding:8px 9px 5px;
+    display:flex;align-items:center;gap:5px;padding:8px 9px;
     background:var(--panel);border-radius:20px;box-shadow:var(--shadow-sm)}
   .dbtn{appearance:none;border:0;background:transparent;padding:0;cursor:pointer;
-    display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
+    display:block;position:relative}
   .dghost{position:absolute;width:44px;height:44px;overflow:visible;background:transparent;
     pointer-events:none;z-index:45;will-change:transform,opacity}
   .dghost .dic{position:absolute;inset:0}
@@ -113,7 +113,8 @@
     color:#fff;font-size:21px}
   .dbtn .di img{position:absolute;inset:2px;width:40px;height:40px;object-fit:contain;
     -webkit-user-drag:none}
-  .dbtn .dots{display:flex;gap:3px;height:5px;align-items:center;justify-content:center;min-width:4px}
+  .dbtn .dots{position:absolute;left:50%;translate:-50% 0;bottom:-7px;
+    display:flex;gap:3px;height:5px;align-items:center;justify-content:center}
   .dbtn .dots i{width:4px;height:4px;border-radius:99px;background:var(--dim);
     corner-shape:round;transition:width .3s var(--ovr),background .25s}
   .dbtn .dots i.on{width:12px;background:var(--leaf)}
