@@ -65,8 +65,8 @@ function DockButton({ app }: { app: Apps.Application }) {
       else if (!ws[0].focused) gnoblin.activate(ws[0].id)
     }}>
     <overlay>
-      <image class="icon-tile" gicon={app.icon_name ? undefined : undefined}
-             iconName={app.icon_name} pixelSize={32} />
+      <image class="icon-tile" iconName={app.icon_name || "application-x-executable"}
+             pixelSize={32} />
       {/* dots as OVERLAY — zero layout footprint */}
       <Dots type="overlay" appId={appId} />
     </overlay>
