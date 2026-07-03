@@ -1172,7 +1172,7 @@ $("m-open").addEventListener("click",()=>{setMediaEmpty(false);setPlaying(true);
 function fmt(s){s=Math.floor(s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
 
 /* ================= fx loop ================= */
-let mAcc=0,cpuAcc=0,cpu=12;
+let mAcc=0;
 function fx(t,dt){
   if(!RM){
     paintWall(t,dt);
@@ -1188,12 +1188,6 @@ function fx(t,dt){
       $("m-fill").style.width=(mPos/mDur*100).toFixed(1)+"%";
       $("m-cur").textContent=fmt(mPos);
     }
-  }
-  cpuAcc+=dt;
-  if(cpuAcc>.8){cpuAcc=0;
-    cpu=Math.max(4,Math.min(38,cpu+(Math.random()-.5)*7));
-    $("cpu-v").textContent=Math.round(cpu)+"%";
-    $("cpu-b").style.width=cpu.toFixed(0)+"%";
   }
   for(const pr of progressBars){
     if(pr.pct<100){pr.pct+=dt*9;if(pr.pct>100)pr.pct=100;
