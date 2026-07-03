@@ -1861,7 +1861,7 @@ function setGnob(up){
   announce(up?"gnoblin connected":"gnoblin disconnected — OSD handed back to GNOME");
 }
 $("g-reload").addEventListener("click",()=>{
-  relR.jump(0);relR.cfg(130,17).set(360);
+  relR.jump(0);relR.cfg(130,17).set(-360);
   if(!gnobUp){
     setTimeout(()=>{setGnob(true);
       toast({title:"gnoblin",body:"Reconnected to org.gnoblin.Shell ✓",icon:"leaf"});},600);
