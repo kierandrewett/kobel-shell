@@ -163,7 +163,12 @@
   .launcher.list .lrows{display:flex}
   .crow{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:var(--rb);
     cursor:pointer;transition:background .15s;border:0;background:transparent;width:100%;text-align:left}
-  .crow:hover,.crow.sel{background:var(--panel2)}
+  .crow:hover{background:var(--panel2)}
+  .crow.sel{background:var(--chip)}
+  .crow .runk{display:none;font-size:10.5px;color:var(--mut);background:var(--hover);
+    border-radius:5px;padding:2px 7px;flex:none}
+  .crow.sel .runk{display:inline-block}
+  .launcher.cmd .lfoot{display:none}
   .crow .ri{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;
     color:#fff;font-size:15px}
   .crow .ri.ghost{background:var(--panel2);color:var(--mut)}
@@ -521,7 +526,7 @@
 
   <!-- ============ LAUNCHER ============ -->
   <section class="p sheet launcher" id="p-launch">
-    <div class="lsearch st" style="--i:0">
+    <div class="lsearch">
       <iconify-icon icon="heroicons:magnifying-glass"></iconify-icon>
       <span class="liwrap">
         <input id="lq" placeholder="Search — apps, files, actions · ':' cmds · '=' maths" autocomplete="off" spellcheck="false">
@@ -1502,8 +1507,8 @@ function adoptToasts(){
 function cardHTML(n){
   return '<div class="inner" tabindex="0">'
     +'<div class="nic" style="background:'+(ICBG[n.icon]||ICBG.leaf)+'">'+ph(ICONS[n.icon]||"leaf")+'</div>'
-    +'<div class="ntx"><div class="t"><b>'+n.title+'</b><span class="when tn">'+n.when+'</span></div>'
-    +'<p>'+n.body+'</p>'
+    +'<div class="ntx"><div class="t"><b>'+escH(n.title)+'</b><span class="when tn">'+n.when+'</span></div>'
+    +'<p>'+escH(n.body)+'</p>'
     +(n.progress?'<div class="nprog"><i style="width:'+(n.pct||0)+'%"></i></div>':'')
     +'</div><button class="nx" title="Dismiss (Del)">'+ph("x")+'</button></div>';
 }
@@ -1609,7 +1614,7 @@ function toast(n){
   }
   const el=document.createElement("div");el.className="toast";
   el.innerHTML='<div class="nic" style="background:'+(ICBG[n.icon]||ICBG.leaf)+'">'+ph(ICONS[n.icon]||"leaf")+'</div>'
-    +'<div class="ntx"><div class="t"><b>'+n.title+'</b><span class="when tn">now</span></div><p>'+n.body+'</p>'
+    +'<div class="ntx"><div class="t"><b>'+escH(n.title)+'</b><span class="when tn">now</span></div><p>'+escH(n.body)+'</p>'
     +(n.progress?'<div class="nprog"><i></i></div>':'')+'</div>';
   $("toasts").appendChild(el);
   if(n.progress)progressBars.push({el:el.querySelector(".nprog i"),pct:0,src:n});
@@ -1644,17 +1649,20 @@ try{freq=JSON.parse(localStorage.getItem("kobel-freq")||"{}");}catch(e){}
 function bump(n){freq[n]=(freq[n]||0)+1;
   try{localStorage.setItem("kobel-freq",JSON.stringify(freq));}catch(e){}}
 const ACTIONS=[
-  {n:"Lock",icon:"heroicons:lock-closed",d:"Lock the session",
+  {n:"Suspend",icon:"lucide:moon",d:"Sleep — resume instantly",al:["sleep"],
+   act:()=>{closeAll();resetLauncher();toast({title:"session",body:"Suspending — (prototype)",icon:"leaf"});}},
+  {n:"Lock",icon:"heroicons:lock-closed",d:"Lock the session",al:["lock screen"],
    act:()=>{closeAll();resetLauncher();toast({title:"session",body:"Locked — (prototype)",icon:"leaf"});}},
-  {n:"Log Out",icon:"heroicons:arrow-right-start-on-rectangle",d:"End this session",
+  {n:"Log Out",icon:"heroicons:arrow-right-start-on-rectangle",d:"End this session",al:["exit","sign out","logout"],
    act:()=>{resetLauncher();openSession();}},
-  {n:"Restart",icon:"heroicons:arrow-path",d:"Reboot the machine",
+  {n:"Restart",icon:"heroicons:arrow-path",d:"Reboot the machine",al:["reboot"],
    act:()=>{resetLauncher();openSession();}},
-  {n:"Shut Down",icon:"heroicons:power",d:"Power off",
+  {n:"Shut Down",icon:"heroicons:power",d:"Power off",al:["poweroff","power off","halt"],
    act:()=>{resetLauncher();openSession();}},
   {n:"Soft-reload gnoblin",icon:"lucide:leaf",d:"Reload the shell — windows survive",
    act:()=>{closeAll();resetLauncher();$("g-reload").click();}}
 ];
+function escH(t){return String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function fuzzy(q,t){
   const ql=q.toLowerCase(),tl=t.toLowerCase();
   let qi=0,score=0,last=-2;const marks=[];
@@ -1668,14 +1676,17 @@ function fuzzy(q,t){
   return qi===ql.length?{score:score-t.length*.02,marks}:null;
 }
 function hl(t,marks){
-  if(!marks)return t;
+  if(!marks)return escH(t);
   const m=new Set(marks);let out="";
-  for(let i=0;i<t.length;i++)out+=m.has(i)?'<b class="hlm">'+t[i]+"</b>":t[i];
+  for(let i=0;i<t.length;i++){
+    const ch=escH(t[i]);
+    out+=m.has(i)?'<b class="hlm">'+ch+"</b>":ch;
+  }
   return out;
 }
 function appIcon(a,cls,inner){
   return '<span class="'+cls+'" style="background:'+a.bg+'">'+ph(a.g)
-    +(a.ic?'<img src="'+a.ic+'" alt="" onerror="this.remove()">':"")+"</span>";
+    +(a.ic?'<img src="'+a.ic+'" alt="" onerror="this.remove()" onload="this.parentElement.style.background=\'var(--panel2)\'">':"")+"</span>";
 }
 function buildTiles(){
   lapps.innerHTML="";
@@ -1700,7 +1711,8 @@ function section(label){
 }
 function row(o){
   const b=document.createElement("button");b.className="crow";
-  b.innerHTML=o.icon+"<b>"+o.name+"</b><span>"+(o.hint||"")+"</span>"+(o.kbd?"<kbd>"+o.kbd+"</kbd>":"");
+  b.innerHTML=o.icon+"<b>"+o.name+"</b><span>"+(o.hint||"")+"</span>"
+    +(o.kbd?"<kbd>"+o.kbd+"</kbd>":"")+'<kbd class="runk">↵</kbd>';
   b.addEventListener("click",o.act);
   lrows.appendChild(b);selectable.push(b);
 }
@@ -1711,20 +1723,23 @@ function setGhost(q,target){
   $("lg-suf").textContent=target&&target.toLowerCase().startsWith(q.toLowerCase())&&q
     ?target.slice(q.length):"";
 }
+const fboost=n=>Math.min(Math.log2(1+(freq[n]||0)),3);
 function filter(){
   const q=lq.value,qt=q.trim(),isCmd=q.startsWith(":");
   const isMath=/^=?[0-9+\-*/(). ]+$/.test(qt)&&/[0-9]/.test(qt)&&/[+\-*/]/.test(qt);
   lrows.innerHTML="";selectable=[];lempty.style.display="none";
   const list=isCmd||!!qt;
   $("p-launch").classList.toggle("list",list);
+  $("p-launch").classList.toggle("cmd",isCmd);
   if(!list){sel=0;setGhost("","");paintSel();return;}
-  let ghost="";
+  const names=[];
   if(isCmd){
     const cq=q.slice(1).trim().toLowerCase();
     const hits=CMDS.filter(c=>c.c.startsWith(cq));
     if(hits.length)section("gnoblinctl");
-    hits.forEach(c=>row({icon:'<span class="ri" style="background:oklch(58% .12 130)">'+ph("lucide:leaf")+"</span>",
-      name:":"+c.c,hint:c.d,kbd:c.k,act:()=>runCmd(c)}));
+    hits.forEach(c=>{names.push(":"+c.c);
+      row({icon:'<span class="ri" style="background:oklch(58% .12 130)">'+ph("lucide:leaf")+"</span>",
+        name:":"+c.c,hint:c.d,kbd:c.k,act:()=>runCmd(c)});});
   }else{
     if(isMath){
       let res;try{res=Function('"use strict";return('+qt.replace(/^=/,"")+")")();}catch(err){res=null;}
@@ -1736,46 +1751,75 @@ function filter(){
             toast({title:"calculator",body:qt.replace(/^=/,"")+" = "+res+" — copied",icon:"leaf"});}});
       }
     }
+    const appHint=a=>a.run?("Running · "+((a.wins||1)>1?a.wins+" windows":"1 window")):"Application";
     const apps=APPS.map(a=>({a,m:fuzzy(qt,a.n)})).filter(x=>x.m)
-      .sort((x,y)=>(y.m.score+(freq[y.a.n]||0)*.5)-(x.m.score+(freq[x.a.n]||0)*.5)).slice(0,5);
-    if(apps.length){
-      section("apps");
-      ghost=apps[0].a.n;
-      apps.forEach(({a,m})=>row({icon:appIcon(a,"ri"),name:hl(a.n,m.marks),
-        hint:"Application",act:()=>launch(a.n)}));
-    }
-    const acts=ACTIONS.map(x=>({x,m:fuzzy(qt,x.n)})).filter(r=>r.m)
-      .sort((r1,r2)=>r2.m.score-r1.m.score).slice(0,3);
-    if(acts.length){
-      section("actions");
-      if(!ghost)ghost=acts[0].x.n;
-      acts.forEach(({x,m})=>row({icon:'<span class="ri ghost">'+ph(x.icon)+"</span>",
-        name:hl(x.n,m.marks),hint:x.d,act:x.act}));
-    }
+      .sort((x,y)=>(y.m.score+fboost(y.a.n))-(x.m.score+fboost(x.a.n))).slice(0,5);
+    const acts=ACTIONS.map(x=>{
+      let m=fuzzy(qt,x.n);
+      if(!m&&x.al)for(const al of x.al){const am=fuzzy(qt,al);
+        if(am){m={score:am.score-.5,marks:null};break;}}
+      return{x,m};
+    }).filter(r=>r.m).sort((r1,r2)=>r2.m.score-r1.m.score).slice(0,3);
     const files=FILES.map(f=>({f,m:fuzzy(qt,f.n)})).filter(r=>r.m)
       .sort((r1,r2)=>r2.m.score-r1.m.score).slice(0,4);
-    if(files.length){
-      section("files");
-      files.forEach(({f,m})=>row({icon:'<span class="ri ghost">'+ph("heroicons:document-text")+"</span>",
+    const mkApp=({a,m})=>({name:a.n,sc:m.score+fboost(a.n),
+      row:()=>row({icon:appIcon(a,"ri"),name:hl(a.n,m.marks),hint:appHint(a),act:()=>launch(a.n)})});
+    const mkAct=({x,m})=>({name:x.n,sc:m.score*.95,
+      row:()=>row({icon:'<span class="ri ghost">'+ph(x.icon)+"</span>",name:hl(x.n,m.marks),hint:x.d,act:x.act})});
+    const mkFile=({f,m})=>({name:f.n,sc:m.score*.9,
+      row:()=>row({icon:'<span class="ri ghost">'+ph("heroicons:document-text")+"</span>",
         name:hl(f.n,m.marks),hint:f.p,act:()=>{closeAll();resetLauncher();
-          toast({title:"files",body:"Opening "+f.n+"…",icon:"leaf"});}}));
+          toast({title:"files",body:"Opening "+f.n+"…",icon:"leaf"});}})});
+    const groups=[["apps",apps.map(mkApp)],["actions",acts.map(mkAct)],["files",files.map(mkFile)]];
+    let best=null;
+    groups.forEach(([,items])=>items.forEach(it=>{if(!best||it.sc>best.sc)best=it;}));
+    if(best){section("best match");best.row();names.push(best.name);}
+    groups.forEach(([label,items])=>{
+      const rest=items.filter(it=>it!==best);
+      if(!rest.length)return;
+      section(label);
+      rest.forEach(it=>{it.row();names.push(it.name);});
+    });
+    if(qt){
+      section("web");
+      row({icon:'<span class="ri ghost">'+ph("heroicons:globe-alt")+"</span>",
+        name:"Search the web for “"+escH(qt)+"”",hint:"",
+        act:()=>{closeAll();resetLauncher();
+          toast({title:"launcher",body:"Searching the web for “"+qt+"”…",icon:"leaf"});}});
     }
   }
   if(!selectable.length){
     lempty.style.display="block";
-    lempty.innerHTML="No matches for <b>"+qt.replace(/</g,"&lt;")+"</b> — ↵ to search the web";
+    lempty.innerHTML="Unknown command — try <b>:reload</b>, <b>:osd off</b>, <b>:grants</b>";
     setGhost(q,"");
-  }else setGhost(q,ghost);
+  }else{
+    const g=names.find(n=>n.toLowerCase().startsWith(qt.toLowerCase())&&n.length>qt.length);
+    setGhost(q,g||"");
+  }
   sel=0;paintSel();
 }
 lq.addEventListener("input",filter);
 lq.addEventListener("keydown",e=>{
   const listMode=$("p-launch").classList.contains("list");
   const v=listMode?selectable:tiles();
-  if((e.key==="Tab"||e.key==="ArrowRight")&&ghostTarget
-     &&lq.selectionStart===lq.value.length
-     &&ghostTarget.toLowerCase().startsWith(lq.value.toLowerCase())
-     &&ghostTarget.length>lq.value.length){
+  const ghostOK=ghostTarget
+    &&ghostTarget.toLowerCase().startsWith(lq.value.trim().toLowerCase())
+    &&ghostTarget.length>lq.value.trim().length;
+  if(e.key==="Escape"&&lq.value){
+    e.preventDefault();e.stopPropagation();resetLauncher();return;
+  }
+  if(e.key==="Tab"){
+    e.preventDefault();
+    if(!e.shiftKey&&ghostOK){lq.value=ghostTarget;filter();return;}
+    if(v.length){sel=(sel+(e.shiftKey?v.length-1:1))%v.length;paintSel();}
+    return;
+  }
+  if(e.ctrlKey&&(e.key==="n"||e.key==="p")){
+    e.preventDefault();
+    if(v.length){sel=(sel+(e.key==="n"?1:v.length-1))%v.length;paintSel();}
+    return;
+  }
+  if(e.key==="ArrowRight"&&ghostOK&&lq.selectionStart===lq.value.length&&listMode){
     e.preventDefault();lq.value=ghostTarget;filter();return;
   }
   if((e.key==="ArrowRight"&&!listMode)||e.key==="ArrowDown"){
@@ -1783,14 +1827,13 @@ lq.addEventListener("keydown",e=>{
   else if((e.key==="ArrowLeft"&&!listMode)||e.key==="ArrowUp"){
     e.preventDefault();if(v.length){sel=(sel-1+v.length)%v.length;paintSel();}}
   else if(e.key==="Enter"){
-    if(!v.length){closeAll();resetLauncher();
-      toast({title:"launcher",body:"Searching the web for “"+lq.value.trim()+"”…",icon:"leaf"});return;}
+    if(!v.length)return;
     v[sel].click();
   }
 });
 function resetLauncher(){lq.value="";filter();}
 function launch(name){
-  bump(name);buildTiles();
+  bump(name);
   closeAll();resetLauncher();
   toast({title:"launcher",body:"Launching "+name+"…",icon:"leaf"});
 }
