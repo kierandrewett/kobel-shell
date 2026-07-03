@@ -260,12 +260,13 @@
   .editing .srow .chevb{display:none}
   .srow>iconify-icon{font-size:16px;color:var(--mut);flex:none}
   .slider{flex:1;height:36px;display:flex;align-items:center;cursor:pointer;touch-action:none}
-  .rail{position:relative;height:30px;width:100%;border-radius:99px;background:var(--chip);overflow:hidden}
+  .rail{position:relative;height:6px;width:100%;border-radius:99px;background:var(--chip)}
+  .knob{position:absolute;top:50%;left:0;width:17px;height:17px;border-radius:99px;
+    background:var(--tx);translate:-50% -50%;box-shadow:0 1px 4px rgb(0 0 0/.45);
+    corner-shape:round;will-change:scale}
   .fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--leaf)}
   
   .sval{font-size:11px;font-weight:600;color:var(--mut);width:32px;text-align:right}
-  .rail .sval{position:absolute;right:11px;top:50%;translate:0 -50%;width:auto;
-    font-size:10.5px;z-index:2}
   .media{margin-top:9px;padding:10px 11px 9px;border-radius:20px;background:var(--panel2)}
   .mrow{display:flex;gap:11px;align-items:center}
   .art{width:46px;height:46px;border-radius:10px;flex:none;background:var(--chip);
@@ -338,7 +339,7 @@
     background:var(--panel2);color:var(--mut);font-size:13px}
   .mixrow em{font-style:normal;font-size:12px;color:var(--mut);width:72px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .mixrow .slider{height:30px}
-  .mixrow .rail{height:22px}
+  .mixrow .knob{width:14px;height:14px}
   
   
 
@@ -1003,8 +1004,7 @@ function slider(root,onInput){
   function set(p,fire){
     val=Math.max(0,Math.min(100,p));
     fill.style.width=val+"%";if(knob)knob.style.left=val+"%";
-    if(out){out.textContent=Math.round(val)+"%";
-      if(out.closest(".rail"))out.style.color=val>88?"var(--ink)":"var(--mut)";}
+    if(out)out.textContent=Math.round(val)+"%";
     root.setAttribute("aria-valuenow",Math.round(val));
     if(fire&&onInput)onInput(val);
   }
@@ -1079,7 +1079,7 @@ function tileHTML(id){
       +'<div class="slider" id="s-'+id+'" role="slider" tabindex="0" aria-label="'+t.label
       +'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+t.val+'">'
       +'<div class="rail"><div class="fill" style="width:'+t.val+'%"></div>'
-      +'<span class="sval tn">'+t.val+"%</span></div></div>"
+      +'<div class="knob" style="left:'+t.val+'%"></div></div></div>'
       +(t.x?'<button class="chevb" data-x="'+t.x+'" title="Per-app volume">'+ph("heroicons:chevron-right")+"</button>":"")
       +rmv+"</div>";
   return '<div class="chipb pill'+(tstate[id]?" on":"")+'" id="c-'+id+'">'
@@ -1208,7 +1208,7 @@ function buildSub(kind){
     mrows.forEach(m=>{
       const row=document.createElement("div");row.className="mixrow";
       row.innerHTML='<span class="mi">'+ph(m[1])+'</span><em>'+m[0]+'</em>'
-        +'<div class="slider" role="slider" tabindex="0" aria-label="'+m[0]+' volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+m[2]+'"><div class="rail"><div class="fill"></div><span class="sval tn">'+m[2]+'%</span></div></div>';
+        +'<div class="slider" role="slider" tabindex="0" aria-label="'+m[0]+' volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+m[2]+'"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>';
       body.querySelector("#d-mix").appendChild(row);
       slider(row.querySelector(".slider"),m[3]||(()=>{})).set(m[2],false);
     });
