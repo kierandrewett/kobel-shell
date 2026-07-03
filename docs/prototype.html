@@ -119,10 +119,10 @@
   .scrim{position:absolute;inset:0;z-index:40;display:none}
   .p{position:absolute;z-index:50;opacity:0;pointer-events:none;will-change:transform,opacity}
   .sheet{background:var(--panel);border-radius:var(--rp);box-shadow:var(--shadow)}
-  .st{opacity:0;transform:translateY(10px)}
-  .p.open .st{opacity:1;transform:none;
-    transition:opacity .4s var(--ovr),transform .5s var(--ovr);
-    transition-delay:calc(var(--i,0)*34ms)}
+  .st{opacity:0}
+  .p.open .st{opacity:1;
+    transition:opacity .34s ease-out;
+    transition-delay:calc(var(--i,0)*22ms)}
 
   /* launcher */
   .launcher{top:13.5%;left:50%;width:560px;margin-left:-280px;padding:12px}
