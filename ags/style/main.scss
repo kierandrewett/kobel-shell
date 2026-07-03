@@ -107,36 +107,37 @@ image { -gtk-icon-style: regular; }
     background-color: $chip; color: $mut; margin-left: 6px;
     &:hover { background-color: $hover; color: $tx; }
     &.danger:hover { background-color: $rose; color: $roseink; }
+    &.leaf { background-color: $leaf; color: $ink; &:hover { background-color: $leaf2; } }
   }
 }
 
-// pill tiles — one grammar
+// rounded-rectangle tiles (matches prototype: ~16px radius, chunky, NOT pills)
 .chip {
-  background-color: $panel2; border-radius: 999px; min-height: 56px;
+  background-color: $panel2; border-radius: 16px; min-height: 62px;
   transition: background-color 220ms;
-  > button { padding: 9px 9px 9px 14px; border-radius: 999px; }
-  image { color: $mut; -gtk-icon-size: 18px; }
-  label { font-size: 12.5px; font-weight: 650; color: $tx; }
-  .sub { color: $mut; font-size: 10.5px; font-weight: 400; margin-top: 1px; }
+  > button { padding: 11px 11px 11px 14px; border-radius: 16px; }
+  image { color: $mut; -gtk-icon-size: 18px; margin-right: 2px; }
+  label { font-size: 13px; font-weight: 650; color: $tx; }
+  .sub { color: $mut; font-size: 11px; font-weight: 400; margin-top: 2px; }
   &:hover { background-color: $chip; }
 
   &.on {
     background-color: $leaf;
     image { color: $ink; }
     label { color: $ink; }
-    .sub { color: rgba(25,32,3,0.72); }
+    .sub { color: rgba(25,32,3,0.7); }
     &:hover { background-color: $leaf2; }
     .chev { color: $ink; }
   }
 
   .chev {
-    min-width: 34px; border-radius: 0 999px 999px 0;
+    min-width: 34px; border-radius: 0 16px 16px 0;
     color: $dim; border-left: 1px solid rgba(0,0,0,0.16);
     image { -gtk-icon-size: 15px; color: inherit; }
     &:hover { background-color: rgba(0,0,0,0.14); }
   }
 }
-.chips { margin-bottom: 2px; }
+.chips { margin-bottom: 0; }
 
 // ---- GTK4 scale as a thin GNOME rail + round knob. Direct-child selectors match
 // Adwaita's specificity; our sheet loads after, so ours wins. Knob overhangs the

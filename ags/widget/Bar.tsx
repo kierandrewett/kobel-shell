@@ -35,15 +35,11 @@ function StatusPill() {
   return <button
     class={bind(connected).as(c => c ? "status" : "status err")}
     onClicked={() => App.toggle_window("quicksettings")}>
-    <box spacing={10}>
-      <image class="net-icon" iconName={net?.wifi
-        ? bind(net.wifi, "icon_name").as(i => i ?? "kobel-wifi-symbolic")
-        : "kobel-wifi-symbolic"} />
-      <image iconName={speaker
-        ? bind(speaker, "volume_icon").as(i => i ?? "kobel-speaker-wave-symbolic")
-        : "kobel-speaker-wave-symbolic"} />
-      <box spacing={5}>
-        <image iconName={bat ? bind(bat, "battery_icon_name") : "kobel-battery-symbolic"} />
+    <box spacing={9}>
+      <image class="net-icon" iconName="kobel-wifi-symbolic" />
+      <image iconName="kobel-speaker-wave-symbolic" />
+      <box spacing={6}>
+        <image iconName="kobel-battery-symbolic" />
         <label class="tn" label={bat
           ? bind(bat, "percentage").as(p => `${Math.round(p * 100)}%`)
           : "100%"} />

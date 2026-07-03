@@ -73,6 +73,16 @@ function GnoblinBanner() {
   </box>
 }
 
+// local-state toggles (no real backend for these in the devkit)
+const tSave = Variable(false), tDark = Variable(true), tSilent = Variable(false), tNight = Variable(false)
+
+function ToggleChip(props: { label: string, icon: string, sub: [string, string], v: Variable<boolean> }) {
+  return <Chip id={props.label} label={props.label} icon={props.icon}
+    active={bind(props.v)}
+    sub={bind(props.v).as(on => on ? props.sub[0] : props.sub[1])}
+    onToggled={() => props.v.set(!props.v.get())} />
+}
+
 function Root() {
   const net = Network.get_default()
   const bt = Bluetooth.get_default()
@@ -81,13 +91,16 @@ function Root() {
     <box class="qs-top" spacing={0}>
       <label class="tn meta" label="100% · Fully charged" />
       <box hexpand />
-      <button class="rbtn" onClicked={() => reload()}><image iconName="kobel-reload-symbolic" /></button>
+      <button class="rbtn leaf" onClicked={() => reload()}><image iconName="kobel-leaf-symbolic" /></button>
       <button class="rbtn" onClicked={() => execAsync("loginctl lock-session")}>
         <image iconName="kobel-lock-symbolic" /></button>
+      <button class="rbtn" onClicked={() => execAsync("gnome-session-quit --logout --no-prompt")}>
+        <image iconName="kobel-logout-symbolic" /></button>
       <button class="rbtn danger" onClicked={() => App.toggle_window("session")}>
         <image iconName="kobel-power-symbolic" /></button>
     </box>
     <GnoblinBanner />
+    {/* 2-col pill grid */}
     <box class="chips" homogeneous spacing={8}>
       {net.wifi && <Chip id="wifi" label="Wi-Fi" icon="kobel-wifi-symbolic"
         active={bind(net.wifi, "enabled")}
@@ -100,7 +113,14 @@ function Root() {
           d.find(x => x.connected)?.alias ?? "Off")}
         onToggled={() => bt.toggle()}
         onDrill={() => drill.set("bt")} />
-      {/* dark / silent / night / save… render from `tiles` the same way */}
+    </box>
+    <box class="chips" homogeneous spacing={8}>
+      <ToggleChip label="Power Saver" icon="kobel-bolt-symbolic" sub={["On", "Off"]} v={tSave} />
+      <ToggleChip label="Dark Style" icon="kobel-moon-symbolic" sub={["kobel-sakura", "Light"]} v={tDark} />
+    </box>
+    <box class="chips" homogeneous spacing={8}>
+      <ToggleChip label="Silent" icon="kobel-bell-slash-symbolic" sub={["Muted", "Off"]} v={tSilent} />
+      <ToggleChip label="Night Light" icon="kobel-sun-symbolic" sub={["Until 07:00", "Off"]} v={tNight} />
     </box>
     <Sliders />
   </box>
