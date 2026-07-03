@@ -52,7 +52,10 @@ export function Toasts(monitor: Gdk.Monitor) {
   })
   return <window
     name="toasts" namespace="kobel-toasts" gdkmonitor={monitor}
-    exclusivity={Astal.Exclusivity.NORMAL}
+    // Toasts are a floating overlay (like the prototype's absolute top/right); the
+    // float inset clears the floating bar (marginTop 10 + height 42) + a small gap,
+    // and the right inset matches the bar's edge margin.
+    marginTop={58} marginRight={12}
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT}>
     {/* fixed toast column width so the card can't stretch to its hexpand text column */}
     <box orientation={Gtk.Orientation.VERTICAL} spacing={8}
