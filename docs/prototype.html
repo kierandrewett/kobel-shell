@@ -106,14 +106,19 @@
   .status .pct{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--tx)}
   .status .pct i{font-size:15px;color:var(--mut)}
   .bell{position:relative}
+  .gapless .bar{top:0;left:0;right:0;height:36px;border-radius:0;
+    box-shadow:0 6px 20px rgb(0 0 0/.25)}
+  .gapless .bar .ibtn{width:28px;height:28px;font-size:15px}
+  .gapless .status{height:26px}
+  .gapless .qs,.gapless .toasts,.gapless .nc,.gapless .calp{top:44px}
   .badge{position:absolute;top:2px;right:2px;min-width:14px;height:14px;border-radius:99px;
     background:var(--leaf);color:var(--ink);font-size:9px;font-weight:700;
     display:grid;place-items:center;padding:0 3px;opacity:0;pointer-events:none}
 
   /* ---------- dock ---------- */
   .dock{position:absolute;bottom:10px;left:50%;translate:-50% 0;z-index:30;
-    display:flex;align-items:center;gap:5px;padding:8px 9px;
-    background:var(--panel);border-radius:20px;box-shadow:var(--shadow-sm)}
+    display:flex;align-items:center;gap:4px;padding:4px 5px 8px;
+    background:var(--panel);border-radius:16px;box-shadow:var(--shadow-sm)}
   .dbtn{appearance:none;border:0;background:transparent;padding:0;cursor:pointer;
     display:block;position:relative}
   .dghost{position:absolute;width:44px;height:44px;overflow:visible;background:transparent;
@@ -132,7 +137,7 @@
     color:#fff;font-size:21px}
   .dbtn .di img{position:absolute;inset:2px;width:40px;height:40px;object-fit:contain;
     -webkit-user-drag:none}
-  .dbtn .dots{position:absolute;left:50%;translate:-50% 0;bottom:-7px;
+  .dbtn .dots{position:absolute;left:50%;translate:-50% 0;bottom:-6px;
     display:flex;gap:3px;height:5px;align-items:center;justify-content:center}
   .dbtn .dots i{width:4px;height:4px;border-radius:99px;background:var(--dim);
     corner-shape:round;
@@ -513,6 +518,7 @@
   <button data-demo="volume">volume key</button>
   <button data-demo="media">play / pause</button>
   <button data-demo="fail">failure tour</button>
+  <button data-demo="bar">gapless bar</button>
   <span class="hint"><b>try:</b> chevrons drill into Wi-Fi / Bluetooth / volume (Esc = back) ·
     ':' commands or '=2+2' in the launcher · Del dismisses a focused notification</span>
 </div>
@@ -1032,7 +1038,8 @@ const CMDS=[
 ];
 
 /* ================= windows / WM ================= */
-const WORK={top:56,side:10,bottom:10};
+const WORK={side:10,bottom:10};
+function workTop(){return $("desk").classList.contains("gapless")?44:56;}
 const WMZ={z:10};
 const WINDOWS=[];
 let focusedWin=null;
@@ -1093,7 +1100,7 @@ function winSprings(w){
 }
 function zoneRect(zone){
   const dr=deskR(),W=dr.width,H=dr.height;
-  const x0=WORK.side,y0=WORK.top,x1=W-WORK.side,y1=H-WORK.bottom;
+  const x0=WORK.side,y0=workTop(),x1=W-WORK.side,y1=H-WORK.bottom;
   if(zone==="left")return{x:x0,y:y0,w:(x1-x0)/2-4,h:y1-y0};
   if(zone==="right")return{x:x0+(x1-x0)/2+4,y:y0,w:(x1-x0)/2-4,h:y1-y0};
   return{x:x0,y:y0,w:x1-x0,h:y1-y0};
@@ -1148,7 +1155,7 @@ function wireWin(w){
     let zone=null;
     const mv=ev=>{
       st.left=Math.round(ev.clientX-dr.left-ox)+"px";
-      st.top=Math.max(WORK.top-8,Math.round(ev.clientY-dr.top-oy))+"px";
+      st.top=Math.max(workTop()-8,Math.round(ev.clientY-dr.top-oy))+"px";
       zone=(ev.clientX-dr.left)<34?"left"
         :(dr.right-ev.clientX)<34?"right"
         :(ev.clientY-dr.top)<66?"max":null;
@@ -2205,8 +2212,20 @@ document.querySelectorAll(".demo button").forEach(b=>{
     else if(k==="volume")setVol(vol>=100?24:vol+8);
     else if(k==="media")setPlaying(!playing);
     else if(k==="fail")failTour();
+    else if(k==="bar"){
+      const on=$("desk").classList.toggle("gapless");
+      b.textContent=on?"floating bar":"gapless bar";
+      try{localStorage.setItem("kobel-bar",on?"g":"f");}catch(e){}
+    }
   });
 });
+try{
+  if(localStorage.getItem("kobel-bar")==="g"){
+    $("desk").classList.add("gapless");
+    const bb=document.querySelector('[data-demo="bar"]');
+    if(bb)bb.textContent="floating bar";
+  }
+}catch(e){}
 function failTour(){
   const step=failStep++%4;
   if(step===0){setGnob(false);toast({title:"gnoblin",body:"Lost org.gnoblin.Shell — osd handed back to gnome",icon:"leaf"});if(cur!=="qs")openP("qs");}
