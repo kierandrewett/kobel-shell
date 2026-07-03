@@ -93,7 +93,7 @@ function EventsCard() {
 export default function Calendar() {
   return <window
     name="calendar" namespace="kobel-calendar" class="calendar-window" visible={false}
-    anchor={Astal.WindowAnchor.TOP} keymode={Astal.Keymode.ON_DEMAND}
+    anchor={Astal.WindowAnchor.TOP} marginTop={34} keymode={Astal.Keymode.ON_DEMAND}
     onKeyPressed={(self, key) => key === Gdk.KEY_Escape ? (self.hide(), true) : false}>
     <box class="sheet cal" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
       <box orientation={Gtk.Orientation.VERTICAL}>

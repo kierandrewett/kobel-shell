@@ -9,7 +9,28 @@
 import { App, Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, execAsync } from "astal"
 import Apps from "gi://AstalApps"
-import { fuzzy, hl, boost, bump } from "../lib/fuzzy"
+import { fuzzy, hl, boost, bump, frequency } from "../lib/fuzzy"
+import { EVENTS } from "./Calendar"
+
+// Curated grid: the dock's pinned apps first (resolved by desktop-id), then fill the
+// remaining slots by frecency. Matches the prototype's launcher empty-state.
+const PINNED = ["org.gnome.Ptyxis", "org.gnome.Nautilus", "firefox",
+  "dev.zed.Zed", "com.spotify.Client", "org.gnome.Settings"]
+function gridApps(apps: Apps.Apps): Apps.Application[] {
+  const all = apps.get_list()
+  const byId = (id: string) => all.find(a =>
+    a.entry === `${id}.desktop` || a.entry?.toLowerCase().includes(id.split(".").pop()!.toLowerCase()))
+  const pinned = PINNED.map(byId).filter(Boolean) as Apps.Application[]
+  if (pinned.length >= 4) return pinned.slice(0, 6)
+  const rest = all.filter(a => !pinned.includes(a))
+    .sort((x, y) => frequency(y.name) - frequency(x.name))
+  return [...pinned, ...rest].slice(0, 6)
+}
+function todayEventLabel(): string {
+  const d = new Date()
+  const evs = EVENTS[`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`] ?? []
+  return evs.length ? `${evs[0].t} · ${evs[0].n}` : "No events today"
+}
 
 interface Row {
   name: string; icon: string; hint: string; score: number
@@ -110,6 +131,7 @@ export default function Launcher() {
 
   return <window
     name="launcher" namespace="kobel-launcher" class="launcher-window"
+    anchor={Astal.WindowAnchor.TOP} marginTop={88}
     keymode={Astal.Keymode.EXCLUSIVE} visible={false}
     onKeyPressed={(self, key, _code, mods) => {
       const flat = results(query.get()).flatMap(s => s.rows)
@@ -154,24 +176,24 @@ export default function Launcher() {
         <label class="kbd" label="super" />
       </box>
 
-      {/* empty state: dock-tile grid (shared component, live dots) + widget row */}
+      {/* empty state: curated frecency tile grid + widget row */}
       <revealer revealChild={bind(query).as(q => !q.trim())}>
         <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
           <box class="tiles" halign={Gtk.Align.CENTER} spacing={6}>
-            {apps.list.slice(0, 6).map(a =>
+            {gridApps(apps).map(a =>
               <button class="tile" onClicked={() => { bump(a.name); a.launch(); App.get_window("launcher")?.hide() }}>
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-                  <image class="icon-tile" iconName={a.icon_name} pixelSize={32} />
+                  <image class="icon-tile" iconName={a.icon_name || "application-x-executable"} pixelSize={34} />
                   <label label={a.name} />
                 </box>
               </button>)}
           </box>
-          <box spacing={7}>
+          <box class="lwidgets" spacing={7}>
             <box class="widget" hexpand orientation={Gtk.Orientation.VERTICAL}>
               <label class="tn" halign={Gtk.Align.START}
                 label={new Date().toLocaleDateString("en-GB",
                   { weekday: "long", day: "numeric", month: "long" })} />
-              <label class="hint" halign={Gtk.Align.START} label="No events today" />
+              <label class="hint" halign={Gtk.Align.START} label={todayEventLabel()} />
             </box>
             <box class="widget" hexpand>{/* Mpris mini-card: title/artist/play */}</box>
           </box>
