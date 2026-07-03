@@ -100,11 +100,7 @@ export default function Dock(monitor: Gdk.Monitor) {
     name="dock" namespace="kobel-dock" class="dock-window"
     gdkmonitor={monitor} anchor={Astal.WindowAnchor.BOTTOM}>
     <box class="dock" spacing={4}>
-      {found.map((app, i) =>
-        app ? <DockButton app={app} />
-            : <button class="dbtn" tooltipText={PINNED[i]}>
-                <image class="icon-tile" iconName="application-x-executable" pixelSize={32} />
-              </button>)}
+      {found.filter(Boolean).map(app => <DockButton app={app!} />)}
       <box class="sep" />
       <MediaWidget />
     </box>
