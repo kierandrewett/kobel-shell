@@ -232,7 +232,7 @@
   .rmv iconify-icon{font-size:10px}
   .rmv:hover{background:var(--rose);color:var(--rose-ink)}
   .editing .rmv{transform:scale(1);pointer-events:auto}
-  .srow .rmv{top:50%;left:auto;right:5px;translate:0 -50%}
+  .srow .rmv{top:50%;left:auto;right:6px;translate:0 -50%}
   .editing .chipm,.editing .chevb,.editing .slider{pointer-events:none}
   #qs-addwrap{display:none;margin-top:12px;padding-top:10px;border-top:1px solid var(--panel2)}
   .editing #qs-addwrap{display:block}
@@ -254,7 +254,10 @@
     gap:7px;font-size:11.5px;color:var(--mut)}
   .addempty iconify-icon{font-size:14px;color:var(--dim)}
   .sliders{display:flex;flex-direction:column;margin:10px 0 0}
-  .srow{display:flex;align-items:center;gap:10px;padding:0 2px;min-height:42px;position:relative}
+  .srow{display:flex;align-items:center;gap:10px;padding:0 2px;min-height:42px;position:relative;
+    transition:padding .34s var(--ovr)}
+  .editing .srow{padding-right:32px}
+  .editing .srow .chevb{display:none}
   .srow>iconify-icon{font-size:16px;color:var(--mut);flex:none}
   .slider{flex:1;height:36px;display:flex;align-items:center;cursor:pointer;touch-action:none}
   .rail{position:relative;height:30px;width:100%;border-radius:99px;background:var(--chip);overflow:hidden}
