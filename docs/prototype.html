@@ -1243,7 +1243,7 @@ APPS.forEach((a,i)=>{
   const di=b.querySelector(".di"),dic=b.querySelector(".dic");
   const slx=new Spring(0).on(v=>{
     dic.style.transform="translateX("+v.toFixed(2)+"px)";
-    dic.style.opacity=Math.max(0,1-Math.abs(v)/42).toFixed(3);
+    dic.style.opacity=Math.max(0,1-Math.abs(v)/22).toFixed(3);
   });
   function dots(){
     const box=b.querySelector(".dots");
@@ -1280,11 +1280,11 @@ APPS.forEach((a,i)=>{
     di.appendChild(out);
     const ox=new Spring(0).on(v=>{
       out.style.transform="translateX("+v.toFixed(2)+"px)";
-      out.style.opacity=Math.max(0,1-Math.abs(v)/40).toFixed(3);
+      out.style.opacity=Math.max(0,1-Math.abs(v)/13).toFixed(3);
     });
-    ox.cfg(520,28);ox.done=()=>out.remove();ox.set(dir*42);
-    slx.jump(-dir*42);
-    slx.cfg(430,24);slx.set(0);
+    ox.cfg(620,34);ox.done=()=>out.remove();ox.set(-dir*14);
+    slx.jump(dir*14);
+    slx.cfg(520,28);slx.set(0);
     announce(a.n+" — window "+((a.cur||0)+1)+" of "+a.wins);
   }
   function launchIcon(){
