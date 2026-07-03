@@ -247,10 +247,9 @@
     background:var(--rose);color:var(--rose-ink);display:none;place-items:center;
     font-size:11px;cursor:pointer;z-index:3;box-shadow:var(--shadow-sm)}
   .rmv iconify-icon{font-size:11px}
-  .editing .rmv{display:grid}
-  .editing .chipb,.editing .rbig .rc{transform:scale(.97)}
-  #qs-addwrap{display:none;margin-top:12px;padding-top:10px;border-top:1px solid var(--panel2)}
-  .editing #qs-addwrap{display:block}
+  .eview{pointer-events:none}
+  .eview .rmv{pointer-events:auto;display:grid}
+  #qs-addwrap{margin-top:12px;padding-top:10px;border-top:1px solid var(--panel2)}
   #qs-addwrap>b{display:block;font-size:11px;font-weight:650;color:var(--mut);padding:0 2px 8px}
   .qs-add{display:flex;flex-wrap:wrap;gap:7px}
   .addt{appearance:none;border:0;display:flex;align-items:center;gap:7px;
@@ -267,7 +266,7 @@
   .rbig.on .rc{background:var(--leaf);color:var(--ink)}
   .rbig em{font-style:normal;font-size:10px;color:var(--mut)}
   .sliders{display:flex;flex-direction:column;margin:10px 0 0}
-  .srow{display:flex;align-items:center;gap:10px;padding:0 2px;min-height:42px}
+  .srow{display:flex;align-items:center;gap:10px;padding:0 2px;min-height:42px;position:relative}
   .srow>iconify-icon{font-size:16px;color:var(--mut);flex:none}
   .slider{flex:1;height:36px;display:flex;align-items:center;cursor:pointer;touch-action:none}
   .rail{position:relative;height:30px;width:100%;border-radius:99px;background:var(--chip);overflow:hidden}
@@ -562,21 +561,7 @@
         </div>
         <div class="chips st" id="qs-chips" style="--i:0"></div>
         <div class="rounds st" id="qs-rounds" style="--i:1"></div>
-        <div id="qs-addwrap"><b>Add tiles</b><div class="qs-add" id="qs-add"></div></div>
-        <div class="sliders st" style="--i:2">
-          <div class="srow">
-            <iconify-icon icon="heroicons:speaker-wave"></iconify-icon>
-            <div class="slider" id="s-vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><div class="rail"><div class="fill"></div></div></div>
-            <span class="sval tn">64%</span>
-            <button class="chevb" data-x="mix" title="Per-app volume"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
-          </div>
-          <div class="srow">
-            <iconify-icon icon="heroicons:sun"></iconify-icon>
-            <div class="slider" id="s-bri" role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"><div class="rail"><div class="fill"></div></div></div>
-            <span class="sval tn">80%</span>
-            <button class="chevb" disabled style="opacity:.35" title="No external displays"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
-          </div>
-        </div>
+        <div class="sliders st" id="qs-sliders" style="--i:2"></div>
       </div>
       <div class="view" id="qv-sub">
         <div class="dhead">
@@ -1067,10 +1052,7 @@ function slider(root,onInput){
   });
   return{set,get value(){return val;}};
 }
-let vol=64,osdTimer=null;
-const sVol=slider($("s-vol"),v=>{vol=v;osdSync();});
-const sBri=slider($("s-bri"),()=>{});
-sVol.set(vol,false);sBri.set(80,false);
+let vol=64,osdTimer=null,sVol=null;
 function osdSync(){$("osd-fill").style.width=vol+"%";$("osd-val").textContent=Math.round(vol)+"%";}
 osdSync();
 function bumpOsd(){
@@ -1080,7 +1062,7 @@ function bumpOsd(){
 }
 function setVol(v){
   vol=Math.max(0,Math.min(100,v));
-  sVol.set(vol,false);osdSync();bumpOsd();
+  if(sVol)sVol.set(vol,false);osdSync();bumpOsd();
 }
 $("b-vol").addEventListener("wheel",e=>{
   e.preventDefault();setVol(vol+(e.deltaY<0?4:-4));
@@ -1100,47 +1082,79 @@ const CATALOG={
   silent:{kind:"round",label:"Silent",icon:"heroicons:bell-slash"},
   night:{kind:"round",label:"Night",icon:"heroicons:sun"},
   caffeine:{kind:"round",label:"Caffeine",icon:"lucide:coffee"},
-  record:{kind:"round",label:"Record",icon:"heroicons:video-camera"}
+  record:{kind:"round",label:"Record",icon:"heroicons:video-camera"},
+  volume:{kind:"slider",label:"Volume",icon:"heroicons:speaker-wave",x:"mix",val:64},
+  brightness:{kind:"slider",label:"Brightness",icon:"heroicons:sun",val:80},
+  mic:{kind:"slider",label:"Microphone",icon:"heroicons:microphone",val:70}
 };
 let qsTiles;
 try{qsTiles=JSON.parse(localStorage.getItem("kobel-qs")||"null");}catch(e){qsTiles=null;}
-if(!Array.isArray(qsTiles)||!qsTiles.length)qsTiles=["wifi","bt","save","dark","silent","night"];
+if(!Array.isArray(qsTiles)||!qsTiles.length)qsTiles=["wifi","bt","save","dark","silent","night","volume","brightness"];
+if(!qsTiles.some(id=>id==="volume"||id==="brightness"||id==="mic")&&!localStorage.getItem("kobel-qs-v2")){qsTiles=qsTiles.concat(["volume","brightness"]);}
+try{localStorage.setItem("kobel-qs-v2","1");}catch(e){}
 qsTiles=qsTiles.filter(id=>CATALOG[id]);
 function saveTiles(){try{localStorage.setItem("kobel-qs",JSON.stringify(qsTiles));}catch(e){}}
-function renderTiles(){
-  const chips=$("qs-chips"),rounds=$("qs-rounds"),add=$("qs-add");
-  chips.innerHTML="";rounds.innerHTML="";add.innerHTML="";
-  const rmv=id=>'<span class="rmv" data-rm="'+id+'" role="button" title="Remove">'+ph("heroicons:x-mark")+"</span>";
+function tileHTML(id){
+  const t=CATALOG[id];
+  const rmv='<span class="rmv" data-rm="'+id+'" role="button" title="Remove">'+ph("heroicons:x-mark")+"</span>";
+  if(t.kind==="round")
+    return '<button class="rbig'+(tstate[id]?" on":"")+'" data-t="'+id+'" title="'+t.label+'">'
+      +'<span class="rc">'+ph(t.icon)+'</span><em>'+t.label+"</em>"+rmv+"</button>";
+  if(t.kind==="slider")
+    return '<div class="srow" id="c-'+id+'">'+ph(t.icon)
+      +'<div class="slider" id="s-'+id+'" role="slider" tabindex="0" aria-label="'+t.label
+      +'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+t.val+'">'
+      +'<div class="rail"><div class="fill" style="width:'+t.val+'%"></div></div></div>'
+      +'<span class="sval tn">'+t.val+"%</span>"
+      +(t.x?'<button class="chevb" data-x="'+t.x+'" title="Per-app volume">'+ph("heroicons:chevron-right")+"</button>"
+           :'<span style="width:30px;flex:none"></span>')
+      +rmv+"</div>";
+  const tall=t.kind==="tall";
+  return '<div class="chipb '+(tall?"tall":"pill")+(tstate[id]?" on":"")+'" id="c-'+id+'">'
+    +'<button class="chipm" data-t="'+id+'">'
+    +(tall?'<span class="ti">'+ph(t.icon)+"</span>":ph(t.icon))
+    +'<span class="cl"><b>'+t.label+'</b><span data-on="'+t.sub[0]+'" data-off="'+t.sub[1]+'">'
+    +(tstate[id]?t.sub[0]:t.sub[1])+"</span></span></button>"
+    +(t.x?'<button class="chevb" data-x="'+t.x+'" title="'+t.label+'">'+ph("heroicons:chevron-right")+"</button>":"")
+    +rmv+"</div>";
+}
+function fillTiles(chipBox,roundBox,slideBox){
+  chipBox.innerHTML="";roundBox.innerHTML="";slideBox.innerHTML="";
   qsTiles.forEach(id=>{
-    const t=CATALOG[id];
-    if(t.kind==="round"){
-      rounds.insertAdjacentHTML("beforeend",
-        '<button class="rbig'+(tstate[id]?" on":"")+'" data-t="'+id+'" title="'+t.label+'">'
-        +'<span class="rc">'+ph(t.icon)+'</span><em>'+t.label+"</em></button>");
-      rounds.lastElementChild.insertAdjacentHTML("beforeend",rmv(id));
-    }else{
-      const tall=t.kind==="tall";
-      chips.insertAdjacentHTML("beforeend",
-        '<div class="chipb '+(tall?"tall":"pill")+(tstate[id]?" on":"")+'" id="c-'+id+'">'
-        +'<button class="chipm" data-t="'+id+'">'
-        +(tall?'<span class="ti">'+ph(t.icon)+"</span>":ph(t.icon))
-        +'<span class="cl"><b>'+t.label+'</b><span data-on="'+t.sub[0]+'" data-off="'+t.sub[1]+'">'
-        +(tstate[id]?t.sub[0]:t.sub[1])+"</span></span></button>"
-        +(t.x?'<button class="chevb" data-x="'+t.x+'" title="'+t.label+'">'+ph("heroicons:chevron-right")+"</button>":"")
-        +rmv(id)+"</div>");
-    }
+    const t=CATALOG[id];if(!t)return;
+    (t.kind==="round"?roundBox:t.kind==="slider"?slideBox:chipBox)
+      .insertAdjacentHTML("beforeend",tileHTML(id));
   });
+}
+function renderTiles(){
+  fillTiles($("qs-chips"),$("qs-rounds"),$("qs-sliders"));
+  sVol=null;
+  qsTiles.filter(id=>CATALOG[id]&&CATALOG[id].kind==="slider").forEach(id=>{
+    const el=$("s-"+id),t=CATALOG[id];
+    if(!el)return;
+    const inst=slider(el,v=>{t.val=v;if(id==="volume"){vol=v;osdSync();}});
+    inst.set(t.val,false);
+    if(id==="volume")sVol=inst;
+  });
+}
+function renderEdit(){
+  const body=$("q-body");
+  body.innerHTML='<div class="eview"><div class="chips" id="e-chips"></div>'
+    +'<div class="rounds" id="e-rounds"></div><div class="sliders" id="e-sliders"></div></div>'
+    +'<div id="qs-addwrap"><b>Add tiles</b><div class="qs-add" id="qs-add"></div></div>';
+  fillTiles($("e-chips"),$("e-rounds"),$("e-sliders"));
+  const add=$("qs-add");
   Object.keys(CATALOG).filter(id=>!qsTiles.includes(id)).forEach(id=>{
     add.insertAdjacentHTML("beforeend",
       '<button class="addt" data-add="'+id+'">'+ph(CATALOG[id].icon)+CATALOG[id].label+"</button>");
   });
   if(!add.children.length)add.innerHTML='<span style="font-size:11px;color:var(--dim)">All tiles placed</span>';
 }
-$("qv-root").addEventListener("click",e=>{
+$("p-qs").addEventListener("click",e=>{
   const rm=e.target.closest(".rmv");
-  if(rm){qsTiles=qsTiles.filter(x=>x!==rm.dataset.rm);saveTiles();renderTiles();return;}
+  if(rm){qsTiles=qsTiles.filter(x=>x!==rm.dataset.rm);saveTiles();renderTiles();if(drilled==="edit")renderEdit();qFit(false);return;}
   const ad=e.target.closest(".addt");
-  if(ad){qsTiles.push(ad.dataset.add);saveTiles();renderTiles();return;}
+  if(ad){qsTiles.push(ad.dataset.add);saveTiles();renderTiles();if(drilled==="edit")renderEdit();qFit(false);return;}
   const cv=e.target.closest(".chevb");
   if(cv&&cv.dataset.x){drill(cv.dataset.x);return;}
   const el=e.target.closest(".chipm,.rbig");
@@ -1152,11 +1166,7 @@ $("qv-root").addEventListener("click",e=>{
   const sub=el.querySelector(".cl span");
   if(sub)sub.textContent=tstate[k]?sub.dataset.on:sub.dataset.off;
 });
-$("qs-edit").addEventListener("click",()=>{
-  const on=$("p-qs").classList.toggle("editing");
-  $("qs-edit").classList.toggle("act",on);
-  announce(on?"Editing quick settings tiles":"Done editing");
-});
+$("qs-edit").addEventListener("click",()=>drill("edit"));
 renderTiles();
 
 /* drilldown: whole-panel subview with height spring */
@@ -1210,6 +1220,11 @@ function buildSub(kind){
       +btRow("game-controller","DualSense","paired",false)
       +"</div>";
     hookRows(body);
+  }else if(kind==="edit"){
+    $("q-title").textContent="Edit tiles";
+    $("q-ctl").innerHTML="";
+    renderEdit();
+    return;
   }else{
     $("q-title").textContent="Volume";
     $("q-ctl").innerHTML="";
@@ -1674,7 +1689,7 @@ if(hash){
   else if(hash==="fail"){setGnob(false);setMediaEmpty(true);openP("qs");}
   else if(hash==="drill"){openP("qs");drill("bt");}
   else if(hash==="cal")openP("cal");
-  else if(hash==="qsedit"){openP("qs");$("p-qs").classList.add("editing");}
+  else if(hash==="qsedit"){openP("qs");drill("edit");}
   for(const s of Array.from(live))s.jump(s.t);
 }
 qFit(true);
