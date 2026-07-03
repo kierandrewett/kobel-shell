@@ -1,0 +1,4 @@
+# Quickshell / QML caches
+*.qmlc
+*.jsc
+.qmlcache/
