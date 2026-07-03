@@ -66,7 +66,7 @@ function DockButton({ app }: { app: Apps.Application }) {
     }}>
     <overlay>
       <image class="icon-tile" iconName={app.icon_name || "application-x-executable"}
-             pixelSize={32} />
+             pixelSize={38} />
       {/* dots as OVERLAY — zero layout footprint */}
       <Dots type="overlay" appId={appId} />
     </overlay>
@@ -102,7 +102,7 @@ export default function Dock(monitor: Gdk.Monitor) {
       {slots.map(({ id, app }) => app
         ? <DockButton app={app} />
         : <button class="dbtn placeholder" tooltipText={id.split(".").pop()}>
-            <image class="icon-tile" iconName="application-x-executable-symbolic" pixelSize={26} />
+            <image class="icon-tile" iconName="application-x-executable-symbolic" pixelSize={30} />
           </button>)}
       <box class="sep" />
       <MediaWidget />

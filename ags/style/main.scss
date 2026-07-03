@@ -9,10 +9,10 @@ $tx:     #f3eef3;
 $mut:    #b5adbc;
 $dim:    #8d8693;
 $leaf:   #b5cb48;
-$leaf2:  #a3b93e;
+$leaf2:  #96ae30;
 $ink:    #192003;
 $rose:   #ef86a0;
-$roseink:#571b2e;
+$roseink:#4b0f1f;
 $amber:  #edbb64;
 
 $ovr: cubic-bezier(.24,1.36,.35,1);
@@ -74,12 +74,14 @@ image { -gtk-icon-style: regular; }
 }
 
 // ============ DOCK ============
+// CDP exact: dock pad5 r16 gap4 bg panel; tile 42×42 r12 pad0; sep 1px margin 3px bg chip;
+// dot(on) 12×4 r99.
 .dock {
   background-color: $panel;
-  padding: 6px; border-radius: 18px;
+  padding: 5px; border-radius: 16px;
   .dbtn { border-radius: 12px; }
   .icon-tile {
-    min-width: 44px; min-height: 44px; padding: 6px; border-radius: 12px;
+    min-width: 42px; min-height: 42px; padding: 0; border-radius: 12px;
     transition: background-color 160ms;
   }
   .dbtn:hover .icon-tile { background-color: rgba(255,255,255,0.09); }
@@ -90,7 +92,7 @@ image { -gtk-icon-style: regular; }
          margin: 0 1.5px; transition: min-width 260ms $ovr, background-color 220ms; }
   .dot.on { background-color: $leaf; min-width: 12px; }
   .dot.mini { min-width: 3px; min-height: 3px; opacity: .7; }
-  .sep { background-color: $chip; min-width: 1px; margin: 6px 4px; }
+  .sep { background-color: $chip; min-width: 1px; margin: 0 3px; }
 }
 
 // ============ shared sheet ============
