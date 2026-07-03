@@ -49,8 +49,8 @@ decoration for its own sake.
    compositor can't render.
 3. **Accent is earned.** The leaf accent appears only as active state, primary action,
    and live data — solid fills with dark ink text, never tints-as-decoration.
-4. **Data wears mono.** Times, percentages, metrics are tabular monospace; prose and
-   labels are the system sans.
+4. **Data wears tabular.** Times, percentages, metrics render in Inter with tabular
+   numerals (`tnum`) so digits align like an instrument; one family carries the whole UI.
 5. **Dogfood gnoblin.** org.gnoblin.Shell is a visible, first-class surface (soft
    reload, feature ownership, screencast grants) — the shell demos the compositor.
 

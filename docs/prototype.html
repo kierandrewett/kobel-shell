@@ -172,6 +172,14 @@
   .qtop .qb{display:flex;gap:6px;align-items:center;font-size:11.5px;font-weight:600;color:var(--mut)}
   .qtop .qb iconify-icon{font-size:15px}
   .rbtn.err{background:var(--amber);color:var(--ink)}
+  .status.err,.status.err:hover{background:var(--amber)}
+  .status.err .si,.status.err .pct,.status.err .pct iconify-icon{color:var(--ink)}
+  .gbanner{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--rt);
+    background:var(--panel2);margin-bottom:8px}
+  .gbanner>iconify-icon{color:var(--amber);font-size:16px;flex:none}
+  .gbanner p{flex:1;font-size:10.5px;color:var(--mut);line-height:1.4;min-width:0}
+  .gbanner p b{display:block;color:var(--amber);font-size:11.5px;font-weight:650}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   .tray{display:flex;align-items:center;gap:1px;margin-right:3px}
   .tray .ibtn{font-size:14px;width:28px}
   .ibtn.lang{width:auto;padding:0 8px;font-size:11px;font-weight:650}
@@ -196,19 +204,20 @@
     text-align:left;border:0;transition:background .22s,transform .3s var(--ovr)}
   .chipb:hover{background:var(--chip)}
   .chipb:active{transform:scale(.96)}
-  .chipb>i{font-size:17px;color:var(--mut);flex:none;transition:color .22s}
+  .chipb>iconify-icon,.chipm>iconify-icon{font-size:17px;color:var(--mut);flex:none;transition:color .22s}
   .chipb .cl{min-width:0;line-height:1.3;flex:1}
   .chipb .cl b{display:block;font-size:12.5px;font-weight:650}
   .chipb .cl span{display:block;font-size:10.5px;color:var(--mut);white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;transition:color .22s}
   .chipb.on{background:var(--leaf)}
   .chipb.on:hover{background:var(--leaf2)}
-  .chipb.on>i,.chipb.on .cl b{color:var(--ink)}
+  .chipb.on>iconify-icon,.chipb.on .chipm>iconify-icon,.chipb.on .cl b{color:var(--ink)}
   .chipb.on .cl span{color:oklch(34% .06 122)}
   .chipb.busy{background:var(--panel2)}
   .chipb.busy .cl span{color:var(--amber)}
   .chipb.pill{border-radius:999px}
-  .chipb.tall{grid-column:2;grid-row:1/3;flex-direction:column;align-items:stretch;
+  .chipb.tall{grid-column:2;grid-row:1/3}
+  .chipb.tall .chipm{flex-direction:column;align-items:stretch;
     justify-content:space-between;gap:10px;padding:12px}
   .chipb.tall .ti{width:36px;height:36px;border-radius:99px;background:rgb(0 0 0/.22);
     display:grid;place-items:center;color:var(--mut);flex:none;font-size:17px}
@@ -218,7 +227,11 @@
     border-radius:9px;display:grid;place-items:center;color:var(--dim);cursor:pointer;
     transition:background .15s;font-size:15px}
   .chevb:hover{background:var(--chip)}
-  .chipb .chevb{align-self:stretch;height:auto;margin:-9px -8px -9px 2px;
+  .chipb:has(.chipm){padding:0}
+  .chipm{appearance:none;border:0;background:transparent;display:flex;align-items:center;gap:9px;
+    padding:9px 8px 9px 12px;flex:1;min-width:0;cursor:pointer;text-align:left;
+    border-radius:inherit;color:inherit}
+  .chipb .chevb{align-self:stretch;height:auto;margin:0;
     border-left:1px solid rgb(0 0 0/.18);border-radius:0 var(--rt) var(--rt) 0;width:32px}
   .chipb .chevb:hover{background:rgb(0 0 0/.16)}
   .chipb.pill .chevb{border-radius:0 999px 999px 0}
@@ -235,7 +248,7 @@
   .rbig em{font-style:normal;font-size:10px;color:var(--mut)}
   .sliders{display:flex;flex-direction:column;margin:10px 0 0}
   .srow{display:flex;align-items:center;gap:10px;padding:0 2px;min-height:42px}
-  .srow>i{font-size:16px;color:var(--mut);flex:none}
+  .srow>iconify-icon{font-size:16px;color:var(--mut);flex:none}
   .slider{flex:1;height:36px;display:flex;align-items:center;cursor:pointer;touch-action:none}
   .rail{position:relative;height:30px;width:100%;border-radius:99px;background:var(--chip);overflow:hidden}
   .fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--leaf)}
@@ -326,7 +339,7 @@
   .xrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;
     border:0;background:transparent;cursor:pointer;text-align:left;transition:background .15s;width:100%}
   .xrow:hover{background:var(--panel2)}
-  .xrow>i{font-size:16px;color:var(--mut);flex:none}
+  .xrow>iconify-icon{font-size:16px;color:var(--mut);flex:none}
   .xrow b{font-size:12.5px;font-weight:600;flex:1;text-align:left}
   .xrow .xs{font-size:10.5px;color:var(--mut)}
   .xrow.active .xs{color:var(--leaf)}
@@ -353,8 +366,8 @@
     place-items:center;border-radius:99px;margin:0 auto;font-weight:600}
   .calgrid .day.out{color:var(--dim);font-weight:400}
   .calgrid .day.today{background:var(--leaf);color:var(--ink);font-weight:700}
-  .nhead{display:flex;align-items:baseline;gap:8px;padding:2px 6px 9px;flex:none;
-    text-shadow:0 1px 6px rgb(10 8 20/.55)}
+  .nhead{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;flex:none;
+    background:var(--panel);border-radius:14px;box-shadow:var(--shadow-sm);margin-bottom:8px}
   .nhead b{font-size:13.5px;font-weight:650}
   .nhead span{font-size:11px;color:var(--dim)}
   .nclear{margin-left:auto;appearance:none;border:0;background:transparent;color:var(--rose);
@@ -383,8 +396,8 @@
   .nprog{margin-top:7px;height:4px;border-radius:99px;background:var(--chip);
     position:relative;overflow:hidden}
   .nprog i{position:absolute;inset:0 auto 0 0;background:var(--leaf);border-radius:99px}
-  .nempty{padding:22px 0 16px;text-align:center;color:var(--tx);font-size:12.5px;display:none;
-    text-shadow:0 1px 6px rgb(10 8 20/.55)}
+  .nempty{padding:20px 0 16px;text-align:center;color:var(--mut);font-size:12.5px;display:none;
+    background:var(--panel);border-radius:20px;box-shadow:var(--shadow-sm)}
   .nempty i{font-size:22px;color:var(--mut);display:block;margin:0 auto 8px;width:fit-content}
   .nlist.empty+.nempty{display:block}
 
@@ -399,7 +412,7 @@
   .osd{bottom:64px;left:50%;width:230px;margin-left:-115px;display:flex;align-items:center;
     gap:11px;padding:10px 15px;border-radius:999px;z-index:55;pointer-events:none!important;
     background:var(--panelT);backdrop-filter:blur(16px) saturate(1.35);box-shadow:var(--shadow)}
-  .osd>i{font-size:15px;color:var(--tx)}
+  .osd>iconify-icon{font-size:15px;color:var(--tx)}
   .osd .rail{position:relative;height:8px;flex:1;border-radius:99px;background:var(--chip);overflow:hidden}
   .osd .sval{width:34px}
 
@@ -521,17 +534,26 @@
           <button class="rbtn" id="u-out" title="Log out"><iconify-icon icon="heroicons:arrow-right-start-on-rectangle"></iconify-icon></button>
           <button class="rbtn danger" id="u-power" title="Session"><iconify-icon icon="heroicons:power"></iconify-icon></button>
         </div>
+        <div class="gbanner" id="g-banner" role="status" style="display:none">
+          <iconify-icon icon="lucide:leaf"></iconify-icon>
+          <p><b>org.gnoblin.Shell disconnected</b>osd + notifs handed back to gnome</p>
+          <button class="gbtn" id="g-reconnect">Reconnect</button>
+        </div>
         <div class="chips st" style="--i:0">
-          <button class="chipb pill on" data-t="wifi" id="c-wifi">
-            <iconify-icon icon="heroicons:wifi"></iconify-icon>
-            <span class="cl"><b>Wi-Fi</b><span data-on="chompers-5G" data-off="Off">chompers-5G</span></span>
-            <span class="chevb" data-x="wifi" role="button" tabindex="0" title="Networks"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></span>
-          </button>
-          <button class="chipb tall on" data-t="bt" id="c-bt">
-            <span class="ti"><iconify-icon icon="tabler:bluetooth"></iconify-icon></span>
-            <span class="cl"><b>Bluetooth</b><span data-on="WH-1000XM5" data-off="Off">WH-1000XM5</span></span>
-            <span class="chevb" data-x="bt" role="button" tabindex="0" title="Devices"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></span>
-          </button>
+          <div class="chipb pill on" id="c-wifi">
+            <button class="chipm" data-t="wifi">
+              <iconify-icon icon="heroicons:wifi"></iconify-icon>
+              <span class="cl"><b>Wi-Fi</b><span data-on="chompers-5G" data-off="Off">chompers-5G</span></span>
+            </button>
+            <button class="chevb" data-x="wifi" title="Wi-Fi networks"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
+          </div>
+          <div class="chipb tall on" id="c-bt">
+            <button class="chipm" data-t="bt">
+              <span class="ti"><iconify-icon icon="tabler:bluetooth"></iconify-icon></span>
+              <span class="cl"><b>Bluetooth</b><span data-on="WH-1000XM5" data-off="Off">WH-1000XM5</span></span>
+            </button>
+            <button class="chevb" data-x="bt" title="Bluetooth devices"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
+          </div>
           <button class="chipb pill" data-t="save">
             <iconify-icon icon="heroicons:bolt"></iconify-icon>
             <span class="cl"><b>Power Saver</b><span data-on="On" data-off="Off">Off</span></span>
@@ -553,13 +575,13 @@
             <iconify-icon icon="heroicons:speaker-wave"></iconify-icon>
             <div class="slider" id="s-vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><div class="rail"><div class="fill"></div></div></div>
             <span class="sval tn">64%</span>
-            <span class="chevb" data-x="mix" role="button" tabindex="0" title="Per-app volume"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></span>
+            <button class="chevb" data-x="mix" title="Per-app volume"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
           </div>
           <div class="srow">
             <iconify-icon icon="heroicons:sun"></iconify-icon>
             <div class="slider" id="s-bri" role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"><div class="rail"><div class="fill"></div></div></div>
             <span class="sval tn">80%</span>
-            <span class="chevb" role="button" aria-disabled="true" style="opacity:.35;pointer-events:none" title="No external displays"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></span>
+            <button class="chevb" disabled style="opacity:.35" title="No external displays"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
           </div>
         </div>
       </div>
@@ -818,13 +840,21 @@ const sessO=new Spring(0).on(v=>{
   const el=$("p-sess");el.style.opacity=v.toFixed(3);
   el.style.pointerEvents=v>.4?"auto":"none";
 });
+const srl=document.createElement("div");
+srl.className="sr-only";srl.setAttribute("role","status");srl.setAttribute("aria-live","polite");
+document.body.appendChild(srl);
+let srT=0;
+function announce(m){clearTimeout(srT);srT=setTimeout(()=>{srl.textContent=m;},80);}
 let cur=null,sessOpen=false,invoker=null;
 const scrim=$("scrim");
+function setInert(on){
+  document.querySelectorAll(".bar,.dock,.win,.demo,.meta").forEach(el=>{el.inert=on;});
+}
 function openP(n,from){
   if(cur===n)return closeAll();
   if(cur)P[cur].hide();
   cur=n;invoker=from||document.activeElement;
-  P[n].show();scrim.style.display="block";
+  P[n].show();scrim.style.display="block";setInert(true);
   if(n==="launch")setTimeout(()=>{$("lq").focus();},60);
   if(n==="nc")markRead();
   if(n==="qs")qFit(true);
@@ -834,7 +864,7 @@ function closeAll(){
   if(sessOpen){sessOpen=false;sessO.cfg(460,42).set(0);
     const si=$("sess-inner");si.classList.remove("open");si.style.pointerEvents="none";
     resetConfirms();}
-  scrim.style.display="none";
+  scrim.style.display="none";setInert(false);
   $("lq").blur();
   if(invoker&&invoker.focus){invoker.focus();invoker=null;}
 }
@@ -846,7 +876,7 @@ addEventListener("keydown",e=>{
 });
 function openSession(from){
   closeAll();sessOpen=true;invoker=from||document.activeElement;
-  scrim.style.display="block";
+  scrim.style.display="block";setInert(true);
   sessO.cfg(320,29).set(1);
   const si=$("sess-inner");si.classList.add("open");si.style.pointerEvents="auto";
   setTimeout(()=>{si.querySelector(".sbtn").focus();},60);
@@ -1050,6 +1080,7 @@ sVol.set(vol,false);sBri.set(80,false);
 function osdSync(){$("osd-fill").style.width=vol+"%";$("osd-val").textContent=Math.round(vol)+"%";}
 osdSync();
 function bumpOsd(){
+  announce("Volume "+Math.round(vol)+"%");
   osdP.show();clearTimeout(osdTimer);
   osdTimer=setTimeout(()=>osdP.hide(),1400);
 }
@@ -1064,13 +1095,13 @@ $("b-vol").addEventListener("click",e=>{e.stopPropagation();setVol(vol);});
 
 /* ================= chips + drilldown ================= */
 const tstate={wifi:true,bt:true,save:false,dark:true,silent:false,night:false};
-document.querySelectorAll(".chipb,.rbig").forEach(el=>{
+document.querySelectorAll(".chipm,.rbig,button.chipb").forEach(el=>{
   el.addEventListener("click",e=>{
     if(e.target.closest(".chevb"))return;
     const k=el.dataset.t;
     if(k==="wifi"&&!tstate.wifi){wifiConnect("chompers-5G");return;}
     tstate[k]=!tstate[k];
-    el.classList.toggle("on",tstate[k]);
+    (el.closest(".chipb")||el).classList.toggle("on",tstate[k]);
     const sub=el.querySelector(".cl span");
     if(sub)sub.textContent=tstate[k]?sub.dataset.on:sub.dataset.off;
   });
@@ -1106,9 +1137,7 @@ function undrill(){
 }
 $("q-back").addEventListener("click",undrill);
 document.querySelectorAll(".chevb[data-x]").forEach(c=>{
-  const go=e=>{e.stopPropagation();e.preventDefault();drill(c.dataset.x);};
-  c.addEventListener("click",go);
-  c.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" ")go(e);});
+  c.addEventListener("click",e=>{e.stopPropagation();drill(c.dataset.x);});
 });
 const NETS=[{n:"chompers-5G",s:"wifi-high"},{n:"chompers-2G",s:"wifi-medium"},{n:"BT-Hub-9F2",s:"wifi-low"}];
 let wifiNet="chompers-5G",wifiBusy=null;
@@ -1186,12 +1215,14 @@ function wifiConnect(name){
   chip.classList.remove("on");tstate.wifi=false;wifiBusy=name;
   chip.classList.add("busy");
   chip.querySelector(".cl span").textContent="Connecting…";
+  announce("Connecting to "+name);
   renderNets();
   setTimeout(()=>{
     tstate.wifi=true;wifiNet=name;wifiBusy=null;
     chip.classList.remove("busy");chip.classList.add("on");
     const sub=chip.querySelector(".cl span");
     sub.textContent=name;sub.dataset.on=name;
+    announce("Connected to "+name);
     renderNets();
     const sw=document.querySelector('.sw[data-sw="wifi"]');
     if(sw){sw.classList.add("on");sw.setAttribute("aria-checked","true");}
@@ -1393,6 +1424,7 @@ $("n-clear").addEventListener("click",()=>{
 });
 function toast(n){
   n.when="now";
+  announce(n.title+" — "+n.body);
   if(tstate.silent){
     store.unshift(n);unread++;syncBadge(true);
     bellR.cfg(330,7).kick(-330);bellR.set(0);
@@ -1529,6 +1561,9 @@ function setGnob(up){
   const b=$("g-reload");
   b.classList.toggle("err",!up);
   b.title=up?"Soft-reload gnoblin":"gnoblin disconnected — click to reconnect";
+  $("b-status").classList.toggle("err",!up);
+  $("g-banner").style.display=up?"none":"flex";
+  announce(up?"gnoblin connected":"gnoblin disconnected — OSD handed back to GNOME");
 }
 $("g-reload").addEventListener("click",()=>{
   relR.jump(0);relR.cfg(130,17).set(360);
@@ -1540,6 +1575,7 @@ $("g-reload").addEventListener("click",()=>{
   setTimeout(()=>toast({title:"gnoblin",
     body:"Soft-reload complete — 4 extensions, 2 scripts ✓",icon:"leaf"}),450);
 });
+$("g-reconnect").addEventListener("click",()=>$("g-reload").click());
 
 /* ================= demo strip ================= */
 const pool=[
