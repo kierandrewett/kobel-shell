@@ -304,8 +304,12 @@ scale > trough > slider {
 }
 
 // ============ OSD ============
-.osd { background-color: rgba(16,14,20,0.86); border-radius: 999px; padding: 11px 16px;
-  image { color: $tx; } }
+// CDP/source: padding 10/15, r999, bg panelT (blur), gap 11, icon 15px, rail 8px, sval 34.
+.osd { background-color: rgba(16,13,20,0.82); border-radius: 999px; padding: 10px 15px;
+  image { color: $tx; -gtk-icon-size: 15px; }
+  // OSD rail is 8px (thicker than the QS 6px slider)
+  scale > trough, scale > trough > highlight { min-height: 8px; }
+  .sval { min-width: 34px; color: $tx; font-size: 12px; } }
 
 // ============ SESSION ============
 // CDP exact: dim oklch(.12 .03 310/.8); sbtn pad6 r12 gap10; sic 59×59 r24 bg~#171420;
