@@ -80,6 +80,7 @@ image { -gtk-icon-style: regular; }
     transition: background-color 160ms;
   }
   .dbtn:hover .icon-tile { background-color: rgba(255,255,255,0.09); }
+  .placeholder .icon-tile { background-color: $panel2; color: $dim; }
   // dots: absolute overlay (Gtk.Overlay), zero layout footprint
   .dots { margin-bottom: 3px; }
   .dot { background-color: $dim; border-radius: 99px; min-width: 4px; min-height: 4px;

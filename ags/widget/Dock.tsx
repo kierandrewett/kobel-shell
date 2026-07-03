@@ -92,14 +92,18 @@ export default function Dock(monitor: Gdk.Monitor) {
   const resolve = (id: string): Apps.Application | undefined =>
     all.find(a => a.entry === `${id}.desktop` || a.entry === id)
     ?? all.find(a => a.entry?.toLowerCase().includes(id.toLowerCase().split(".").pop()!))
-  const pinned = PINNED.map(resolve).filter(Boolean) as Apps.Application[]
-  const fill = all.filter(a => !pinned.includes(a)).slice(0, PINNED.length - pinned.length)
-  const found = [...pinned, ...fill]
+  // Always render one slot per pin so the dock keeps its shape; resolved pins get the
+  // real app + behavior, unresolved ones a labelled placeholder tile.
+  const slots = PINNED.map(id => ({ id, app: resolve(id) }))
   return <window
     name="dock" namespace="kobel-dock" class="dock-window"
     gdkmonitor={monitor} anchor={Astal.WindowAnchor.BOTTOM}>
     <box class="dock" spacing={4}>
-      {found.map(app => <DockButton app={app} />)}
+      {slots.map(({ id, app }) => app
+        ? <DockButton app={app} />
+        : <button class="dbtn placeholder" tooltipText={id.split(".").pop()}>
+            <image class="icon-tile" iconName="application-x-executable-symbolic" pixelSize={26} />
+          </button>)}
       <box class="sep" />
       <MediaWidget />
     </box>
