@@ -62,6 +62,10 @@ export function Toasts(monitor: Gdk.Monitor) {
   })
   return <window
     name="toasts" namespace="kobel-toasts" gdkmonitor={monitor}
+    // Hide the whole toast surface while the drawer is open (toasts are ADOPTED into
+    // the drawer) — a reactive window-visibility bind, robust regardless of the
+    // per-item list reconciliation.
+    visible={bind(drawerOpen).as(o => !o)}
     // Toasts are a floating overlay (like the prototype's absolute top/right); the
     // float inset clears the floating bar (marginTop 10 + height 42) + a small gap,
     // and the right inset matches the bar's edge margin.
