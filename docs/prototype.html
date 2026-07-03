@@ -1,8 +1,7 @@
-<title>kobel-shell — sakura pop v4, live</title>
+<title>kobel-shell — sakura pop v5, live</title>
 <link rel="preconnect" href="https://rsms.me/">
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
-<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
-<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
 <style>
   :root{
     --panel:oklch(17% .012 300);
@@ -29,7 +28,7 @@
   body{background:oklch(12% .015 300);color:var(--tx);font-family:var(--font);min-height:100vh}
   .tn{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
   button{font-family:inherit;color:inherit}
-  i.ph,i.ph-fill{display:inline-flex;line-height:1}
+  iconify-icon{display:inline-flex;line-height:1}
   :focus-visible{outline:2px solid var(--leaf);outline-offset:2px;border-radius:6px}
 
   .meta{max-width:1280px;margin:0 auto;padding:26px 24px 6px}
@@ -166,6 +165,16 @@
   .qclock .qb{margin-left:auto;display:flex;gap:6px;align-items:center;padding-top:6px;
     font-size:11.5px;font-weight:600;color:var(--mut)}
   .qclock .qb i{font-size:15px}
+  .qtop{display:flex;align-items:center;gap:7px;padding:0 2px 11px}
+  .qtop .qb{display:flex;gap:6px;align-items:center;font-size:11.5px;font-weight:600;color:var(--mut)}
+  .qtop .qb iconify-icon{font-size:15px}
+  .rbtn.err{background:var(--amber);color:var(--ink)}
+  .tray{display:flex;align-items:center;gap:1px;margin-right:3px}
+  .tray .ibtn{font-size:14px;width:28px}
+  .ibtn.lang{width:auto;padding:0 8px;font-size:11px;font-weight:650}
+  .nc .media{margin:0 0 11px}
+  .calp{top:58px;left:50%;width:330px;margin-left:-165px;padding:10px}
+  .calp .cal{margin:0;background:transparent;padding:2px 4px 6px}
   .chips{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
   .chipb{position:relative;display:flex;min-width:0;align-items:center;gap:9px;
     padding:9px 8px 9px 12px;border-radius:var(--rt);background:var(--panel2);cursor:pointer;
@@ -189,11 +198,15 @@
   .chipb.tall .ti{width:36px;height:36px;border-radius:99px;background:rgb(0 0 0/.22);
     display:grid;place-items:center;color:var(--mut);flex:none;font-size:17px}
   .chipb.tall.on .ti{background:rgb(255 255 255/.38);color:var(--ink)}
-  .chipb.tall .chevb{position:absolute;top:10px;right:10px}
-  .chevb{appearance:none;border:0;background:transparent;width:24px;height:24px;flex:none;
-    border-radius:7px;display:grid;place-items:center;color:var(--dim);cursor:pointer;
-    transition:background .15s;font-size:13px}
-  .chevb:hover{background:rgb(0 0 0/.14)}
+  .chipb.tall .chevb{position:absolute;top:8px;right:8px;height:30px;margin:0;border-left:0;border-radius:99px;background:rgb(0 0 0/.14)}
+  .chevb{appearance:none;border:0;background:transparent;width:30px;height:30px;flex:none;
+    border-radius:9px;display:grid;place-items:center;color:var(--dim);cursor:pointer;
+    transition:background .15s;font-size:15px}
+  .chevb:hover{background:var(--chip)}
+  .chipb .chevb{align-self:stretch;height:auto;margin:-9px -8px -9px 2px;
+    border-left:1px solid rgb(0 0 0/.18);border-radius:0 var(--rt) var(--rt) 0;width:32px}
+  .chipb .chevb:hover{background:rgb(0 0 0/.16)}
+  .chipb.pill .chevb{border-radius:0 999px 999px 0}
   .chipb.on .chevb{color:var(--ink)}
   .rounds{display:flex;gap:10px;margin-top:8px}
   .rbig{appearance:none;border:0;flex:1;display:flex;flex-direction:column;align-items:center;
@@ -211,8 +224,7 @@
   .slider{flex:1;height:36px;display:flex;align-items:center;cursor:pointer;touch-action:none}
   .rail{position:relative;height:30px;width:100%;border-radius:99px;background:var(--chip);overflow:hidden}
   .fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--leaf)}
-  .knob{position:absolute;top:50%;width:4px;height:16px;border-radius:3px;background:var(--ink);
-    translate:-140% -50%;will-change:scale}
+  
   .sval{font-size:11px;font-weight:600;color:var(--mut);width:32px;text-align:right}
   .media{margin-top:9px;padding:10px 11px 9px;border-radius:var(--rt);background:var(--panel2)}
   .mrow{display:flex;gap:11px;align-items:center}
@@ -309,11 +321,8 @@
   .mixrow em{font-style:normal;font-size:12px;color:var(--mut);width:56px;flex:none}
   .mixrow .slider{height:30px}
   .mixrow .rail{height:22px}
-  .mixrow .knob{width:3px;height:12px}
-  .done{appearance:none;border:0;background:transparent;color:var(--tx);
-    font:600 13px var(--font);padding:12px 0 4px;margin-top:8px;width:100%;cursor:pointer;
-    border-top:1px solid var(--panel2);transition:color .15s}
-  .done:hover{color:var(--leaf)}
+  
+  
 
   /* notification drawer */
   .nc{top:10px;right:10px;bottom:10px;width:348px;padding:12px;display:flex;flex-direction:column}
@@ -337,11 +346,10 @@
   .nclear i{font-size:12px}
   .nlist{display:flex;flex-direction:column;overflow-y:auto;min-height:0}
   .ncard{will-change:transform,opacity,height}
-  .ncard .inner{display:flex;gap:10px;padding:11px 12px;margin-bottom:2px;border-radius:8px;
+  .ncard .inner{display:flex;gap:10px;padding:11px 12px;margin-bottom:8px;border-radius:14px;
     background:var(--panel2);cursor:grab;position:relative;align-items:flex-start}
   .ncard .inner:active{cursor:grabbing}
-  .ncard:first-child .inner{border-top-left-radius:var(--rp);border-top-right-radius:var(--rp)}
-  .ncard:last-child .inner{border-bottom-left-radius:var(--rp);border-bottom-right-radius:var(--rp)}
+
   .nic{width:30px;height:30px;border-radius:9px;flex:none;display:grid;place-items:center;
     color:#fff;font-size:15px}
   .ntx{flex:1;min-width:0;line-height:1.35}
@@ -403,10 +411,10 @@
 </style>
 
 <div class="meta">
-  <h1>kobel-shell <em>· sakura pop v4 — live, click everything</em></h1>
-  <p>Drilldown quick settings (chevrons slide the whole panel into a subview and spring-resize it),
-     Inter with tabular numerals, Phosphor icons, dock, slide-out notifications, failure states,
-     full keyboard path. Springs everywhere; 1:1 with QML.</p>
+  <h1>kobel-shell <em>· sakura pop v5 — live, click everything</em></h1>
+  <p>Heroicons (+ Lucide/Tabler for gaps), calendar on the clock, media in the notification drawer,
+     slim quick settings with drilldowns, GNOME-style dock launch zoom, tray icons. Springs
+     everywhere; 1:1 with QML. Icons/fonts load from CDN — needs network.</p>
 </div>
 <div class="demo">
   <button data-demo="notify">send a notification</button>
@@ -437,23 +445,28 @@
 
   <!-- ============ BAR ============ -->
   <div class="bar">
-    <button class="ibtn" id="b-launch" title="Launcher (Super)"><i class="ph ph-squares-four"></i></button>
-    <div class="ws" id="ws" aria-label="Workspaces"></div>
+    <button class="ibtn" id="b-launch" title="Launcher (Super)"><iconify-icon icon="heroicons:magnifying-glass"></iconify-icon></button>
     <div class="ftitle" id="ftitle">zed — Bar.qml</div>
     <div class="grow"></div>
     <button class="bcenter" id="b-clock" title="Calendar &amp; notifications">
       <span class="clk tn" id="clk">10:42</span><span class="bdate" id="bdate">Fri 3 Jul</span>
     </button>
     <div class="grow"></div>
+    <span class="tray">
+      <button class="ibtn" title="Discord"><iconify-icon icon="simple-icons:discord"></iconify-icon></button>
+      <button class="ibtn" title="Steam"><iconify-icon icon="simple-icons:steam"></iconify-icon></button>
+      <button class="ibtn" title="Telegram"><iconify-icon icon="simple-icons:telegram"></iconify-icon></button>
+      <button class="ibtn lang" title="Keyboard layout">en</button>
+    </span>
     <button class="status" id="b-status" title="Quick settings">
-      <span class="si"><i class="ph ph-wifi-high"></i></span>
-      <span class="si" id="b-vol" title="Volume — scroll me"><i class="ph ph-speaker-simple-high"></i></span>
-      <span class="pct tn"><i class="ph ph-battery-high"></i>100%</span>
+      <span class="si"><iconify-icon icon="heroicons:wifi"></iconify-icon></span>
+      <span class="si" id="b-vol" title="Volume — scroll me"><iconify-icon icon="heroicons:speaker-wave"></iconify-icon></span>
+      <span class="pct tn"><iconify-icon icon="heroicons:battery-100"></iconify-icon>100%</span>
     </button>
     <button class="ibtn bell" id="b-bell" title="Notifications">
-      <i class="ph ph-bell"></i><b class="badge tn" id="badge">1</b>
+      <iconify-icon icon="heroicons:bell"></iconify-icon><b class="badge tn" id="badge">1</b>
     </button>
-    <button class="ibtn" id="b-power" title="Session"><i class="ph ph-power"></i></button>
+    <button class="ibtn" id="b-power" title="Session"><iconify-icon icon="heroicons:power"></iconify-icon></button>
   </div>
 
   <!-- ============ DOCK ============ -->
@@ -464,7 +477,7 @@
   <!-- ============ LAUNCHER ============ -->
   <section class="p sheet launcher" id="p-launch">
     <div class="lsearch st" style="--i:0">
-      <i class="ph ph-magnifying-glass"></i>
+      <iconify-icon icon="heroicons:magnifying-glass"></iconify-icon>
       <input id="lq" placeholder="Apps, files, =maths — ':' for commands" autocomplete="off" spellcheck="false">
       <kbd>esc</kbd>
     </div>
@@ -482,61 +495,92 @@
   <section class="p sheet qs" id="p-qs">
     <div class="qsviews" id="qsviews">
       <div class="view" id="qv-root">
-        <div class="qclock st" style="--i:0">
-          <div><b class="tn" id="q-time">14:08</b><span id="q-date">Fri 3 Jul</span></div>
-          <span class="qb tn"><i class="ph ph-battery-high"></i>100%</span>
+        <div class="qtop st" style="--i:0">
+          <span class="qb tn"><iconify-icon icon="heroicons:battery-100"></iconify-icon>100% · 3h 02m</span>
+          <span class="grow"></span>
+          <button class="rbtn" id="g-reload" title="Soft-reload gnoblin"><iconify-icon icon="lucide:leaf"></iconify-icon></button>
+          <button class="rbtn" title="Lock"><iconify-icon icon="heroicons:lock-closed"></iconify-icon></button>
+          <button class="rbtn" id="u-out" title="Log out"><iconify-icon icon="heroicons:arrow-right-start-on-rectangle"></iconify-icon></button>
+          <button class="rbtn danger" id="u-power" title="Session"><iconify-icon icon="heroicons:power"></iconify-icon></button>
         </div>
         <div class="chips st" style="--i:0">
           <button class="chipb pill on" data-t="wifi" id="c-wifi">
-            <i class="ph ph-wifi-high"></i>
+            <iconify-icon icon="heroicons:wifi"></iconify-icon>
             <span class="cl"><b>Wi-Fi</b><span data-on="chompers-5G" data-off="Off">chompers-5G</span></span>
-            <span class="chevb" data-x="wifi" role="button" tabindex="0" title="Networks"><i class="ph ph-caret-right"></i></span>
+            <span class="chevb" data-x="wifi" role="button" tabindex="0" title="Networks"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></span>
           </button>
           <button class="chipb tall on" data-t="bt" id="c-bt">
-            <span class="ti"><i class="ph ph-bluetooth"></i></span>
+            <span class="ti"><iconify-icon icon="tabler:bluetooth"></iconify-icon></span>
             <span class="cl"><b>Bluetooth</b><span data-on="WH-1000XM5" data-off="Off">WH-1000XM5</span></span>
-            <span class="chevb" data-x="bt" role="button" tabindex="0" title="Devices"><i class="ph ph-caret-right"></i></span>
+            <span class="chevb" data-x="bt" role="button" tabindex="0" title="Devices"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></span>
           </button>
           <button class="chipb pill" data-t="save">
-            <i class="ph ph-lightning"></i>
+            <iconify-icon icon="heroicons:bolt"></iconify-icon>
             <span class="cl"><b>Power Saver</b><span data-on="On" data-off="Off">Off</span></span>
           </button>
         </div>
         <div class="rounds st" style="--i:1">
           <button class="rbig on" data-t="dark" title="Dark — kobel-sakura">
-            <span class="rc"><i class="ph ph-moon"></i></span><em>Dark</em>
+            <span class="rc"><iconify-icon icon="heroicons:moon"></iconify-icon></span><em>Dark</em>
           </button>
           <button class="rbig" data-t="silent" title="Silent — mute toasts">
-            <span class="rc"><i class="ph ph-bell-slash"></i></span><em>Silent</em>
+            <span class="rc"><iconify-icon icon="heroicons:bell-slash"></iconify-icon></span><em>Silent</em>
           </button>
           <button class="rbig" data-t="night" title="Night Light">
-            <span class="rc"><i class="ph ph-sun-dim"></i></span><em>Night</em>
+            <span class="rc"><iconify-icon icon="heroicons:sun"></iconify-icon></span><em>Night</em>
           </button>
         </div>
         <div class="sliders st" style="--i:2">
           <div class="srow">
-            <i class="ph ph-speaker-simple-high"></i>
-            <div class="slider" id="s-vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>
+            <iconify-icon icon="heroicons:speaker-wave"></iconify-icon>
+            <div class="slider" id="s-vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><div class="rail"><div class="fill"></div></div></div>
             <span class="sval tn">64%</span>
-            <span class="chevb" data-x="mix" role="button" tabindex="0" title="Per-app volume"><i class="ph ph-caret-right"></i></span>
+            <span class="chevb" data-x="mix" role="button" tabindex="0" title="Per-app volume"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></span>
           </div>
           <div class="srow">
-            <i class="ph ph-sun"></i>
-            <div class="slider" id="s-bri" role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>
+            <iconify-icon icon="heroicons:sun"></iconify-icon>
+            <div class="slider" id="s-bri" role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80"><div class="rail"><div class="fill"></div></div></div>
             <span class="sval tn">80%</span>
-            <span class="chevb" role="button" aria-disabled="true" style="opacity:.35;pointer-events:none" title="No external displays"><i class="ph ph-caret-right"></i></span>
+            <span class="chevb" role="button" aria-disabled="true" style="opacity:.35;pointer-events:none" title="No external displays"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></span>
           </div>
         </div>
-        <div class="media playing st" id="media" style="--i:3">
+      </div>
+      <div class="view" id="qv-sub">
+        <div class="dhead">
+          <button class="ibtn" id="q-back" title="Back"><iconify-icon icon="heroicons:chevron-left"></iconify-icon></button>
+          <b id="q-title">Wi-Fi</b>
+          <span class="sp"></span>
+        </div>
+        <div id="q-body"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CALENDAR ============ -->
+  <section class="p sheet calp" id="p-cal">
+    <div class="cal st" style="--i:0">
+      <div class="calhead">
+        <b id="cal-title">July 2026</b>
+        <button class="ibtn" id="cal-prev" title="Previous month"><iconify-icon icon="heroicons:chevron-left"></iconify-icon></button>
+        <button class="ibtn" id="cal-today" title="Today"><iconify-icon icon="heroicons:calendar"></iconify-icon></button>
+        <button class="ibtn" id="cal-next" title="Next month"><iconify-icon icon="heroicons:chevron-right"></iconify-icon></button>
+      </div>
+      <div class="calgrid tn" id="cal-grid"></div>
+    </div>
+  </section>
+
+  <!-- ============ NOTIFICATION DRAWER ============ -->
+  <section class="p sheet nc" id="p-nc">
+        <div class="media playing st" id="media" style="--i:1">
           <div class="mrow">
-            <div class="art"><i class="ph ph-music-notes"></i></div>
+            <div class="art"><iconify-icon icon="heroicons:musical-note"></iconify-icon></div>
             <div class="mmeta"><b>Weightless</b><span>Marconi Union</span></div>
             <div class="mbtns">
-              <button class="mbtn" id="m-prev" title="Previous"><i class="ph-fill ph-skip-back"></i></button>
+              <button class="mbtn" id="m-prev" title="Previous"><iconify-icon icon="heroicons:backward-solid"></iconify-icon></button>
               <button class="mbtn play" id="m-play" title="Play/Pause">
-                <i class="i-play ph-fill ph-play"></i><i class="i-pause ph-fill ph-pause"></i>
+                <iconify-icon class="i-play" icon="heroicons:play-solid"></iconify-icon><iconify-icon class="i-pause" icon="heroicons:pause-solid"></iconify-icon>
               </button>
-              <button class="mbtn" id="m-next" title="Next"><i class="ph-fill ph-skip-forward"></i></button>
+              <button class="mbtn" id="m-next" title="Next"><iconify-icon icon="heroicons:forward-solid"></iconify-icon></button>
             </div>
           </div>
           <div class="mbar">
@@ -546,67 +590,22 @@
           </div>
           <div class="cava" id="cava"></div>
           <div class="memptyrow">
-            <div class="art"><i class="ph ph-vinyl-record"></i></div>
+            <div class="art"><iconify-icon icon="lucide:disc-3"></iconify-icon></div>
             <p><b>Nothing playing</b>Media controls appear when a player starts</p>
             <button class="ghostb" id="m-open">Open Music</button>
           </div>
         </div>
-        <div class="stats st" style="--i:4">
-          <div class="stat"><div class="lb tn"><span>CPU</span><span id="cpu-v">12%</span></div>
-            <div class="tr"><i id="cpu-b" style="width:12%"></i></div></div>
-          <div class="stat"><div class="lb tn"><span>MEM</span><span id="mem-v">38%</span></div>
-            <div class="tr"><i style="width:38%"></i></div></div>
-        </div>
-        <div class="urow st" style="--i:5">
-          <div class="ava">K</div>
-          <div class="uwho"><b>kieran</b><span>up 6h</span></div>
-          <span class="ubatt tn">100% · 3h 02m</span>
-          <button class="rbtn" title="Lock"><i class="ph ph-lock-simple"></i></button>
-          <button class="rbtn" id="u-out" title="Log out"><i class="ph ph-sign-out"></i></button>
-          <button class="rbtn danger" id="u-power" title="Session"><i class="ph ph-power"></i></button>
-        </div>
-        <div class="gnob st" id="gnob" style="--i:6">
-          <div class="gi" id="g-ic"><i class="ph ph-leaf"></i></div>
-          <p><b>org.gnoblin.Shell</b><span id="g-tx">connected · owns osd + notifs</span></p>
-          <button class="gbtn" id="g-reload">
-            <i class="ph ph-arrows-clockwise"></i><span id="g-bl">Soft-reload</span>
-          </button>
-        </div>
-      </div>
-      <div class="view" id="qv-sub">
-        <div class="dhead">
-          <button class="ibtn" id="q-back" title="Back"><i class="ph ph-caret-left"></i></button>
-          <b id="q-title">Wi-Fi</b>
-          <span class="sp"></span>
-        </div>
-        <div id="q-body"></div>
-        <button class="done" id="q-done">Done</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ NOTIFICATION DRAWER ============ -->
-  <section class="p sheet nc" id="p-nc">
-    <div class="cal st" style="--i:0">
-      <div class="calhead">
-        <b id="cal-title">July 2026</b>
-        <button class="ibtn" id="cal-prev" title="Previous month"><i class="ph ph-caret-left"></i></button>
-        <button class="ibtn" id="cal-today" title="Today"><i class="ph ph-calendar-blank"></i></button>
-        <button class="ibtn" id="cal-next" title="Next month"><i class="ph ph-caret-right"></i></button>
-      </div>
-      <div class="calgrid tn" id="cal-grid"></div>
-    </div>
     <div class="nhead st" style="--i:1"><b>Notifications</b><span class="tn" id="n-count"></span>
-      <button class="nclear" id="n-clear"><i class="ph ph-trash"></i>Clear</button></div>
+      <button class="nclear" id="n-clear"><iconify-icon icon="heroicons:trash"></iconify-icon>Clear</button></div>
     <div class="nlist st" id="nlist" style="--i:2"></div>
-    <div class="nempty st" style="--i:2"><i class="ph ph-check"></i>All caught up</div>
+    <div class="nempty st" style="--i:2"><iconify-icon icon="heroicons:check"></iconify-icon>All caught up</div>
   </section>
 
   <div class="toasts" id="toasts"></div>
 
   <!-- ============ OSD ============ -->
   <div class="p osd" id="p-osd">
-    <i class="ph ph-speaker-simple-high"></i>
+    <iconify-icon icon="heroicons:speaker-wave"></iconify-icon>
     <div class="rail"><div class="fill" id="osd-fill"></div></div>
     <span class="sval tn" id="osd-val">64%</span>
   </div>
@@ -614,10 +613,10 @@
   <!-- ============ SESSION ============ -->
   <div class="session" id="p-sess">
     <div class="sess-row p" id="sess-inner" style="opacity:1;pointer-events:none;position:static">
-      <button class="sbtn st" data-s="Lock" style="--i:0"><span class="sic"><i class="ph ph-lock-simple"></i></span><span>Lock</span></button>
-      <button class="sbtn st" data-s="Log out" style="--i:1"><span class="sic"><i class="ph ph-sign-out"></i></span><span>Log out</span></button>
-      <button class="sbtn st" data-s="Restart" data-confirm="1" style="--i:2"><span class="sic"><i class="ph ph-arrow-counter-clockwise"></i></span><span>Restart</span></button>
-      <button class="sbtn red st" data-s="Shut down" data-confirm="1" style="--i:3"><span class="sic"><i class="ph ph-power"></i></span><span>Shut down</span></button>
+      <button class="sbtn st" data-s="Lock" style="--i:0"><span class="sic"><iconify-icon icon="heroicons:lock-closed"></iconify-icon></span><span>Lock</span></button>
+      <button class="sbtn st" data-s="Log out" style="--i:1"><span class="sic"><iconify-icon icon="heroicons:arrow-right-start-on-rectangle"></iconify-icon></span><span>Log out</span></button>
+      <button class="sbtn st" data-s="Restart" data-confirm="1" style="--i:2"><span class="sic"><iconify-icon icon="heroicons:arrow-path"></iconify-icon></span><span>Restart</span></button>
+      <button class="sbtn red st" data-s="Shut down" data-confirm="1" style="--i:3"><span class="sic"><iconify-icon icon="heroicons:power"></iconify-icon></span><span>Shut down</span></button>
     </div>
   </div>
 
@@ -792,6 +791,7 @@ const P={
   launch:panel($("p-launch"),{origin:"top center",d0:-16}),
   qs:panel($("p-qs")),
   nc:panel($("p-nc"),{axis:"x",d0:26,s0:.985,origin:"center right"}),
+  cal:panel($("p-cal"),{origin:"top center",d0:-14}),
 };
 const osdP=panel($("p-osd"),{origin:"bottom center",d0:14,s0:.96});
 const sessO=new Spring(0).on(v=>{
@@ -834,7 +834,7 @@ function openSession(from){
 $("b-launch").addEventListener("click",e=>openP("launch",e.currentTarget));
 $("b-status").addEventListener("click",e=>{
   if(e.target.closest("#b-vol"))return;openP("qs",e.currentTarget);});
-$("b-clock").addEventListener("click",e=>openP("nc",e.currentTarget));
+$("b-clock").addEventListener("click",e=>openP("cal",e.currentTarget));
 $("b-bell").addEventListener("click",e=>openP("nc",e.currentTarget));
 $("b-power").addEventListener("click",e=>openSession(e.currentTarget));
 $("u-power").addEventListener("click",e=>openSession(e.currentTarget));
@@ -868,29 +868,16 @@ $("p-sess").addEventListener("keydown",e=>{
   btns[(i+(e.key==="ArrowRight"?1:btns.length-1))%btns.length].focus();
 });
 
-/* ================= workspaces ================= */
-const wsBox=$("ws"),wsS=[],
-  titles=["❯ btop","zed — Bar.qml","firefox — quickshell docs","files — ~/dev","spotify","mpv"];
-let wsCur=1;
-for(let i=0;i<6;i++){
-  const b=document.createElement("button");b.className="wsb";b.title="Workspace "+(i+1);
-  b.innerHTML="<i></i>";wsBox.appendChild(b);
-  const dot=b.querySelector("i");
-  const sp=new Spring(i===wsCur?24:8).on(v=>{dot.style.width=v.toFixed(1)+"px";});
-  wsS.push(sp);if(i===wsCur)b.classList.add("on");
-  b.addEventListener("click",()=>setWs(i));
-}
-function setWs(i){
-  if(i===wsCur)return;
-  wsS[wsCur].cfg(460,28).set(8);wsBox.children[wsCur].classList.remove("on");
-  wsCur=i;
-  wsS[i].cfg(460,21).set(24);wsBox.children[i].classList.add("on");
-  const f=$("ftitle");f.classList.remove("swoop");void f.offsetWidth;
-  f.textContent=titles[i];f.classList.add("swoop");
-}
-
 /* ================= apps / data ================= */
-function ph(n,fill){return '<i class="'+(fill?'ph-fill':'ph')+' ph-'+n+'"></i>';}
+const IC={"terminal-window":"heroicons:command-line",folder:"heroicons:folder",
+  globe:"heroicons:globe-alt",code:"heroicons:code-bracket",
+  "music-notes":"heroicons:musical-note","gear-six":"heroicons:cog-6-tooth",
+  "file-text":"heroicons:document-text",calculator:"heroicons:calculator",
+  leaf:"lucide:leaf","chat-circle":"heroicons:chat-bubble-oval-left",
+  "download-simple":"heroicons:arrow-down-tray",x:"heroicons:x-mark",
+  "wifi-high":"tabler:wifi","wifi-medium":"tabler:wifi-2","wifi-low":"tabler:wifi-1",
+  headphones:"lucide:headphones",keyboard:"lucide:keyboard","game-controller":"lucide:gamepad-2"};
+function ph(n){return '<iconify-icon icon="'+(IC[n]||n)+'"></iconify-icon>';}
 const APPS=[
   {n:"Terminal",g:"terminal-window",bg:"oklch(30% .02 300)",run:true},
   {n:"Files",g:"folder",bg:"oklch(64% .12 250)",run:true},
@@ -916,22 +903,28 @@ const CMDS=[
 /* ================= dock ================= */
 const dock=$("dock");
 APPS.forEach((a,i)=>{
-  if(i===4){const s=document.createElement("span");s.className="dsep";dock.appendChild(s);}
+  if(i===4){const sp=document.createElement("span");sp.className="dsep";dock.appendChild(sp);}
   const b=document.createElement("button");
   b.className="dbtn"+(a.run?" running":"")+(a.focused?" focused":"");
   b.title=a.n;
   b.innerHTML='<span class="di" style="background:'+a.bg+'">'+ph(a.g)+'</span><span class="dot"></span>';
   dock.appendChild(b);
   const di=b.querySelector(".di");
-  const sc=new Spring(1),ty=new Spring(0);
-  const ap=()=>{di.style.transform="translateY("+ty.x.toFixed(2)+"px) scale("+sc.x.toFixed(3)+")";};
-  sc.on(ap);ty.on(ap);
-  b.addEventListener("pointerenter",()=>{sc.cfg(420,22).set(1.16);ty.cfg(420,22).set(-4);});
-  b.addEventListener("pointerleave",()=>{sc.cfg(380,26).set(1);ty.cfg(380,26).set(0);});
+  const sc=new Spring(1),op=new Spring(1);
+  const ap=()=>{
+    di.style.transform="scale("+sc.x.toFixed(3)+")";
+    di.style.opacity=Math.max(0,op.x).toFixed(3);
+    di.style.filter="blur("+((1-Math.max(0,op.x))*7).toFixed(1)+"px)";
+  };
+  sc.on(ap);op.on(ap);
   b.addEventListener("click",()=>{
     document.querySelectorAll(".dbtn").forEach(x=>x.classList.remove("focused"));
     b.classList.add("focused");b.classList.add("running");
-    sc.kick(-4);
+    sc.jump(1);op.jump(1);
+    sc.cfg(120,16).set(3);
+    op.cfg(150,22);
+    op.done=()=>{sc.jump(1);op.jump(1);};
+    op.set(0);
     toast({title:"launcher",body:(a.run?"Focusing ":"Launching ")+a.n+"…",icon:"leaf"});
   });
 });
@@ -941,8 +934,6 @@ function tick(){
   const d=new Date();
   $("clk").textContent=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
   $("bdate").textContent=d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
-  $("q-time").textContent=$("clk").textContent;
-  $("q-date").textContent=$("bdate").textContent;
 }
 tick();setInterval(tick,10000);
 const now0=new Date();let calY=now0.getFullYear(),calM=now0.getMonth();
@@ -1065,7 +1056,6 @@ function undrill(){
   qFit(false);
 }
 $("q-back").addEventListener("click",undrill);
-$("q-done").addEventListener("click",undrill);
 document.querySelectorAll(".chevb[data-x]").forEach(c=>{
   const go=e=>{e.stopPropagation();e.preventDefault();drill(c.dataset.x);};
   c.addEventListener("click",go);
@@ -1097,7 +1087,7 @@ function buildSub(kind){
     [["Music","music-notes",64],["Firefox","globe",40],["Zed","code",15]].forEach(m=>{
       const row=document.createElement("div");row.className="mixrow";
       row.innerHTML='<span class="mi">'+ph(m[1])+'</span><em>'+m[0]+'</em>'
-        +'<div class="slider" role="slider" tabindex="0" aria-label="'+m[0]+' volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+m[2]+'"><div class="rail"><div class="fill"></div><div class="knob"></div></div></div>'
+        +'<div class="slider" role="slider" tabindex="0" aria-label="'+m[0]+' volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+m[2]+'"><div class="rail"><div class="fill"></div></div></div>'
         +'<span class="sval tn">'+m[2]+"%</span>";
       body.querySelector("#d-mix").appendChild(row);
       slider(row.querySelector(".slider"),()=>{}).set(m[2],false);
@@ -1440,17 +1430,17 @@ function runCmd(c){
 }
 filter();
 
-/* gnoblin row states + reload spin */
+/* gnoblin reload button states */
 const relR=new Spring(0).on(v=>{
-  $("g-reload").querySelector("i").style.rotate=v.toFixed(1)+"deg";
+  const el=$("g-reload").querySelector("iconify-icon");
+  if(el)el.style.rotate=v.toFixed(1)+"deg";
 });
 let gnobUp=true;
-function setGnob(up,retrying){
+function setGnob(up){
   gnobUp=up;
-  $("gnob").classList.toggle("err",!up);
-  $("g-tx").textContent=up?"connected · owns osd + notifs"
-    :(retrying?"disconnected — retrying (2)…":"disconnected — osd handed back");
-  $("g-bl").textContent=up?"Soft-reload":"Reconnect";
+  const b=$("g-reload");
+  b.classList.toggle("err",!up);
+  b.title=up?"Soft-reload gnoblin":"gnoblin disconnected — click to reconnect";
 }
 $("g-reload").addEventListener("click",()=>{
   relR.jump(0);relR.cfg(130,17).set(360);
@@ -1481,9 +1471,9 @@ document.querySelectorAll(".demo button").forEach(b=>{
 });
 function failTour(){
   const step=failStep++%4;
-  if(step===0){setGnob(false,true);if(cur!=="qs")openP("qs");}
+  if(step===0){setGnob(false);toast({title:"gnoblin",body:"Lost org.gnoblin.Shell — osd handed back to gnome",icon:"leaf"});if(cur!=="qs")openP("qs");}
   else if(step===1){wifiConnect(wifiNet);if(cur!=="qs")openP("qs");}
-  else if(step===2){setMediaEmpty(true);if(cur!=="qs")openP("qs");}
+  else if(step===2){setMediaEmpty(true);if(cur!=="nc")openP("nc");}
   else{setGnob(true);setMediaEmpty(false);setPlaying(true);
     closeAll();toast({title:"kobel",body:"All systems nominal ✓",icon:"leaf"});}
 }
@@ -1498,8 +1488,9 @@ if(hash){
   else if(hash==="nc")openP("nc");
   else if(hash==="launch")openP("launch");
   else if(hash==="sess")openSession();
-  else if(hash==="fail"){setGnob(false,true);setMediaEmpty(true);openP("qs");}
+  else if(hash==="fail"){setGnob(false);setMediaEmpty(true);openP("qs");}
   else if(hash==="drill"){openP("qs");drill("bt");}
+  else if(hash==="cal")openP("cal");
   for(const s of Array.from(live))s.jump(s.t);
 }
 qFit(true);
