@@ -278,10 +278,10 @@ switch {
   min-width: 309px;
   .sub  { color: $mut; font-size: 11.5px; }
   .hero { color: $tx; font-size: 19px; font-weight: 650; }
-  // prototype .calhero: 8px inset (matches the panel-relative x=20 of the hero text).
-  // top 2 / bottom 6 keeps the block at 50 (nav stays at 62, grid at 96) while nudging
-  // the 19px date line down to the prototype's y=30.
-  .calhero { padding: 2px 8px 6px 8px; }
+  // prototype .calhero: 8px inset (matches the panel-relative x=20 of the hero text) +
+  // 8px bottom (hero→nav gap). Block = 16(sub)+26(date)+8 = 50, so nav lands at 62 and
+  // the 19px date line aligns to the prototype's baseline.
+  .calhero { padding: 0 8px 8px 8px; }
   // sheet spacing is 0 — recreate the prototype's exact vertical rhythm with margins:
   // hero→nav 0 (calhero's own bottom pad), nav→grid 8, grid→events 10.
   .cal-grid { margin-top: 8px; }
@@ -314,7 +314,9 @@ switch {
   }
   // events section = prototype .calev: a panel2 card (pad10/r12) holding the date
   // header + darker (--panel) event rows — NOT a bare panel2 row on the sheet.
-  .evcard { margin-top: 10px; background-color: $panel2; border-radius: 12px; padding: 10px; }
+  // padding-top 8 (vs proto 10): GTK anchors the header/row text ~2px lower than the
+  // browser, so trimming the top inset pulls the card's contents onto the prototype's.
+  .evcard { margin-top: 10px; background-color: $panel2; border-radius: 12px; padding: 8px 10px 10px 10px; }
   .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 5px; }   // 24px (GTK line taller than CDP; 5px bottom keeps evrow at proto y)
   .evrow { background-color: $panel; border-radius: 10px; padding: 8px 10px;
     margin-bottom: 4px; &:last-child { margin-bottom: 0; }   // CDP .evrow (inset on panel)
