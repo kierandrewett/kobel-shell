@@ -84,27 +84,44 @@ image { -gtk-icon-style: regular; }
 }
 
 // ============ DOCK ============
-// CDP exact: dock pad5 r16 gap4 bg panel; tile 42×42 r12 pad0; sep 1px margin 3px bg chip;
-// dot(on) 12×4 r99.
+// Prototype-exact (docs/prototype.html .dock): pad5 r16 gap4 bg panel; each cell 42×42
+// holding a 30px icon (14% inset → 6px pad); sep 1×33 margin 0 3px bg chip; dot(on) 12×4
+// r99 leaf, dot 4×4 dim, gap 3; media chip 30×30 r9 chip + 25×3 progress track.
 .dock {
   background-color: $panel;
   padding: 5px; border-radius: 16px;
   .dbtn { border-radius: 12px; }
-  // tile: 38px icon + 2px padding = 42px → dock height = 5+42+5 = 52px matching prototype
+  // 30px icon + 6px padding → 42×42 cell (matches the prototype .di tile exactly).
+  // NB: GTK min-width is the CONTENT box, and a global token rule sets `.icon-tile`
+  // min-w/h to the icon token (~44) — override it to 30 here so 30 + 12 padding = 42.
   .icon-tile {
-    padding: 2px; border-radius: 12px;
+    min-width: 30px; min-height: 30px;
+    padding: 6px; border-radius: 12px;
     transition: background-color 160ms;
     image { -gtk-icon-size: 38px; }
   }
   .dbtn:hover .icon-tile { background-color: rgba(255,255,255,0.09); }
   .placeholder .icon-tile { background-color: $panel2; color: $dim; }
-  // dots: absolute overlay (Gtk.Overlay), zero layout footprint
+  // dots: absolute overlay (Gtk.Overlay), zero layout footprint. 3px gap = box spacing.
   .dots { margin-bottom: 3px; }
   .dot { background-color: $dim; border-radius: 99px; min-width: 4px; min-height: 4px;
-         margin: 0 1.5px; transition: min-width 260ms $ovr, background-color 220ms; }
+         transition: min-width 260ms $ovr, background-color 220ms; }
   .dot.on { background-color: $leaf; min-width: 12px; }
   .dot.mini { min-width: 3px; min-height: 3px; opacity: .7; }
-  .sep { background-color: $chip; min-width: 1px; margin: 0 3px; }
+  // separator: 1×33 centred bar with 3px side margins (adds to the 4px flex gap → 7px)
+  .sep { background-color: $chip; min-width: 1px; min-height: 33px; margin: 0 3px; }
+  // media widget: 42 cell holding a 30×30 rounded chip + a thin progress track
+  .dtile { min-width: 42px; min-height: 42px; }
+  .dwidget .dg {
+    background-color: $chip; color: $mut;
+    border-radius: 9px; padding: 6px;
+  }
+  .mprog {
+    min-width: 25px; min-height: 3px; margin-bottom: 6px;
+    trough { background-color: rgba(0,0,0,0.35); border-radius: 99px; min-height: 3px; }
+    block.filled { background-color: $leaf; border-radius: 99px; }
+    block.empty { background-color: transparent; }
+  }
 }
 
 // ============ shared sheet ============

@@ -8,8 +8,10 @@
 import { App, Astal, Gdk, Gtk } from "astal/gtk4"
 import { bind, Variable, execAsync } from "astal"
 import Apps from "gi://AstalApps"
+import Gio from "gi://Gio"
 import { MOTION, spring, springTo } from "../lib/spring"
 import * as gnoblin from "../services/gnoblin"
+import { DEMO } from "../lib/demo"
 
 const PINNED = [
   "org.gnome.Ptyxis", "org.gnome.Nautilus", "firefox",
@@ -66,7 +68,7 @@ function DockButton({ app }: { app: Apps.Application }) {
     }}>
     <overlay>
       <image class="icon-tile" iconName={app.icon_name || "application-x-executable"}
-             pixelSize={38} />
+             pixelSize={30} />
       {/* dots as OVERLAY — zero layout footprint */}
       <Dots type="overlay" appId={appId} />
     </overlay>
@@ -74,16 +76,75 @@ function DockButton({ app }: { app: Apps.Application }) {
 }
 
 function MediaWidget() {
-  // dock widget proof-of-concept: album glyph + live progress, click = play/pause
+  // dock widget proof-of-concept: album glyph (rounded chip) + live progress, click = play/pause
   return <button class="dbtn dwidget" onClicked={() => execAsync("playerctl play-pause")}>
     <overlay>
-      <image class="icon-tile" iconName="kobel-music-symbolic" pixelSize={20} />
-      <levelbar type="overlay" class="mprog" valign={Gtk.Align.END} value={0.34} />
+      <box class="dtile">
+        <image class="dg" iconName="kobel-music-symbolic" pixelSize={18}
+               halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} hexpand vexpand />
+      </box>
+      <levelbar type="overlay" class="mprog" halign={Gtk.Align.CENTER} valign={Gtk.Align.END}
+                value={0.34} />
     </overlay>
   </button>
 }
 
+// ---------------------------------------------------------------------------
+// DEMO mode: render the prototype's EXACT dock (docs/prototype.html) with real GTK
+// widgets, so it can be pixel-overlaid on the prototype render 1:1. Icons load from the
+// SAME on-disk files the prototype references (via a FileIcon gicon) rather than by
+// themed name — a themed lookup snaps to a different size variant (e.g. the 32px firefox
+// instead of the prototype's 256px png) and downscales differently. Same source file →
+// closest cross-engine match. (pixel-size is honoured now the icon-tile min is 30.)
+const DEMO_APPS = [
+  { name: "Terminal", icon: "/usr/share/icons/hicolor/scalable/apps/org.gnome.Ptyxis.svg",           dots: ["on", "dot"] },
+  { name: "Files",    icon: "/usr/share/icons/hicolor/scalable/apps/org.gnome.Nautilus.svg",         dots: ["dot"] },
+  { name: "Firefox",  icon: "/usr/share/icons/hicolor/256x256/apps/firefox.png",                     dots: [] },
+  { name: "Zed",      icon: "/home/kieran/.local/zed.app/share/icons/hicolor/512x512/apps/zed.png",  dots: [] },
+  { name: "Spotify",  icon: "/var/lib/flatpak/exports/share/icons/hicolor/scalable/apps/com.spotify.Client.svg", dots: [] },
+  { name: "Settings", icon: "/usr/share/icons/hicolor/scalable/apps/org.gnome.Settings.svg",         dots: [] },
+]
+
+function fileIcon(path: string): Gio.Icon {
+  return Gio.FileIcon.new(Gio.File.new_for_path(path))
+}
+
+function DemoButton({ app }: { app: (typeof DEMO_APPS)[number] }) {
+  // NB: the dots box carries `type="overlay"` DIRECTLY (intrinsic element) — a function
+  // component would swallow the prop, letting the untyped box replace the icon as the
+  // overlay's main child (GtkOverlay.set_child). Icon stays main; dots overlay on top.
+  return <button class="dbtn" tooltipText={app.name}>
+    <overlay>
+      <image class="icon-tile" gicon={fileIcon(app.icon)} pixelSize={30}
+             halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} />
+      <box type="overlay" class="dots" halign={Gtk.Align.CENTER} valign={Gtk.Align.END} spacing={3}>
+        {app.dots.map(cls => <box class={cls === "on" ? "dot on" : "dot"} />)}
+      </box>
+    </overlay>
+  </button>
+}
+
+function DemoDock(monitor: Gdk.Monitor) {
+  return <window
+    name="dock" namespace="kobel-dock" class="dock-window"
+    gdkmonitor={monitor} anchor={Astal.WindowAnchor.BOTTOM}>
+    <box class="dock" spacing={4}>
+      <DemoButton app={DEMO_APPS[0]} />
+      <DemoButton app={DEMO_APPS[1]} />
+      <DemoButton app={DEMO_APPS[2]} />
+      <DemoButton app={DEMO_APPS[3]} />
+      <box class="sep" valign={Gtk.Align.CENTER} />
+      <DemoButton app={DEMO_APPS[4]} />
+      <DemoButton app={DEMO_APPS[5]} />
+      <box class="sep" valign={Gtk.Align.CENTER} />
+      <MediaWidget />
+    </box>
+  </window>
+}
+
 export default function Dock(monitor: Gdk.Monitor) {
+  if (DEMO) return DemoDock(monitor)
+
   const apps = new Apps.Apps()
   // Pinned entries resolved by desktop-id; the dock never sits empty, so fill any
   // unresolved slots (e.g. an app not installed in the devkit) from the installed
@@ -93,18 +154,22 @@ export default function Dock(monitor: Gdk.Monitor) {
     all.find(a => a.entry === `${id}.desktop` || a.entry === id)
     ?? all.find(a => a.entry?.toLowerCase().includes(id.toLowerCase().split(".").pop()!))
   // Always render one slot per pin so the dock keeps its shape; resolved pins get the
-  // real app + behavior, unresolved ones a labelled placeholder tile.
+  // real app + behavior, unresolved ones a labelled placeholder tile. A separator sits
+  // between the fourth and fifth pins (prototype parity), then before the media widget.
   const slots = PINNED.map(id => ({ id, app: resolve(id) }))
   return <window
     name="dock" namespace="kobel-dock" class="dock-window"
     gdkmonitor={monitor} anchor={Astal.WindowAnchor.BOTTOM}>
     <box class="dock" spacing={4}>
-      {slots.map(({ id, app }) => app
-        ? <DockButton app={app} />
-        : <button class="dbtn placeholder" tooltipText={id.split(".").pop()}>
-            <image class="icon-tile" iconName="application-x-executable-symbolic" pixelSize={30} />
-          </button>)}
-      <box class="sep" />
+      {slots.map(({ id, app }, i) => [
+        i === 4 ? <box class="sep" valign={Gtk.Align.CENTER} /> : null,
+        app
+          ? <DockButton app={app} />
+          : <button class="dbtn placeholder" tooltipText={id.split(".").pop()}>
+              <image class="icon-tile" iconName="application-x-executable-symbolic" pixelSize={30} />
+            </button>,
+      ])}
+      <box class="sep" valign={Gtk.Align.CENTER} />
       <MediaWidget />
     </box>
   </window>
