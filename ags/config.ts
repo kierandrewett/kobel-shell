@@ -23,7 +23,7 @@ export const floating: Tokens = {
     icon: 44,
     dockPad: 5,
     tileH: 54,
-    panelW: 352,
+    panelW: 365,  // 28.5cqw at 1280px = 364.8 ≈ 365
     launcherW: 560,
     calendarW: 330,
 }
