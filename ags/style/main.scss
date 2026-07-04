@@ -302,11 +302,11 @@ switch {
 }
 
 // ============ LAUNCHER ============
-// .sheet.launcher (0,2,0) beats config.ts's `.launcher{min-width:560}` (0,1,0), which is
-// appended AFTER this sheet. GTK min-width is CONTENT-box, so 551 + 8px pad ×2 = 567px
-// border-box = the prototype's panel width.
-.sheet.launcher { min-width: 551px; }
-.launcher { padding: 8px; }  // CDP: 567/pad8/r24 (via .sheet)
+// .sheet.launcher (0,2,0) beats config.ts's `.launcher{min-width:584}` (0,1,0), which is
+// appended AFTER this sheet. GTK min-width is CONTENT-box, so 568 + 8px pad ×2 = 584px
+// border-box = the prototype's --lw at 1280px.
+.sheet.launcher { min-width: 568px; }
+.launcher { padding: 8px; }  // CDP: 584/pad8/r24 (via .sheet)
 // CDP exact: field pad 3/12 r12 search 16px; tile pad 5/0 r10, icon 42×42 r12;
 // widget card pad 10/12 r12.
 .field {
