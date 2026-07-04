@@ -8,6 +8,8 @@ import Network from "gi://AstalNetwork"
 import Bluetooth from "gi://AstalBluetooth"
 import Wp from "gi://AstalWp"
 import Mpris from "gi://AstalMpris"
+import Gio from "gi://Gio"
+import Battery from "gi://AstalBattery"
 import { connected, reload } from "../services/gnoblin"
 import { MOTION } from "../lib/spring"
 import { DEMO, D } from "../lib/demo"
@@ -65,9 +67,17 @@ function Sliders() {
   // GtkRange::change-value args: (range, scrollType, value)
   volSlider.connect("change-value", (_s: any, _t: any, v: number) => { if (speaker) speaker.volume = v })
 
-  const brightSlider = new TinySlider({ hexpand: true, cssClasses: ["slider"], value: DEMO ? D.brightness : 0.8 })
+  const brightValue = Variable(DEMO ? D.brightness : 0.8)
+  if (!DEMO) {
+    Promise.all([execAsync("brightnessctl get"), execAsync("brightnessctl max")])
+      .then(([cur, max]) => brightValue.set(parseInt(cur.trim()) / parseInt(max.trim())))
+      .catch(() => { /* brightnessctl absent on desktop */ })
+  }
+  const brightSlider = new TinySlider({ hexpand: true, cssClasses: ["slider"], value: brightValue.get() })
+  brightValue.subscribe(v => { brightSlider.get_adjustment().value = v })
   brightSlider.connect("change-value", (_s: any, _t: any, v: number) =>
-    execAsync(`brightnessctl set ${Math.round(v * 100)}%`))
+    execAsync(`brightnessctl set ${Math.round(v * 100)}%`)
+      .then(() => brightValue.set(v)).catch(() => {}))
 
   return <box class="sliders" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
     <box class="srow" spacing={9}>
@@ -97,18 +107,56 @@ function GnoblinBanner() {
   </box>
 }
 
-// local-state toggles (no real backend for these in the devkit)
-const tSave = Variable(false), tDark = Variable(true), tSilent = Variable(false), tNight = Variable(false)
+// ── real-backend toggles ──────────────────────────────────────────────────────
+// Dark Style: org.gnome.desktop.interface color-scheme
+const ifaceSettings = new Gio.Settings({ schema: "org.gnome.desktop.interface" })
+const tDark = Variable(ifaceSettings.get_string("color-scheme") === "prefer-dark")
+ifaceSettings.connect("changed::color-scheme", () =>
+  tDark.set(ifaceSettings.get_string("color-scheme") === "prefer-dark"))
+
+// Night Light: org.gnome.settings-daemon.plugins.color
+let colorSettings: Gio.Settings | null = null
+const tNight = Variable(false)
+try {
+  colorSettings = new Gio.Settings({ schema: "org.gnome.settings-daemon.plugins.color" })
+  tNight.set(colorSettings.get_boolean("night-light-enabled"))
+  colorSettings.connect("changed::night-light-enabled", () =>
+    tNight.set(colorSettings!.get_boolean("night-light-enabled")))
+} catch { /* schema absent on some systems */ }
+
+// Silent: mute on the default WirePlumber speaker
+const _speaker = Wp.get_default()?.default_speaker ?? null
+const tSilent = _speaker
+  ? (bind(_speaker, "mute") as unknown as Variable<boolean>)
+  : Variable(false)
+
+// Power Saver: powerprofilesctl (falls back to false if unavailable)
+const tSave = Variable(false)
+execAsync("powerprofilesctl get")
+  .then(v => tSave.set(v.trim() === "power-saver"))
+  .catch(() => { /* powerprofilesctl absent */ })
+
 // edit-mode for the tile catalog (pencil button) — hook for tile rearrange/customise.
 const editMode = Variable(false)
 
 // Prototype toggle chips are label-only, vertically centered — state is shown by the
 // leaf fill, not a sub-line (only Wi-Fi/Bluetooth carry a sub).
-function ToggleChip(props: { label: string, icon: string, v: Variable<boolean> }) {
+function ToggleChip(props: { label: string, icon: string, v: Variable<boolean>, onToggled?: () => void }) {
   return <Chip id={props.label} label={props.label} icon={props.icon}
     active={bind(props.v)}
-    onToggled={() => props.v.set(!props.v.get())} />
+    onToggled={props.onToggled ?? (() => props.v.set(!props.v.get()))} />
 }
+
+function batteryMeta(): any {
+  const bat = Battery.get_default()
+  if (!bat) return null
+  return bind(bat, "percentage").as(p => {
+    const pct = Math.round(p * 100)
+    const state = bat.full ? "Fully charged" : bat.charging ? "Charging" : "Discharging"
+    return `${pct}% · ${state}`
+  })
+}
+const hasBattery = Battery.get_default() != null
 
 function Root({ name }: { name?: string }) {
   const net = Network.get_default()
@@ -118,11 +166,11 @@ function Root({ name }: { name?: string }) {
   return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={0}>
     {/* top row: battery · reload · lock · power */}
     <box class="qs-top" spacing={0}>
-      {/* battery pill: glyph + tabular meta (matches prototype .qb) */}
-      <box class="meta" spacing={6} valign={Gtk.Align.CENTER}>
+      {/* battery pill: glyph + tabular meta — hidden when no battery present */}
+      {(DEMO || hasBattery) && <box class="meta" spacing={6} valign={Gtk.Align.CENTER}>
         <image iconName="kobel-battery-symbolic" />
-        <label class="tn" label={DEMO ? D.meta : "100% · Fully charged"} />
-      </box>
+        <label class="tn" label={DEMO ? D.meta : batteryMeta()} />
+      </box>}
       <box hexpand />
       <button class="rbtn leaf" onClicked={() => reload()}><image iconName="kobel-leaf-symbolic" /></button>
       <button class="rbtn" onClicked={() => execAsync("loginctl lock-session")}>
@@ -149,12 +197,26 @@ function Root({ name }: { name?: string }) {
           onDrill={() => drill.set("bt")} />
       </box>
       <box class="chips" homogeneous spacing={8}>
-        <ToggleChip label="Power Saver" icon="kobel-bolt-symbolic" v={tSave} />
-        <ToggleChip label="Dark Style" icon="kobel-moon-symbolic" v={tDark} />
+        <ToggleChip label="Power Saver" icon="kobel-bolt-symbolic" v={tSave}
+          onToggled={() => {
+            const next = !tSave.get()
+            execAsync(`powerprofilesctl set ${next ? "power-saver" : "balanced"}`)
+              .then(() => tSave.set(next)).catch(() => tSave.set(next))
+          }} />
+        <ToggleChip label="Dark Style" icon="kobel-moon-symbolic" v={tDark}
+          onToggled={() => {
+            const next = !tDark.get()
+            ifaceSettings.set_string("color-scheme", next ? "prefer-dark" : "default")
+          }} />
       </box>
       <box class="chips" homogeneous spacing={8}>
-        <ToggleChip label="Silent" icon="kobel-bell-slash-symbolic" v={tSilent} />
-        <ToggleChip label="Night Light" icon="kobel-sun-symbolic" v={tNight} />
+        <ToggleChip label="Silent" icon="kobel-bell-slash-symbolic" v={tSilent}
+          onToggled={() => { if (_speaker) _speaker.mute = !_speaker.mute }} />
+        <ToggleChip label="Night Light" icon="kobel-sun-symbolic" v={tNight}
+          onToggled={() => {
+            if (colorSettings)
+              colorSettings.set_boolean("night-light-enabled", !tNight.get())
+          }} />
       </box>
     </box>
     <Sliders />

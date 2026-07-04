@@ -33,18 +33,28 @@ function StatusPill() {
   const speaker = Wp.get_default()?.default_speaker ?? null
   const net = Network.get_default()
   const bat = Battery.get_default()
+  // Wifi icon: varies with connection state / type
+  const wifiIcon = net.wifi
+    ? bind(net.wifi, "enabled").as(on =>
+        on ? "kobel-wifi-symbolic" : "kobel-wifi-off-symbolic")
+    : "kobel-wifi-off-symbolic"
+  // Volume icon: track the speaker's own volume_icon property
+  const volIcon = speaker
+    ? bind(speaker, "volume_icon").as(i => i ?? "kobel-speaker-wave-symbolic")
+    : "kobel-speaker-mute-symbolic"
   return <button valign={Gtk.Align.CENTER}
     class={bind(connected).as(c => c ? "status" : "status err")}
     onClicked={() => App.toggle_window("quicksettings")}>
     <box spacing={10}>
-      <image class="net-icon" iconName="kobel-wifi-symbolic" />
-      <image iconName="kobel-speaker-wave-symbolic" />
-      <box class="pct" spacing={6}>
+      <image class="net-icon" iconName={wifiIcon} />
+      <image iconName={volIcon} />
+      {/* Battery: only rendered when a battery is present */}
+      {(DEMO || bat) && <box class="pct" spacing={6}>
         <image iconName="kobel-battery-symbolic" />
         <label class="tn" label={DEMO ? D.batteryPct : (bat
           ? bind(bat, "percentage").as(p => `${Math.round(p * 100)}%`)
-          : "100%")} />
-      </box>
+          : "")} />
+      </box>}
     </box>
   </button>
 }
