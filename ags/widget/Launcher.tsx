@@ -11,25 +11,52 @@ import { Variable, bind, execAsync, GLib } from "astal"
 import Apps from "gi://AstalApps"
 import { fuzzy, hl, boost, bump, frequency } from "../lib/fuzzy"
 import { EVENTS } from "./Calendar"
+import { DEMO, D } from "../lib/demo"
 
 // Curated grid: the dock's pinned apps first (resolved by desktop-id), then fill the
 // remaining slots by frecency. Matches the prototype's launcher empty-state.
 const PINNED = ["org.gnome.Ptyxis", "org.gnome.Nautilus", "firefox",
   "dev.zed.Zed", "com.spotify.Client", "org.gnome.Settings"]
-function gridApps(apps: Apps.Apps): Apps.Application[] {
+// Demo grid: fixed order + labels transcribed from the prototype (D.apps), each mapped
+// to the real .desktop id so its themed icon renders (Ptyxis/Nautilus/…).
+const DEMO_TILES = [
+  { name: "Terminal", id: "org.gnome.Ptyxis" },
+  { name: "Files", id: "org.gnome.Nautilus" },
+  { name: "Firefox", id: "firefox" },
+  { name: "Zed", id: "dev.zed.Zed" },
+  { name: "Spotify", id: "com.spotify.Client" },
+  { name: "Settings", id: "org.gnome.Settings" },
+]
+
+interface Tile { name: string; iconName: string; launch: () => void }
+function gridTiles(apps: Apps.Apps): Tile[] {
   const all = apps.get_list()
-  const byId = (id: string) => all.find(a =>
-    a.entry === `${id}.desktop` || a.entry?.toLowerCase().includes(id.split(".").pop()!.toLowerCase()))
-  const pinned = PINNED.map(byId).filter(Boolean) as Apps.Application[]
-  if (pinned.length >= 4) return pinned.slice(0, 6)
+  const resolve = (id: string): Apps.Application | undefined =>
+    all.find(a => a.entry === `${id}.desktop` || a.entry === id)
+    ?? all.find(a => a.entry?.toLowerCase().includes(id.toLowerCase().split(".").pop()!))
+  const fromApp = (app: Apps.Application): Tile => ({
+    name: app.name, iconName: app.icon_name || "application-x-executable",
+    launch: () => { bump(app.name); app.launch() },
+  })
+  if (DEMO) return DEMO_TILES.map(({ name, id }) => {
+    const app = resolve(id)
+    return { name, iconName: app?.icon_name || id || "application-x-executable",
+      launch: () => { bump(name); app?.launch() } }
+  })
+  const pinned = PINNED.map(resolve).filter(Boolean) as Apps.Application[]
   const rest = all.filter(a => !pinned.includes(a))
     .sort((x, y) => frequency(y.name) - frequency(x.name))
-  return [...pinned, ...rest].slice(0, 6)
+  return [...pinned, ...rest].slice(0, 6).map(fromApp)
 }
 function todayEventLabel(): string {
+  if (DEMO) return D.widgetEvent
   const d = new Date()
   const evs = EVENTS[`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`] ?? []
   return evs.length ? `${evs[0].t} · ${evs[0].n}` : "No events today"
+}
+function todayDateLabel(): string {
+  return DEMO ? D.widgetDate
+    : new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })
 }
 
 interface Row {
@@ -160,49 +187,75 @@ export default function Launcher() {
       }
       return false
     }}>
-    <box class="sheet launcher" orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+    <box class="sheet launcher" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
       <box class="field" spacing={11}>
         <image iconName="kobel-magnifying-glass-symbolic" />
         <overlay hexpand>
           <entry
-            placeholderText="Search — apps, files, actions · ':' cmds · '=' maths"
+            hexpand
+            setup={(self: any) => { self.set_max_width_chars(1); self.set_width_chars(1) }}
             text={bind(query)}
             onNotifyText={e => { query.set(e.text); selected.set(0) }} />
+          {/* placeholder as an OVERLAY label (not entry placeholderText) so its text
+              width can't inflate the entry's natural size → panel stays at min-width */}
+          <label type="overlay" class="lplaceholder" halign={Gtk.Align.START}
+            valign={Gtk.Align.CENTER} ellipsize={3} hexpand
+            visible={bind(query).as(q => !q)}
+            label="Search — apps, files, actions · ':' cmds · '=' maths" />
           <label type="overlay" class="ghost" halign={Gtk.Align.START}
+            valign={Gtk.Align.CENTER}
             label={bind(ghost).as(g => {
               const q = query.get()
               return g.toLowerCase().startsWith(q.toLowerCase()) && q ? g : ""
             })} />
         </overlay>
-        <label class="kbd" label="super" />
+        <label class="kbd" label="super" valign={Gtk.Align.CENTER} />
       </box>
 
       {/* empty state: curated frecency tile grid + widget row */}
       <revealer revealChild={bind(query).as(q => !q.trim())}>
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={0}>
           <box class="tiles" halign={Gtk.Align.CENTER} spacing={6}>
-            {gridApps(apps).map(a =>
-              <button class="tile" onClicked={() => { bump(a.name); a.launch(); App.get_window("launcher")?.hide() }}>
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-                  <image class="icon-tile" iconName={a.icon_name || "application-x-executable"} pixelSize={34} />
-                  <label label={a.name} />
+            {gridTiles(apps).map(t =>
+              <button class="tile" onClicked={() => { t.launch(); App.get_window("launcher")?.hide() }}>
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={8} halign={Gtk.Align.CENTER}>
+                  <image class="icon-tile" iconName={t.iconName} pixelSize={30}
+                    halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} />
+                  <label label={t.name} halign={Gtk.Align.CENTER}
+                    ellipsize={3} maxWidthChars={9} />
                 </box>
               </button>)}
           </box>
-          <box class="lwidgets" spacing={7}>
-            <box class="widget" hexpand orientation={Gtk.Orientation.VERTICAL}>
-              <label class="tn" halign={Gtk.Align.START}
-                label={new Date().toLocaleDateString("en-GB",
-                  { weekday: "long", day: "numeric", month: "long" })} />
+          {/* two cards split the row exactly in half — proto flex:1/flex:1 */}
+          <box class="lwidgets" spacing={7} homogeneous>
+            {/* left card — date + today's first event */}
+            <box class="widget lw" hexpand orientation={Gtk.Orientation.VERTICAL} spacing={2}
+              valign={Gtk.Align.CENTER}>
+              <label class="tn" halign={Gtk.Align.START} label={todayDateLabel()} />
               <label class="hint" halign={Gtk.Align.START} label={todayEventLabel()} />
             </box>
-            <box class="widget" hexpand>{/* Mpris mini-card: title/artist/play */}</box>
+            {/* right card — media mini-card: art · title/artist · play */}
+            <box class="widget lwm" hexpand spacing={10}>
+              <box class="lwart" valign={Gtk.Align.CENTER}>
+                <image iconName="kobel-music-symbolic"
+                  halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} />
+              </box>
+              <box class="lwt" hexpand orientation={Gtk.Orientation.VERTICAL}
+                valign={Gtk.Align.CENTER}>
+                <label class="mtitle" halign={Gtk.Align.START} ellipsize={3} label={D.media.title} />
+                <label class="hint" halign={Gtk.Align.START} ellipsize={3} label={D.media.artist} />
+              </box>
+              <button class="mbtn play" valign={Gtk.Align.CENTER}
+                onClicked={() => execAsync("playerctl play-pause")}>
+                <image iconName="kobel-play-symbolic" />
+              </button>
+            </box>
           </box>
         </box>
       </revealer>
 
       {/* results */}
-      <box orientation={Gtk.Orientation.VERTICAL}>
+      <box class="lrows" orientation={Gtk.Orientation.VERTICAL} spacing={2}>
         {sections.as(secs => secs.flatMap(sec => [
           <label class="sec" halign={Gtk.Align.START} label={sec.section} />,
           ...sec.rows.map(r => {
@@ -228,7 +281,7 @@ export default function Launcher() {
 
       {/* footer hint row — matches prototype .lfoot */}
       <box class="lfoot">
-        <box spacing={12} hexpand halign={Gtk.Align.START}>
+        <box spacing={14} hexpand halign={Gtk.Align.START}>
           <label useMarkup label="<b>:reload</b> soft-reload" />
           <label useMarkup label="<b>:osd</b> toggle" />
           <label useMarkup label="<b>:grants</b> screen access" />

@@ -255,34 +255,53 @@ switch {
 }
 
 // ============ LAUNCHER ============
-.launcher { min-width: 567px; padding: 8px; }  // CDP: 567/pad8/r24 (via .sheet)
+// .sheet.launcher (0,2,0) beats config.ts's `.launcher{min-width:560}` (0,1,0), which is
+// appended AFTER this sheet. GTK min-width is CONTENT-box, so 551 + 8px pad ×2 = 567px
+// border-box = the prototype's panel width.
+.sheet.launcher { min-width: 551px; }
+.launcher { padding: 8px; }  // CDP: 567/pad8/r24 (via .sheet)
 // CDP exact: field pad 3/12 r12 search 16px; tile pad 5/0 r10, icon 42×42 r12;
 // widget card pad 10/12 r12.
 .field {
   background-color: $panel2; border-radius: 12px; padding: 3px 12px; margin-bottom: 6px;
-  image { color: $dim; -gtk-icon-size: 17px; }
+  image { color: $dim; -gtk-icon-size: 16px; }
   entry {
     background: none; border: none; box-shadow: none; outline: none;
-    color: $tx; font-size: 16px; caret-color: $leaf; padding: 6px 0;
+    color: $tx; font-size: 14.5px; caret-color: $leaf; padding: 6px 0;
+    min-height: 0; min-width: 0;
   }
-  entry placeholder { color: $mut; }
-  .kbd { background-color: $chip; color: $mut; border-radius: 6px;
+  entry text { min-height: 0; }   // drop GTK's tall default text node → proto input h≈33
+  .lplaceholder { color: $mut; font-size: 14.5px; }   // faux placeholder (see Launcher.tsx)
+  .ghost { color: $dim; font-size: 14.5px; }
+  .kbd { background-color: $chip; color: $mut; border-radius: 5px;
          font-size: 10.5px; padding: 3px 7px; }   // CDP
 }
-.tiles { padding: 6px 2px 8px; }
+.tiles { padding: 8px 2px 10px; }   // CDP: lapps pad 8/2/10, gap 6
 .tile {
-  padding: 5px 0; border-radius: 10px;
-  .icon-tile { padding: 4px; border-radius: 12px; }   // 34px icon + 4 → ~42
-  label { color: $mut; font-size: 10.5px; margin-top: 8px; }
-  &:hover { background-color: $panel2; label { color: $tx; } }
+  padding: 5px 0; border-radius: 10px; min-width: 62px; max-width: 62px;   // proto tile = icon(42)+20
+  // 42×42 icon box (r12): 30px icon (pixelSize) + 6px padding = 42, proto .di.
+  // min-width:0 (0,2,0) escapes config.ts's global `.icon-tile{min-width:44}` floor.
+  .icon-tile { min-width: 0; min-height: 0; padding: 6px; border-radius: 12px;
+               transition: background-color 160ms; }
+  label { color: $mut; font-size: 10.5px; }   // tile column gap 8 handled in markup
+  &:hover .icon-tile { background-color: rgba(255,255,255,0.09); }
+  &:hover label { color: $tx; }
 }
 .lfoot { padding: 7px 10px 3px; color: $dim; font-size: 11px;
   b { color: $mut; font-weight: 650; } }
-.lwidgets { padding: 2px; }
+.lwidgets { padding: 0 2px 6px; }   // CDP: lwidgets pad 0/2/6, gap 7
 .widget {
   background-color: $panel2; border-radius: 12px; padding: 10px 12px;
   label { color: $tx; font-size: 12.5px; font-weight: 650; }
   .hint { color: $mut; font-size: 11px; font-weight: 400; }
+}
+// media mini-card (right widget): 34×34 art chip + title/artist + 29×29 play button
+.lwm {
+  .lwart { background-color: $chip; border-radius: 9px; min-width: 34px; min-height: 34px;
+    image { color: $mut; -gtk-icon-size: 11px; } }
+  .mbtn { color: $tx; border-radius: 8px; min-width: 29px; min-height: 29px;
+    image { -gtk-icon-size: 14px; }
+    &:hover { background-color: $chip; } }
 }
 .sec { color: $dim; font-size: 10px; font-weight: 650; padding: 8px 10px 2px; }  // CDP
 .row {
