@@ -18,7 +18,7 @@ export const D = {
   wifiSsid: "chompers-5G",
   btDevice: "WH-1000XM5",
   volume: 0.675,     // trough 51..285 width=234; knob=(209-51)/234=0.675 → x≈209 matches proto
-  brightness: 0.794, // trough 51..299 width=248; knob=(248-51)/248=0.794 → x≈248 matches proto
+  brightness: 0.800, // measured: AGS trough 2px narrower than proto; 0.800 aligns knob center
   dark: true, save: false, silent: false, night: false,
   // calendar — pinned "today" so the grid + hero match the prototype exactly
   today: { y: 2026, m: 6 /* July, 0-indexed */, d: 4 },  // Saturday 4 July 2026

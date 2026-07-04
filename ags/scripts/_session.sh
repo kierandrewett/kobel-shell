@@ -10,6 +10,16 @@ for _ in $(seq 1 40); do grep -q "GNOME Shell started" "$DK/shell.log" && break;
 echo "== shell up on $DISP =="
 
 export WAYLAND_DISPLAY="$DISP" GDK_BACKEND=wayland
+
+# Set the prototype wallpaper so transparent sheet corners match the reference.
+# /tmp/kobel-wallpaper.png is the 1280×800 desktop canvas (x-offset=20px so QS
+# alignment is exact). picture-options=stretched means 1:1 since image == monitor.
+if [ -f /tmp/kobel-wallpaper.png ]; then
+  gsettings set org.gnome.desktop.background picture-uri "file:///tmp/kobel-wallpaper.png" 2>/dev/null || true
+  gsettings set org.gnome.desktop.background picture-uri-dark "file:///tmp/kobel-wallpaper.png" 2>/dev/null || true
+  gsettings set org.gnome.desktop.background picture-options "stretched" 2>/dev/null || true
+fi
+
 gnoblinctl disable osd 2>/dev/null || true
 gnoblinctl disable notifications 2>/dev/null || true
 if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then

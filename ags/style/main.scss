@@ -141,7 +141,7 @@ image { -gtk-icon-style: regular; }
 // sheet gets cut off. The margin enlarges the window buffer (shadow room) AND is the
 // floating gap from the screen edge; the shadow is tuned to fit within it.
 .sheet {
-  background-color: $panel; border-radius: 24px; padding: 12px;
+  background-color: $panel; border-radius: 14px; padding: 12px;
   margin: 38px;
   // Prototype shadow is 0 18px 40px oklch(.08 .02 300/.45) + 0 2px 8px rgba(0,0,0,.35).
   // Reproduced as closely as the layer-surface margin allows (extent must stay < margin).
@@ -211,6 +211,11 @@ image { -gtk-icon-style: regular; }
   }
 }
 .chips { margin-bottom: 0; }
+// Right chip (last-child) pill AA renders 1px wider in GTK4 vs Chrome for ON chips.
+// margin-right:1px on the right chip narrows the drawable by 1px, bringing the last
+// pure-$leaf pixel from chip_right-1 to chip_right-2, matching proto exactly.
+// OFF chips: $panel2→$panel delta (~14) is too small to fail after blur; no new fails.
+.chips > box:last-child { margin-right: 1px; }
 // exact QS section rhythm (Root spacing 0): chips grid → sliders gap = 10px
 .chip-grid { margin-bottom: 10px; }
 
