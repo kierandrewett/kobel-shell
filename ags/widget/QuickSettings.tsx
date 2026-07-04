@@ -77,6 +77,8 @@ function GnoblinBanner() {
 
 // local-state toggles (no real backend for these in the devkit)
 const tSave = Variable(false), tDark = Variable(true), tSilent = Variable(false), tNight = Variable(false)
+// edit-mode for the tile catalog (pencil button) — hook for tile rearrange/customise.
+const editMode = Variable(false)
 
 // Prototype toggle chips are label-only, vertically centered — state is shown by the
 // leaf fill, not a sub-line (only Wi-Fi/Bluetooth carry a sub).
@@ -99,8 +101,8 @@ function Root({ name }: { name?: string }) {
       <button class="rbtn leaf" onClicked={() => reload()}><image iconName="kobel-leaf-symbolic" /></button>
       <button class="rbtn" onClicked={() => execAsync("loginctl lock-session")}>
         <image iconName="kobel-lock-symbolic" /></button>
-      <button class="rbtn" onClicked={() => execAsync("gnome-session-quit --logout --no-prompt")}>
-        <image iconName="kobel-logout-symbolic" /></button>
+      <button class="rbtn" onClicked={() => editMode.set(!editMode.get())}>
+        <image iconName="kobel-pencil-symbolic" /></button>
       <button class="rbtn danger" onClicked={() => App.toggle_window("session")}>
         <image iconName="kobel-power-symbolic" /></button>
     </box>
