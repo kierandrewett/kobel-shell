@@ -55,7 +55,7 @@ function Card({ n }: { n: CardData }) {
                 <image iconName={n.icon} pixelSize={20} />
             </box>
             <box orientation={Gtk.Orientation.VERTICAL} hexpand>
-                <box>
+                <box spacing={8}>
                     <label halign={Gtk.Align.START} hexpand ellipsize={3} label={n.summary} />
                     <label class="when tn" label={n.when} />
                 </box>
@@ -290,8 +290,9 @@ export function Drawer() {
                     <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
                         <MediaCard />
                         <box class="nhead" spacing={8}>
-                            <label hexpand halign={Gtk.Align.START} label="Notifications" />
+                            <label halign={Gtk.Align.START} label="Notifications" />
                             <label class="tn sub" label={demoCount} />
+                            <box hexpand />
                             <button class="nclear">
                                 <box spacing={5}>
                                     <image iconName="kobel-trash-symbolic" />
@@ -335,8 +336,9 @@ export function Drawer() {
                 <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
                     <MediaCard />
                     <box class="nhead" spacing={8}>
-                        <label hexpand halign={Gtk.Align.START} label="Notifications" />
+                        <label halign={Gtk.Align.START} label="Notifications" />
                         <label class="tn sub" label={bind(list).as((n) => `${n.length || ""}`)} />
+                        <box hexpand />
                         <button
                             class="nclear"
                             onClicked={() => nfd.get_notifications().forEach((n) => n.dismiss())}

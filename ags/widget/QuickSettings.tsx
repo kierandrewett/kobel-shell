@@ -74,19 +74,21 @@ function Sliders() {
     const volIcon = speaker
         ? bind(speaker, "volume_icon").as((i) => i ?? "kobel-speaker-wave-symbolic")
         : "kobel-speaker-wave-symbolic"
-    const volValue: any = DEMO ? D.volume : bind(speaker!, "volume")
     // proto .sliders is a flex column with NO gap between the two srows (each min-h 42).
     // TinySlider overrides vfunc_measure to report natural=1px so the srow doesn't
     // inflate the panel beyond the chip-grid width (GTK CSS max-width is not respected).
     const initVol = DEMO ? D.volume : (speaker?.volume ?? 0.64)
+    const volValue = Variable(initVol)
     const volSlider = new TinySlider({ hexpand: true, cssClasses: ["slider"], value: initVol })
     if (!DEMO && speaker)
         bind(speaker, "volume").subscribe((v: number) => {
             volSlider.get_adjustment().value = v
+            volValue.set(v)
         })
     // GtkRange::change-value args: (range, scrollType, value)
     volSlider.connect("change-value", (_s: any, _t: any, v: number) => {
         if (speaker) speaker.volume = v
+        volValue.set(v)
     })
 
     const brightValue = Variable(DEMO ? D.brightness : 0.8)
@@ -116,6 +118,12 @@ function Sliders() {
             <box class="srow" spacing={9}>
                 <image iconName={volIcon} />
                 {volSlider}
+                <label
+                    class="sval tn"
+                    xalign={1}
+                    widthRequest={32}
+                    label={bind(volValue).as((v) => `${Math.round(v * 100)}%`)}
+                />
                 <button class="chev" widthRequest={31} onClicked={() => drill.set("mix")}>
                     <image iconName="kobel-chevron-right-symbolic" />
                 </button>
@@ -123,8 +131,14 @@ function Sliders() {
             <box class="srow" spacing={9}>
                 <image iconName="kobel-brightness-symbolic" />
                 {brightSlider}
-                {/* gutter: widthRequest=17 + ~13px Adwaita overhead ≈ 30px, matching chev width */}
-                <box widthRequest={17} />
+                <label
+                    class="sval tn"
+                    xalign={1}
+                    widthRequest={32}
+                    label={bind(brightValue).as((v) => `${Math.round(v * 100)}%`)}
+                />
+                {/* gutter aligns with chev width (≈31px); sval=32 + spacing=9 → space taken */}
+                <box />
             </box>
         </box>
     )
