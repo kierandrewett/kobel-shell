@@ -48,6 +48,9 @@ if [ -f "$HOME_REAL/.local/share/fonts/inter/InterVariable.ttf" ]; then
   cp "$HOME_REAL/.local/share/fonts/inter/InterVariable.ttf" "$DK/data/fonts/inter/"
   mkdir -p "$DK/config/fontconfig/conf.d"
   cp "$HOME_REAL/.config/fontconfig/conf.d/99-inter.conf" "$DK/config/fontconfig/conf.d/" 2>/dev/null || true
+  # Pre-build the fontconfig cache so gnome-shell/GJS picks up Inter immediately
+  XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache" HOME="$DK/home" \
+    fc-cache -f "$DK/data/fonts/" 2>/dev/null || true
 fi
 # dconf (not memory) so the shell's SetFeature reaches the SEPARATE-process fdo
 # notification daemon via dconf's cross-process change signal — memory gsettings is
