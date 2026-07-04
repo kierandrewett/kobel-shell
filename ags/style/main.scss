@@ -302,15 +302,23 @@ switch {
 // Exact CDP values: panel 333/pad12/r24; month 13/650; nav 26×26 r9; dow 9.5/600
 // wk 9; day 24×24 r99 size11 weight400; evrow pad 8/10 r10 gap10; evic 26×26 r8.
 .cal {
-  min-width: 333px;
+  // content 309 + 12px sheet padding each side = 333 total (matches prototype .calp)
+  min-width: 309px;
   .sub  { color: $mut; font-size: 11.5px; }
-  .hero { color: $tx; font-size: 19px; font-weight: 650; margin-bottom: 8px; }
+  .hero { color: $tx; font-size: 19px; font-weight: 650; }
+  // prototype .calhero: 8px inset (matches the panel-relative x=20 of the hero text).
+  // top 2 / bottom 6 keeps the block at 50 (nav stays at 62, grid at 96) while nudging
+  // the 19px date line down to the prototype's y=30.
+  .calhero { padding: 2px 8px 6px 8px; }
+  // sheet spacing is 0 — recreate the prototype's exact vertical rhythm with margins:
+  // hero→nav 0 (calhero's own bottom pad), nav→grid 8, grid→events 10.
+  .cal-grid { margin-top: 8px; }
   // .calmon COMPUTED = 13px/650 pad 4 (a .calmon rule beats .calhead b 12.5 — source-grep missed it)
   .month { border-radius: 8px; padding: 4px; font-weight: 650; font-size: 13px;
            &:hover { background-color: $panel2; } }
   centerbox > button { padding: 5px; border-radius: 9px; color: $mut;   // 15px icon + 5 → ~25
     &:hover { background-color: $panel2; color: $tx; } }
-  .dow { color: $dim; font-size: 9.5px; font-weight: 600; padding: 3px 0 5px; }   // CDP
+  .dow { color: $dim; font-size: 9.5px; font-weight: 600; padding: 3px 0 3px; }   // 19px row (GTK renders the line taller than CDP's 5px-bottom)
   .wk  { color: $dim; font-size: 9px; font-weight: 600; }
 
   // days: plain numbers, NO button chrome — 24×24, size 11, weight 400
@@ -324,17 +332,22 @@ switch {
     &.out { color: $dim; font-weight: 400; }
     &.today { background-color: $leaf; color: $ink; font-weight: 700;
               &:hover { background-color: $leaf; } }
-    // selection ring only on NON-today days — today's leaf fill is its own indicator
+    // selection ring: mut on a plain selected day, ink on today (proto .day.today.sel)
     &.sel:not(.today) { box-shadow: inset 0 0 0 1.5px $mut; }
+    &.today.sel { box-shadow: inset 0 0 0 1.5px $ink; }
     // event dot: 3px leaf circle at bottom-centre (ink on today's leaf fill) — CDP ::after
     .evdot { min-width: 3px; min-height: 3px; border-radius: 99px;
              background-color: $leaf; margin-bottom: 2px; }
     &.today .evdot { background-color: $ink; }
   }
-  .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 8px; }   // CDP .calev>b
-  .evrow { background-color: $panel2; border-radius: 10px; padding: 8px 10px;
-    .evic { background-color: #628835; border-radius: 8px; padding: 5px;   // CDP evic green, white glyph
-      image { color: #fff; -gtk-icon-size: 15px; } }
+  // events section = prototype .calev: a panel2 card (pad10/r12) holding the date
+  // header + darker (--panel) event rows — NOT a bare panel2 row on the sheet.
+  .evcard { margin-top: 10px; background-color: $panel2; border-radius: 12px; padding: 10px; }
+  .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 5px; }   // 24px (GTK line taller than CDP; 5px bottom keeps evrow at proto y)
+  .evrow { background-color: $panel; border-radius: 10px; padding: 8px 10px;
+    margin-bottom: 4px; &:last-child { margin-bottom: 0; }   // CDP .evrow (inset on panel)
+    .evic { background-color: #628933; border-radius: 8px; padding: 5px;   // CDP oklch(58% .12 130)
+      image { color: #fff; -gtk-icon-size: 15px; } }   // 5+15+5 = 25 ≈ proto 26
     label { font-size: 12px; font-weight: 650; }   // .evt b
     .sub { color: $mut; font-size: 10.5px; font-weight: 400; } }
 }

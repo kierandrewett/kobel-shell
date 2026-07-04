@@ -4,9 +4,13 @@
 // events card in the notification-card language. Months slide (multiview motion).
 import { App, Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind } from "astal"
+import { DEMO, D } from "../lib/demo"
 
 interface Ev { t: string; n: string; icon: string }
-const now = new Date()
+// "today" — pinned to the prototype's mock date (Fri 3 Jul 2026) under KOBEL_DEMO so the
+// hero, grid highlight, event-dots and events card overlay the prototype 1:1; real clock
+// otherwise. Every "today"/selected default flows from this single `now`.
+const now = DEMO ? new Date(D.today.y, D.today.m, D.today.d) : new Date()
 const key = (y: number, m: number, d: number) => `${y}-${m + 1}-${d}`
 export const EVENTS: Record<string, Ev[]> = {
   [key(now.getFullYear(), now.getMonth(), now.getDate())]:
@@ -14,6 +18,8 @@ export const EVENTS: Record<string, Ev[]> = {
   [key(now.getFullYear(), now.getMonth(), 11)]:
     [{ t: "10:30", n: "Kieran Birthday", icon: "kobel-cake-symbolic" },
      { t: "13:00", n: "London Thing", icon: "kobel-pin-symbolic" }],
+  [key(now.getFullYear(), now.getMonth(), 13)]:
+    [{ t: "All day", n: "My Birthday", icon: "kobel-cake-symbolic" }],
 }
 
 const view = Variable({ y: now.getFullYear(), m: now.getMonth() })
@@ -50,7 +56,7 @@ function Grid() {
           if (c >= 5) cls.push("we")                       // WEEKENDS DIMMED
           if (out) cls.push("out")
           else {
-            const today = new Date()
+            const today = now
             if (d === today.getDate() && v.m === today.getMonth() && v.y === today.getFullYear())
               cls.push("today")
             if (EVENTS[key(v.y, v.m, d)]) cls.push("ev")   // event-dot (CSS ::after → underline dot)
@@ -83,7 +89,9 @@ function Grid() {
 }
 
 function EventsCard() {
-  return <box class="evcard" orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+  // Prototype .calev: a panel2 card (pad10/r12) wrapping the date header + darker
+  // (--panel) event rows; header's own bottom padding is the header→row gap (spacing 0).
+  return <box class="evcard" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
     {bind(sel).as(d => {
       const evs = EVENTS[key(d.getFullYear(), d.getMonth(), d.getDate())] ?? []
       const head = <label class="evhead" halign={Gtk.Align.START}
@@ -110,12 +118,12 @@ export default function Calendar() {
     name="calendar" namespace="kobel-calendar" class="calendar-window" visible={false}
     anchor={Astal.WindowAnchor.TOP} exclusivity={Astal.Exclusivity.NORMAL} keymode={Astal.Keymode.ON_DEMAND}
     onKeyPressed={(self, key) => key === Gdk.KEY_Escape ? (self.hide(), true) : false}>
-    <box class="sheet cal" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-      <box orientation={Gtk.Orientation.VERTICAL}>
+    <box class="sheet cal" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
+      <box class="calhero" orientation={Gtk.Orientation.VERTICAL}>
         <label class="sub" halign={Gtk.Align.START}
-          label={new Date().toLocaleDateString("en-GB", { weekday: "long" })} />
+          label={now.toLocaleDateString("en-GB", { weekday: "long" })} />
         <label class="hero" halign={Gtk.Align.START}
-          label={new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} />
+          label={now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} />
       </box>
       <centerbox>
         <button onClicked={() => {
