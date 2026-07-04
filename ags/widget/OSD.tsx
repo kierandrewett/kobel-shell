@@ -30,7 +30,7 @@ export default function OSD(monitor: Gdk.Monitor) {
                 <image iconName={bind(speaker, "volume_icon")} />
                 <levelbar hexpand value={bind(speaker, "volume")} />
                 <label
-                    class="tn"
+                    class="sval tn"
                     label={bind(speaker, "volume").as((v) => `${Math.round(v * 100)}%`)}
                 />
             </box>

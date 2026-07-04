@@ -128,12 +128,11 @@ image { -gtk-icon-style: regular; }
     background-color: $chip; color: $mut;
     border-radius: 9px; padding: 6px;
   }
-  .mprog {
-    min-width: 25px; min-height: 3px; margin-bottom: 6px;
-    trough { background-color: rgba(0,0,0,0.35); border-radius: 99px; min-height: 3px; }
-    block.filled { background-color: $leaf; border-radius: 99px; }
-    block.empty { background-color: transparent; }
-  }
+  // dock media progress bar — GTK CSS node: levelbar > trough > block.{filled,empty}
+  levelbar.mprog { min-width: 25px; min-height: 3px; margin-bottom: 6px; }
+  levelbar.mprog > trough { background-color: rgba(0,0,0,0.35); border-radius: 99px; min-height: 3px; }
+  levelbar.mprog > trough > block.filled { background-color: $leaf; border-radius: 99px; }
+  levelbar.mprog > trough > block.empty { background-color: transparent; }
 }
 
 // ============ shared sheet ============
@@ -285,12 +284,12 @@ switch {
 // drilldown AP/device rows — CDP: xrow pad 9/11 r9 gap 10 bg panel2; xs meta; active=leaf tint
 .dlist { }
 .xrow {
-  background-color: $panel2; border-radius: 9px; padding: 9px 11px;
+  background-color: transparent; border-radius: 9px; padding: 9px 11px;
   image { color: $mut; -gtk-icon-size: 17px; }
   label { font-size: 12.5px; font-weight: 600; color: $tx; }   // .xrow b
   .xs { color: $mut; font-size: 10.5px; font-weight: 400; }   // CDP mut
-  &:hover { background-color: $chip; }
-  &.active { image { color: $leaf; } .xs { color: $leaf; } }
+  &:hover { background-color: $panel2; }
+  &.active { background-color: rgba(106,197,143,0.08); image { color: $leaf; } .xs { color: $leaf; } }
 }
 // volume mixer rows — CDP: mixrow flex-ROW pad 4/2 gap 10 min-h40; mi 26×26 r8 panel2;
 // em name 72px fixed 12/mut; slider fills. Icon | name | slider on ONE row.
@@ -345,7 +344,7 @@ switch {
 // media mini-card (right widget): 34×34 art chip + title/artist + 29×29 play button
 .lwm {
   .lwart { background-color: $chip; border-radius: 9px; min-width: 34px; min-height: 34px;
-    image { color: $mut; -gtk-icon-size: 11px; } }
+    image { color: $mut; -gtk-icon-size: 16px; } }
   .mbtn { color: $tx; border-radius: 8px; min-width: 29px; min-height: 29px;
     image { -gtk-icon-size: 14px; }
     &:hover { background-color: $chip; } }
