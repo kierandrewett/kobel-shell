@@ -91,10 +91,20 @@ export default function Bar(monitor: Gdk.Monitor) {
         </box>
       </button>
       <box spacing={4}>
-        {bind(Tray.get_default(), "items").as(items => items.map(item =>
-          <menubutton tooltipText={item.tooltip_markup} menuModel={item.menu_model}>
-            <image gicon={bind(item, "gicon")} />
-          </menubutton>))}
+        {DEMO
+          ? <box spacing={1} marginEnd={3}>
+              <button class="ibtn tray-icon" valign={Gtk.Align.CENTER} tooltipText="Discord">
+                <image iconName="kobel-chat-symbolic" /></button>
+              <button class="ibtn tray-icon" valign={Gtk.Align.CENTER} tooltipText="Steam">
+                <image iconName="kobel-game-symbolic" /></button>
+              <button class="ibtn tray-icon" valign={Gtk.Align.CENTER} tooltipText="Telegram">
+                <image iconName="kobel-paper-plane-symbolic" /></button>
+              <label class="tn tray-lang" valign={Gtk.Align.CENTER} label="en" />
+            </box>
+          : bind(Tray.get_default(), "items").as(items => items.map(item =>
+              <menubutton tooltipText={item.tooltip_markup} menuModel={item.menu_model}>
+                <image gicon={bind(item, "gicon")} />
+              </menubutton>))}
         <StatusPill />
         <Bell />
         <button class="ibtn" valign={Gtk.Align.CENTER}

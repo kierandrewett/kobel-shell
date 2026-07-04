@@ -36,13 +36,13 @@ export const panelTop = () => tokens.gap + tokens.barH + 6
 export function tokenCss(t: Tokens = tokens): string {
   return `
   .bar { min-height: ${t.barH}px; border-radius: ${t.barR}px;
-         margin: ${t.gap}px ${t.edge}px 0 ${t.edge}px; }
+         margin: 0; }
   .bar button { min-width: ${ctl()}px; min-height: ${ctl()}px; }
   .dock { padding: ${t.dockPad}px; border-radius: ${12 + t.dockPad - 1}px;
           margin-bottom: ${t.gap}px; }
   .icon-tile { min-width: ${t.icon}px; min-height: ${t.icon}px; }
   .qs, .drawer, .calendar { margin-top: ${panelTop()}px; }
-  .qs { min-width: ${t.panelW}px; }
+  .qs { min-width: ${t.panelW - 24}px; }  /* panelW is outer; subtract .sheet padding 12px×2 */
   .launcher { min-width: ${t.launcherW}px; }
   .calendar { min-width: ${t.calendarW}px; }
   .chip { min-height: ${t.tileH}px; }

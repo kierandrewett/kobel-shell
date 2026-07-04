@@ -11,6 +11,8 @@ import Mpris from "gi://AstalMpris"
 import { connected, reload } from "../services/gnoblin"
 import { MOTION } from "../lib/spring"
 import { DEMO, D } from "../lib/demo"
+import { TinySlider } from "../lib/tinyslider"
+import { FixedChev } from "../lib/fixedchev"
 
 type Drill = null | "wifi" | "bt" | "mix"
 // KOBEL_DRILL lets the devkit render a drilldown directly (no pointer to click the
@@ -55,21 +57,31 @@ function Sliders() {
     : "kobel-speaker-wave-symbolic"
   const volValue: any = DEMO ? D.volume : bind(speaker!, "volume")
   // proto .sliders is a flex column with NO gap between the two srows (each min-h 42).
+  // TinySlider overrides vfunc_measure to report natural=1px so the srow doesn't
+  // inflate the panel beyond the chip-grid width (GTK CSS max-width is not respected).
+  const initVol = DEMO ? D.volume : (speaker?.volume ?? 0.64)
+  const volSlider = new TinySlider({ hexpand: true, cssClasses: ["slider"], value: initVol })
+  if (!DEMO && speaker) bind(speaker, "volume").subscribe((v: number) => { volSlider.get_adjustment().value = v })
+  // GtkRange::change-value args: (range, scrollType, value)
+  volSlider.connect("change-value", (_s: any, _t: any, v: number) => { if (speaker) speaker.volume = v })
+
+  const brightSlider = new TinySlider({ hexpand: true, cssClasses: ["slider"], value: DEMO ? D.brightness : 0.8 })
+  brightSlider.connect("change-value", (_s: any, _t: any, v: number) =>
+    execAsync(`brightnessctl set ${Math.round(v * 100)}%`))
+
   return <box class="sliders" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
     <box class="srow" spacing={9}>
       <image iconName={volIcon} />
-      <slider hexpand class="slider" value={volValue}
-        onChangeValue={(_s, v) => { if (speaker) speaker.volume = v }} />
-      <button class="chev" onClicked={() => drill.set("mix")}>
+      {volSlider}
+      <button class="chev" widthRequest={31} onClicked={() => drill.set("mix")}>
         <image iconName="kobel-chevron-right-symbolic" />
       </button>
     </box>
     <box class="srow" spacing={9}>
       <image iconName="kobel-brightness-symbolic" />
-      <slider hexpand class="slider" value={DEMO ? D.brightness : 0.8}
-        onChangeValue={(_s, v) => execAsync(`brightnessctl set ${Math.round(v * 100)}%`)} />
-      {/* gutter matches the volume chev width so both rails end flush */}
-      <box widthRequest={31} />
+      {brightSlider}
+      {/* gutter: widthRequest=17 + ~13px Adwaita overhead ≈ 30px, matching chev width */}
+      <box widthRequest={17} />
     </box>
   </box>
 }

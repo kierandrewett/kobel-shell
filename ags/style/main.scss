@@ -80,6 +80,19 @@ image { -gtk-icon-style: regular; }
   .badge {
     background-color: $leaf; color: $ink; border-radius: 99px;
     font-size: 9px; font-weight: 700; padding: 0 3px; margin: 2px;
+    min-height: 14px; min-width: 8px;
+  }
+
+  // Tray icons: narrower + smaller than regular ibtn (proto: 28×31, 14px icon, 1px gap)
+  .tray-icon {
+    min-width: 28px;
+    image { -gtk-icon-size: 14px; color: $mut; }
+  }
+  .tray-lang {
+    font-size: 11px;
+    font-weight: 650;
+    color: $mut;
+    margin: 0 8px;
   }
 }
 
@@ -142,7 +155,7 @@ image { -gtk-icon-style: regular; }
 // Noto-Sans fallback (Inter isn't installed) renders the chip sub-labels a few px wider,
 // so the chip grid — not min-width — sets the width. Overlay-diffing forces matching
 // widths, so this doesn't skew the comparison; the chrome matches the proto to >99%.
-.qs { min-width: 328px; }
+.qs { min-width: 328px; }  /* matches panelW(352)−24; overridden by config.ts tokenCss at runtime */
 
 // compact top row — prototype: 32×32 rbtns, r99. Proto .qtop is 43px tall with the
 // buttons pinned to the top 32px (11px dead space below for the edit view) + 1px
@@ -152,8 +165,12 @@ image { -gtk-icon-style: regular; }
   margin-bottom: 12px;
   padding: 0 2px;   // proto .qt-main inset:0 2px — meta 2px in, buttons 2px off the edge
   // battery pill: 15px glyph + 6px gap + tabular meta text (proto .qb)
+  // padding/margin 0 zeros Adwaita's image inflation so icon footprint = 15px
+  // and meta text starts at sheet_pad(12)+qs-top_pad(2)+icon(15)+gap(6)=35,
+  // matching where Chrome renders it in the prototype.
   .meta { color: $mut; font-size: 11.5px; font-weight: 600;
-    image { -gtk-icon-size: 15px; color: $mut; } }
+    image { -gtk-icon-size: 15px; color: $mut;
+            padding: 0; margin: 0; } }
   // circular top-row buttons: 9px padding around a 14px icon → 32px round; 7px gap (proto)
   .rbtn {
     padding: 9px; border-radius: 99px;
@@ -200,12 +217,11 @@ image { -gtk-icon-style: regular; }
 // ---- GTK4 scale as a thin GNOME rail + round knob. Direct-child selectors match
 // Adwaita's specificity; our sheet loads after, so ours wins. Knob overhangs the
 // thin trough via negative margin.
-// min-width 0: a GtkScale's default natural width (~270px) would otherwise force the
-// whole sheet wider than the 328px min — with it neutralised the slider still hexpands
-// to fill, but no longer drives the panel width (proto panel is a fixed 352px).
-scale { min-height: 0; min-width: 0; padding: 0; margin: 6px 0; }
-scale > trough {
-  min-height: 6px; min-width: 0; margin: 0;
+// TinySlider (KobelTinyScale) overrides vfunc_measure to return natural=1px; the CSS
+// min-width:0 here suppresses the trough's own CSS minimum so it too doesn't inflate.
+scale, scale:horizontal, scale:vertical { min-height: 0; min-width: 0; padding: 0; margin: 6px 0; }
+scale > trough, scale:horizontal > trough, scale:vertical > trough {
+  min-height: 6px; min-width: 0; margin: 0; padding: 0;
   border-radius: 999px; background-color: $chip;
 }
 scale > trough > highlight,
@@ -217,12 +233,20 @@ scale > trough > slider {
   border-radius: 999px; background-color: $tx;
   box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
-// CDP: srow padding-left 12, right 2, gap 9 (widget spacing), min-height 42 (each row);
-// leading icon 16px; drill chev 15px icon in a ~30px hit-target so both rails end flush.
-.srow { padding: 0 2px 0 12px; min-height: 42px; }
-.srow image { color: $mut; -gtk-icon-size: 16px; }
-.srow .chev { padding: 6px 8px; color: $dim; border-radius: 9px;   // padding-driven, was min-w 30
-  image { -gtk-icon-size: 15px; }
+// CDP: srow gap=9, min-height=42. pad-left=2 so that:
+//   12(sheet-pad) + 2(srow-pad) + 16(icon) + 9(gap) + 12(Adwaita scale padding) = 51 = proto trough-left
+// Adwaita's `scale { padding: 12px }` is loaded at priority 600 and our `scale { padding: 0 }`
+// at priority 800 but GTK4 scale internally clamps trough offset to the knob margin (hardcoded
+// internal padding of 12px regardless of CSS). Account for it in the srow layout instead.
+// Icon is at crop_x=14..29, proto glyph at ~26..38; sparse speaker icon → minimal diff.
+// Gutter spacer widthRequest=17; bright trough_left=51, bright trough_right=51+249-1≈299 ≈ proto.
+.srow { padding: 0 2px 0 2px; min-height: 42px; }
+// Icon shift: margin-left=12 shifts icon right to match proto (x=26..41), margin-right=-12
+// keeps scale at same x (net layout contribution = 16px, unchanged). Trough stays at x=51.
+.srow image { color: $mut; -gtk-icon-size: 16px;
+              padding: 0; margin: 0 -12px 0 12px; }
+.srow .chev { padding: 6px 8px; color: $dim; border-radius: 9px;
+  image { -gtk-icon-size: 15px; padding: 0; margin: 0; }
   &:hover { background-color: $panel2; } }
 
 // gnoblin banner
@@ -342,19 +366,16 @@ switch {
   min-width: 309px;
   .sub  { color: $mut; font-size: 11.5px; }
   .hero { color: $tx; font-size: 19px; font-weight: 650; }
-  // prototype .calhero: 8px inset (matches the panel-relative x=20 of the hero text) +
-  // 8px bottom (hero→nav gap). Block = 16(sub)+26(date)+8 = 50, so nav lands at 62 and
-  // the 19px date line aligns to the prototype's baseline.
-  .calhero { padding: 0 8px 8px 8px; }
+  .calhero { padding: 5px 8px 8px 8px; }
   // sheet spacing is 0 — recreate the prototype's exact vertical rhythm with margins:
   // hero→nav 0 (calhero's own bottom pad), nav→grid 8, grid→events 10.
   .cal-grid { margin-top: 8px; }
   // .calmon COMPUTED = 13px/650 pad 4 (a .calmon rule beats .calhead b 12.5 — source-grep missed it)
-  .month { border-radius: 8px; padding: 4px; font-weight: 650; font-size: 13px;
+  .month { border-radius: 8px; padding: 5px; font-weight: 650; font-size: 13px;
            &:hover { background-color: $panel2; } }
-  centerbox > button { padding: 5px; border-radius: 9px; color: $mut;   // 15px icon + 5 → ~25
+  centerbox > button { padding: 6px 5px; border-radius: 9px; color: $mut;   // icon + 6+6 → 26px = proto calhead
     &:hover { background-color: $panel2; color: $tx; } }
-  .dow { color: $dim; font-size: 9.5px; font-weight: 600; padding: 3px 0 3px; }   // 19px row (GTK renders the line taller than CDP's 5px-bottom)
+  .dow { color: $dim; font-size: 9.5px; font-weight: 600; padding: 3px 0 6px; }
   .wk  { color: $dim; font-size: 9px; font-weight: 600; }
 
   // days: plain numbers, NO button chrome — 24×24, size 11, weight 400
@@ -378,10 +399,8 @@ switch {
   }
   // events section = prototype .calev: a panel2 card (pad10/r12) holding the date
   // header + darker (--panel) event rows — NOT a bare panel2 row on the sheet.
-  // padding-top 8 (vs proto 10): GTK anchors the header/row text ~2px lower than the
-  // browser, so trimming the top inset pulls the card's contents onto the prototype's.
-  .evcard { margin-top: 10px; background-color: $panel2; border-radius: 12px; padding: 8px 10px 10px 10px; }
-  .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 5px; }   // 24px (GTK line taller than CDP; 5px bottom keeps evrow at proto y)
+  .evcard { margin-top: 10px; background-color: $panel2; border-radius: 12px; padding: 10px; }
+  .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 8px; }
   .evrow { background-color: $panel; border-radius: 10px; padding: 8px 10px;
     margin-bottom: 4px; &:last-child { margin-bottom: 0; }   // CDP .evrow (inset on panel)
     .evic { background-color: #628933; border-radius: 8px; padding: 5px;   // CDP oklch(58% .12 130)
