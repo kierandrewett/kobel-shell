@@ -214,7 +214,7 @@ switch {
   background-color: $panel2; border-radius: 9px; padding: 9px 11px;
   image { color: $mut; -gtk-icon-size: 17px; }
   label { font-size: 12.5px; font-weight: 600; color: $tx; }   // .xrow b
-  .xs { color: $dim; font-size: 10.5px; font-weight: 400; }
+  .xs { color: $mut; font-size: 10.5px; font-weight: 400; }   // CDP mut
   &:hover { background-color: $chip; }
   &.active { image { color: $leaf; } .xs { color: $leaf; } }
 }
@@ -329,7 +329,8 @@ switch {
 }
 .nhead {
   background-color: $panel; border-radius: 14px; padding: 8px 8px 8px 14px; margin-bottom: 8px;
-  label { font-size: 13.5px; font-weight: 650; }
+  label { font-size: 13.5px; font-weight: 650; }   // .nhead b (title)
+  .sub { font-size: 11px; font-weight: 400; color: $dim; }   // .nhead span (count) — CDP dim
   .nclear { color: $rose; font-size: 11.5px; font-weight: 600; border-radius: 7px;
             padding: 4px 9px; &:hover { background-color: $panel2; } }   // CDP pad 4/9
 }
@@ -340,7 +341,8 @@ switch {
   image { color: $tx; -gtk-icon-size: 15px; }
   // OSD rail is 8px (thicker than the QS 6px slider)
   scale > trough, scale > trough > highlight { min-height: 8px; }
-  .sval { min-width: 34px; color: $tx; font-size: 12px; } }
+  .sval { min-width: 34px; color: $mut; font-size: 12px; }   // CDP mut
+}
 
 // ============ SESSION ============
 // CDP exact: dim oklch(.12 .03 310/.8); sbtn pad6 r12 gap10; sic 59×59 r24 bg~#171420;
