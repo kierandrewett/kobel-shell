@@ -417,6 +417,9 @@ switch {
 // ============ NOTIFICATIONS ============
 // CDP/source: card .inner pad 11/12 r20 bg panel gap10; toast pad 11/13 r20 bg panelT (blur);
 // nhead pad 8/8/8/14 r14; title 13.5/650; nx 22×22 r99; when 10px dim.
+// media card: mrow (art 46×46 r10 chip + mmeta 13/650 + sub 11.5/mut + mbtns 29×29 r8)
+//             mbar (mtime 10.5px/mut + mtrack 4px chip/leaf + mtime)
+//             memptyrow empty state + ghostb "Open Music" chip.
 .drawer { background: transparent; }
 .toast { background-color: rgba(16,13,20,0.82); border-radius: 20px; padding: 11px 13px;
          box-shadow: 0 18px 40px rgba(5,3,10,0.45); }
@@ -430,6 +433,34 @@ switch {
   // close button: padding-driven 22×22 (11px icon-ish + padding)
   .nx { padding: 5px; border-radius: 99px; color: $dim;
     &:hover { background-color: $chip; color: $rose; } }
+  // ---- drawer media card internal layout ----
+  // .mrow: flex row gap 11 — art tile + title/artist + playback controls
+  .mrow { }
+  .mart { background-color: $chip; border-radius: 10px; min-width: 46px; min-height: 46px;
+    image { color: $mut; -gtk-icon-size: 22px; } }
+  .mmeta { }
+  .mbtns { }
+  // .mbtn: 29×29 r8, chip bg on hover, 14px icon
+  .mbtn { min-width: 29px; min-height: 29px; border-radius: 8px; color: $mut;
+    image { -gtk-icon-size: 14px; }
+    &:hover { background-color: $chip; color: $tx; } }
+  // .mbar: margin-top 7px, gap 8 — mtime 10.5px/mut + track 4px chip/leaf + mtime
+  .mbar { margin-top: 7px; }
+  .mtime { color: $mut; font-size: 10.5px; font-weight: 400; }
+  .mtrack {
+    min-height: 4px; border-radius: 99px;
+    trough { min-height: 4px; border-radius: 99px; background-color: $chip; }
+    block.filled { background-color: $leaf; border-radius: 99px; }
+    block.empty { background-color: transparent; }
+  }
+  // empty state row
+  .memptyrow label { color: $mut; font-size: 12px; font-weight: 400; }
+  .memptyrow .mart image { color: $dim; }
+  // "Open Music" ghost button — chip bg, tx color, 11.5px/600, pad 7/12 r10
+  .ghostb { background-color: $chip; color: $tx; font-size: 11.5px; font-weight: 600;
+    padding: 7px 12px; border-radius: 10px;
+    label { font-size: 11.5px; font-weight: 600; color: $tx; }
+    &:hover { background-color: $hover; } }
 }
 .nhead {
   background-color: $panel; border-radius: 14px; padding: 8px 8px 8px 14px; margin-bottom: 8px;
@@ -441,12 +472,16 @@ switch {
 }
 
 // ============ OSD ============
-// CDP/source: padding 10/15, r999, bg panelT (blur), gap 11, icon 15px, rail 8px, sval 34.
+// CDP/source: padding 10/15, r999, bg panelT (blur), gap 11, icon 15px,
+// rail 6×230px chip-bg/tx-fill (continuous levelbar), sval 11px/600/32px.
 .osd { background-color: rgba(16,13,20,0.82); border-radius: 999px; padding: 10px 15px;
   image { color: $tx; -gtk-icon-size: 15px; }
-  // OSD rail is 8px (thicker than the QS 6px slider)
-  scale > trough, scale > trough > highlight { min-height: 8px; }
-  .sval { min-width: 34px; color: $mut; font-size: 12px; }   // CDP mut
+  // Continuous levelbar styled as a thin pill track (prototype .rail/.fill)
+  levelbar > trough { min-height: 6px; border-radius: 99px; background-color: $chip; }
+  levelbar > trough > block { min-height: 6px; border-radius: 99px; }
+  levelbar > trough > block.filled { background-color: $tx; }
+  levelbar > trough > block.empty { background-color: transparent; }
+  .sval { min-width: 32px; color: $mut; font-size: 11px; font-weight: 600; }
 }
 
 // ============ SESSION ============
