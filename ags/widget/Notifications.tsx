@@ -21,9 +21,9 @@ const TOAST_MS = 3800
 // drawer opens, without polling a looked-up window's visibility.
 const drawerOpen = Variable(false)
 
-// Notification cards are a defined width (prototype `pw` ≈ QS panel) so the toast
-// doesn't stretch to the hexpand text column; the drawer cards fill the same width.
-const NCARD_W = 327
+// Notification cards — fixed width so the toast/drawer doesn't stretch to hexpand text.
+// NCARD_W = 341 → ncard outer = 341 + 24px CSS padding = 365px = prototype --pw at 1280px.
+const NCARD_W = 341
 function Card({ n }: { n: Notifd.Notification }) {
     return (
         <box class="ncard" spacing={10} widthRequest={NCARD_W}>
@@ -274,8 +274,17 @@ export function Drawer() {
                             ns && ns.length
                                 ? ns.map((n) => <Card n={n} />)
                                 : [
-                                      <box class="ncard empty" halign={Gtk.Align.CENTER}>
-                                          <label label="All caught up ✓" />
+                                      <box
+                                          class="nempty"
+                                          orientation={Gtk.Orientation.VERTICAL}
+                                          spacing={2}
+                                          halign={Gtk.Align.FILL}
+                                      >
+                                          <image
+                                              iconName="kobel-check-symbolic"
+                                              halign={Gtk.Align.CENTER}
+                                          />
+                                          <label halign={Gtk.Align.CENTER} label="All caught up" />
                                       </box>,
                                   ]
                         )}

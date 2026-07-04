@@ -447,12 +447,11 @@ switch {
   // .mbar: margin-top 7px, gap 8 — mtime 10.5px/mut + track 4px chip/leaf + mtime
   .mbar { margin-top: 7px; }
   .mtime { color: $mut; font-size: 10.5px; font-weight: 400; }
-  .mtrack {
-    min-height: 4px; border-radius: 99px;
-    trough { min-height: 4px; border-radius: 99px; background-color: $chip; }
-    block.filled { background-color: $leaf; border-radius: 99px; }
-    block.empty { background-color: transparent; }
-  }
+  // media track: GTK CSS node path is levelbar > trough > block.{filled,empty}
+  levelbar.mtrack { min-height: 4px; border-radius: 99px; }
+  levelbar.mtrack > trough { min-height: 4px; border-radius: 99px; background-color: $chip; }
+  levelbar.mtrack > trough > block.filled { background-color: $leaf; border-radius: 99px; }
+  levelbar.mtrack > trough > block.empty { background-color: transparent; }
   // empty state row
   .memptyrow label { color: $mut; font-size: 12px; font-weight: 400; }
   .memptyrow .mart image { color: $dim; }
@@ -463,12 +462,19 @@ switch {
     &:hover { background-color: $hover; } }
 }
 .nhead {
-  background-color: $panel; border-radius: 14px; padding: 8px 8px 8px 14px; margin-bottom: 8px;
+  background-color: $panel; border-radius: 14px; padding: 8px 8px 8px 14px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.3);   // CDP --shadow-sm
   label { font-size: 13.5px; font-weight: 650; }   // .nhead b (title)
   .sub { font-size: 11px; font-weight: 400; color: $dim; }   // .nhead span (count) — CDP dim
   .nclear { color: $rose; font-size: 11.5px; font-weight: 600; border-radius: 7px;
             padding: 4px 9px; &:hover { background-color: $panel2; } }   // CDP pad 4/9
+}
+// empty-notifications card — prototype .nempty: panel bg, r20, shadow-sm, pad 20/0/16, center mut 12.5px
+.nempty {
+  background-color: $panel; border-radius: 20px; padding: 20px 0 16px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+  image { color: $dim; -gtk-icon-size: 22px; margin-bottom: 4px; }
+  label { color: $mut; font-size: 12.5px; font-weight: 400; }
 }
 
 // ============ OSD ============
