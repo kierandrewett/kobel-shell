@@ -161,6 +161,28 @@ function WifiList() {
   </box>
 }
 
+// Bluetooth device list — same .xrow grammar as Wi-Fi; connected device is .active.
+function BtList() {
+  const bt = Bluetooth.get_default()
+  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+    {bind(bt, "devices").as(devices => devices
+      .filter(d => d.name || d.alias)
+      .sort((a, b) => Number(b.connected) - Number(a.connected))
+      .slice(0, 6)
+      .map(dev => {
+        const on = dev.connected
+        return <button class={on ? "xrow active" : "xrow"}
+          onClicked={() => on ? dev.disconnect_device() : dev.connect_device()}>
+          <box spacing={10}>
+            <image iconName="kobel-bluetooth-symbolic" />
+            <label hexpand halign={Gtk.Align.START} label={dev.alias || dev.name} />
+            <label class="xs" label={on ? "Connected" : dev.paired ? "Paired" : "Available"} />
+          </box>
+        </button>
+      }))}
+  </box>
+}
+
 function DrillView({ name }: { name?: string }) {
   const net = Network.get_default()
   return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={8}>
@@ -173,9 +195,13 @@ function DrillView({ name }: { name?: string }) {
         {net.wifi && <switch active={bind(net.wifi, "enabled")}
           visible={bind(drill).as(d => d === "wifi")}
           onNotifyActive={s => { net.wifi!.enabled = s.active }} />}
+        <switch active={bind(Bluetooth.get_default(), "powered")}
+          visible={bind(drill).as(d => d === "bt")}
+          onNotifyActive={s => { Bluetooth.get_default().adapter.powered = s.active }} />
       </box>
     </centerbox>
-    {bind(drill).as(d => d === "wifi" ? <WifiList /> : <box />)}
+    {bind(drill).as(d =>
+      d === "wifi" ? <WifiList /> : d === "bt" ? <BtList /> : <box />)}
   </box>
 }
 
