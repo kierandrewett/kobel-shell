@@ -3,10 +3,11 @@
 // floating on wallpaper, header chip). The unified pipeline: open the drawer while
 // a toast is live and it's ADOPTED into the stack; toasts arriving while open
 // insert as cards; Silent routes straight to the store.
-import { App, Astal, Gdk, Gtk } from "astal/gtk4"
+import { Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, timeout, GLib } from "astal"
 import Notifd from "gi://AstalNotifd"
 import Mpris from "gi://AstalMpris"
+import { makeReveal, register } from "../lib/surface"
 
 // Lazy singleton — calling get_default() at module scope blocks the import while
 // AstalNotifd tries to acquire org.freedesktop.Notifications (hangs if gnome-shell
@@ -152,56 +153,60 @@ function MediaCard() {
 export function Drawer() {
     if (skip()) return null
     const nfd = nd()
-    // Drive the list from a Variable off get_notifications() + signals, not a property
-    // bind — AstalNotifd's `notifications` isn't reliably bindable across GJS versions.
     const list = Variable<Notifd.Notification[]>(nfd.get_notifications() ?? [])
     const refresh = () => list.set(nfd.get_notifications() ?? [])
     nfd.connect("notified", refresh)
     nfd.connect("resolved", refresh)
+
+    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(200, 150)
+    register("drawer", toggleFn)
+    // Keep drawerOpen in sync with the revealed state (toasts adopt into drawer when open)
+    revealed.subscribe((r) => drawerOpen.set(r))
+
     return (
         <window
             name="drawer"
             namespace="kobel-drawer"
             class="drawer-window"
-            visible={false}
+            visible={bind(winVisible)}
             anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
             keymode={Astal.Keymode.ON_DEMAND}
-            setup={(self: Gtk.Window) =>
-                self.connect("notify::visible", () => drawerOpen.set(self.visible))
-            }
-            onKeyPressed={(self, key) => (key === Gdk.KEY_Escape ? (self.hide(), true) : false)}
+            onKeyPressed={(_self, key) => (key === Gdk.KEY_Escape ? (close(), true) : false)}
         >
-            <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-                <MediaCard />
-                <box class="nhead" spacing={8}>
-                    <label hexpand halign={Gtk.Align.START} label="Notifications" />
-                    <label class="tn sub" label={bind(list).as((n) => `${n.length || ""}`)} />
-                    <button
-                        class="nclear"
-                        onClicked={() => nfd.get_notifications().forEach((n) => n.dismiss())}
-                    >
-                        <box spacing={5}>
-                            <image iconName="kobel-trash-symbolic" />
-                            <label label="Clear" />
-                        </box>
-                    </button>
+            <revealer
+                transitionType={Gtk.RevealerTransitionType.SLIDE_LEFT}
+                transitionDuration={200}
+                revealChild={bind(revealed)}
+                setup={(r: Gtk.Revealer) => setRevealer(r)}
+            >
+                <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+                    <MediaCard />
+                    <box class="nhead" spacing={8}>
+                        <label hexpand halign={Gtk.Align.START} label="Notifications" />
+                        <label class="tn sub" label={bind(list).as((n) => `${n.length || ""}`)} />
+                        <button
+                            class="nclear"
+                            onClicked={() => nfd.get_notifications().forEach((n) => n.dismiss())}
+                        >
+                            <box spacing={5}>
+                                <image iconName="kobel-trash-symbolic" />
+                                <label label="Clear" />
+                            </box>
+                        </button>
+                    </box>
+                    <box orientation={Gtk.Orientation.VERTICAL} spacing={8} vexpand>
+                        {bind(list).as((ns) =>
+                            ns && ns.length
+                                ? ns.map((n) => <Card n={n} />)
+                                : [
+                                      <box class="ncard empty" halign={Gtk.Align.CENTER}>
+                                          <label label="All caught up ✓" />
+                                      </box>,
+                                  ]
+                        )}
+                    </box>
                 </box>
-                {/* full-height drawer, so cards just stack (holds many). A Gtk.ScrolledWindow
-          wrapper collapses here — astal's reactive bind() children don't render inside
-          a manually-constructed ScrolledWindow child, so it reports 0 natural size.
-          Proper scrolling for 20+ notifications is a follow-up. */}
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={8} vexpand>
-                    {bind(list).as((ns) =>
-                        ns && ns.length
-                            ? ns.map((n) => <Card n={n} />)
-                            : [
-                                  <box class="ncard empty" halign={Gtk.Align.CENTER}>
-                                      <label label="All caught up ✓" />
-                                  </box>,
-                              ]
-                    )}
-                </box>
-            </box>
+            </revealer>
         </window>
     )
 }
