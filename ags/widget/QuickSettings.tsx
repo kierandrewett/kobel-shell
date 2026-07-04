@@ -473,7 +473,7 @@ function DrillView({ name }: { name?: string }) {
     return (
         <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={8}>
             <centerbox class="dhead">
-                <button class="ibtn" onClicked={() => drill.set(null)}>
+                <button class="ibtn" marginEnd={15} onClicked={() => drill.set(null)}>
                     <image iconName="kobel-chevron-left-symbolic" />
                 </button>
                 <label
