@@ -374,9 +374,19 @@ export default function Launcher() {
                                 class="ghost"
                                 halign={Gtk.Align.START}
                                 valign={Gtk.Align.CENTER}
+                                useMarkup
                                 label={bind(ghost).as((g) => {
                                     const q = query.get()
-                                    return g.toLowerCase().startsWith(q.toLowerCase()) && q ? g : ""
+                                    if (!g || !q || !g.toLowerCase().startsWith(q.toLowerCase()))
+                                        return ""
+                                    const esc = (s: string) =>
+                                        s
+                                            .replace(/&/g, "&amp;")
+                                            .replace(/</g, "&lt;")
+                                            .replace(/>/g, "&gt;")
+                                    // invisible prefix (takes up space) + dim suffix, matching
+                                    // prototype's #lg-pre{visibility:hidden} / #lg-suf{color:dim}
+                                    return `<span alpha="0">${esc(g.slice(0, q.length))}</span><span color="#8d8693">${esc(g.slice(q.length))}</span>`
                                 })}
                             />
                         </overlay>

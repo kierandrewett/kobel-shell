@@ -4,7 +4,7 @@
 // a toast is live and it's ADOPTED into the stack; toasts arriving while open
 // insert as cards; Silent routes straight to the store.
 import { Astal, Gdk, Gtk } from "astal/gtk4"
-import { Variable, bind, timeout, GLib } from "astal"
+import { Variable, bind, timeout, GLib, execAsync } from "astal"
 import Notifd from "gi://AstalNotifd"
 import Mpris from "gi://AstalMpris"
 import { makeReveal, register } from "../lib/surface"
@@ -117,33 +117,36 @@ export function Toasts(monitor: Gdk.Monitor) {
 }
 
 function MediaCard() {
-    let player: any = null
-    try {
-        player = Mpris.get_default()?.players?.[0] ?? null
-    } catch {
-        player = null
-    }
-    if (!player) return <box visible={false} />
+    const mpris = Mpris.get_default()
+    if (!mpris) return null
+
+    const pick = (ps: any[]) =>
+        ps.find((p) => p.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0] ?? null
+
+    const mediaTitle = bind(mpris, "players").as((ps) => pick(ps)?.title ?? "")
+    const mediaArtist = bind(mpris, "players").as((ps) => pick(ps)?.artist ?? "")
+    const playIcon = bind(mpris, "players").as((ps) => {
+        const p = pick(ps)
+        return p?.playback_status === Mpris.PlaybackStatus.PLAYING
+            ? "kobel-pause-symbolic"
+            : "kobel-play-symbolic"
+    })
+    const hasPlayer = bind(mpris, "players").as((ps) => ps.length > 0)
+
     return (
-        <box class="ncard media" spacing={11}>
+        <box class="ncard media" spacing={11} visible={hasPlayer}>
             <image pixelSize={46} iconName="kobel-music-symbolic" />
             <box orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
-                <label halign={Gtk.Align.START} ellipsize={3} label={bind(player, "title")} />
-                <label class="sub" halign={Gtk.Align.START} label={bind(player, "artist")} />
+                <label halign={Gtk.Align.START} ellipsize={3} label={mediaTitle} />
+                <label class="sub" halign={Gtk.Align.START} label={mediaArtist} />
             </box>
-            <button onClicked={() => player.previous()}>
+            <button onClicked={() => execAsync("playerctl previous")}>
                 <image iconName="kobel-skip-back-symbolic" />
             </button>
-            <button onClicked={() => player.play_pause()}>
-                <image
-                    iconName={bind(player, "playback_status").as((s) =>
-                        s === Mpris.PlaybackStatus.PLAYING
-                            ? "kobel-pause-symbolic"
-                            : "kobel-play-symbolic"
-                    )}
-                />
+            <button onClicked={() => execAsync("playerctl play-pause")}>
+                <image iconName={playIcon} />
             </button>
-            <button onClicked={() => player.next()}>
+            <button onClicked={() => execAsync("playerctl next")}>
                 <image iconName="kobel-skip-fwd-symbolic" />
             </button>
         </box>
