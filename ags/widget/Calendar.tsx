@@ -7,9 +7,9 @@ import { Variable, bind } from "astal"
 import { DEMO, D } from "../lib/demo"
 
 interface Ev { t: string; n: string; icon: string }
-// "today" — pinned to the prototype's mock date (Fri 3 Jul 2026) under KOBEL_DEMO so the
-// hero, grid highlight, event-dots and events card overlay the prototype 1:1; real clock
-// otherwise. Every "today"/selected default flows from this single `now`.
+// "today" — under KOBEL_DEMO, pinned to D.today (the demo's mock "today", kept in sync
+// with the prototype so the hero, grid highlight, event-dots and events card overlay it
+// 1:1); real clock otherwise. Every "today"/selected default flows from this single `now`.
 const now = DEMO ? new Date(D.today.y, D.today.m, D.today.d) : new Date()
 const key = (y: number, m: number, d: number) => `${y}-${m + 1}-${d}`
 export const EVENTS: Record<string, Ev[]> = {
