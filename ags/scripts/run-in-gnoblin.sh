@@ -47,7 +47,7 @@ export HOME="$DK/home" XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG
 export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=dconf GTK_A11Y=none NO_AT_BRIDGE=1
 DISP="kobel-ags-$$"
 CONF="$(python3 "$GNOBLIN/scripts/devkit_dbus.py" "$DK" "$GNOBLIN")" || exit 1
-export DISP DK OUT AGSDIR BUNDLE TOGGLE LAYER_PRELOAD PREFIX
+export DISP DK OUT AGSDIR BUNDLE TOGGLE LAYER_PRELOAD PREFIX KOBEL_DRILL KOBEL_TEST_NOTIFD
 
 cleanup() { rm -rf "$DK"; }
 trap cleanup EXIT INT TERM

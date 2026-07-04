@@ -192,11 +192,22 @@ scale > trough > slider {
 }
 
 // drilldown header
+// CDP: dhead pad 0 0 10; title centered 14/650; back button margin-right 15
 .dhead {
-  margin-bottom: 6px;
+  padding-bottom: 10px;
   button { padding: 7px; border-radius: 9px; color: $mut;   // 17px icon + 7 → 31
     &:hover { background-color: $panel2; color: $tx; } }
   label { font-weight: 650; font-size: 14px; }
+}
+// drilldown AP/device rows — CDP: xrow pad 9/11 r9 gap 10 bg panel2; xs meta; active=leaf tint
+.dlist { }
+.xrow {
+  background-color: $panel2; border-radius: 9px; padding: 9px 11px;
+  image { color: $mut; -gtk-icon-size: 17px; }
+  label { font-size: 13px; font-weight: 600; color: $tx; }
+  .xs { color: $dim; font-size: 11px; font-weight: 400; }
+  &:hover { background-color: $chip; }
+  &.active { image { color: $leaf; } .xs { color: $leaf; } }
 }
 
 // ============ LAUNCHER ============

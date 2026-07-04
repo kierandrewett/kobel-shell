@@ -12,7 +12,9 @@ import { connected, reload } from "../services/gnoblin"
 import { MOTION } from "../lib/spring"
 
 type Drill = null | "wifi" | "bt" | "mix"
-const drill = Variable<Drill>(null)
+// KOBEL_DRILL lets the devkit render a drilldown directly (no pointer to click the
+// chevron in headless); production default is null.
+const drill = Variable<Drill>((GLib.getenv("KOBEL_DRILL") as Drill) || null)
 
 // Tile catalog — mirrors prototype CATALOG; persisted layout in state dir.
 const STORE = `${GLib.get_user_state_dir()}/kobel/qs-tiles.json`
@@ -84,10 +86,10 @@ function ToggleChip(props: { label: string, icon: string, v: Variable<boolean> }
     onToggled={() => props.v.set(!props.v.get())} />
 }
 
-function Root() {
+function Root({ name }: { name?: string }) {
   const net = Network.get_default()
   const bt = Bluetooth.get_default()
-  return <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+  return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={8}>
     {/* top row: battery · reload · lock · power */}
     <box class="qs-top" spacing={0}>
       <label class="tn meta" label="100% · Fully charged" />
@@ -127,11 +129,43 @@ function Root() {
   </box>
 }
 
-function DrillView() {
+// Signal-strength glyph for an access point (0–100 → wifi tiers).
+function wifiIcon(strength: number): string {
+  return "kobel-wifi-symbolic"   // single glyph; strength shown as text meta
+}
+
+// Wi-Fi AP list — real AstalNetwork access points, connected one marked .active.
+function WifiList() {
+  const wifi = Network.get_default().wifi
+  if (!wifi) return <box />
+  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+    {bind(wifi, "accessPoints").as(aps => {
+      const active = wifi.activeAccessPoint
+      const seen = new Set<string>()
+      return aps
+        .filter(ap => ap.ssid && !seen.has(ap.ssid) && seen.add(ap.ssid))
+        .sort((a, b) => b.strength - a.strength)
+        .slice(0, 6)
+        .map(ap => {
+          const on = active && ap.ssid === active.ssid
+          return <button class={on ? "xrow active" : "xrow"}
+            onClicked={() => wifi.activate_connection(ap, null)}>
+            <box spacing={10}>
+              <image iconName={wifiIcon(ap.strength)} />
+              <label hexpand halign={Gtk.Align.START} label={ap.ssid} />
+              <label class="xs" label={on ? "Connected" : `${ap.strength}%`} />
+            </box>
+          </button>
+        })
+    })}
+  </box>
+}
+
+function DrillView({ name }: { name?: string }) {
   const net = Network.get_default()
-  return <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+  return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={8}>
     <centerbox class="dhead">
-      <button onClicked={() => drill.set(null)}>
+      <button class="ibtn" onClicked={() => drill.set(null)}>
         <image iconName="kobel-chevron-left-symbolic" /></button>
       <label label={bind(drill).as(d =>
         d === "wifi" ? "Wi-Fi" : d === "bt" ? "Bluetooth" : "Volume")} />
@@ -141,7 +175,7 @@ function DrillView() {
           onNotifyActive={s => { net.wifi!.enabled = s.active }} />}
       </box>
     </centerbox>
-    {/* wifi: AP list w/ Connected/Connect-on-hover · bt: devices · mix: Master + per-app */}
+    {bind(drill).as(d => d === "wifi" ? <WifiList /> : <box />)}
   </box>
 }
 
