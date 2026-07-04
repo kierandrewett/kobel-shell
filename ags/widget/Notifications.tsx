@@ -129,6 +129,10 @@ export function Drawer() {
           <box spacing={5}><image iconName="kobel-trash-symbolic" /><label label="Clear" /></box>
         </button>
       </box>
+      {/* full-height drawer, so cards just stack (holds many). A Gtk.ScrolledWindow
+          wrapper collapses here — astal's reactive bind() children don't render inside
+          a manually-constructed ScrolledWindow child, so it reports 0 natural size.
+          Proper scrolling for 20+ notifications is a follow-up. */}
       <box orientation={Gtk.Orientation.VERTICAL} spacing={8} vexpand>
         {bind(list).as(ns => (ns && ns.length)
           ? ns.map(n => <Card n={n} />)
