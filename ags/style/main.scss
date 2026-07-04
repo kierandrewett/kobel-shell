@@ -73,14 +73,14 @@ image { -gtk-icon-style: regular; }
     background-color: $panel2;   // CDP .status = panel2
     &:hover { background-color: $chip; }
     image { color: $mut; -gtk-icon-size: 16px; }
-    .pct image { -gtk-icon-size: 13px; }   // proto battery renders ~12px
+    .pct image { -gtk-icon-size: 15px; }   // CDP .status .pct i { font-size: 15px }
     label { color: $tx; font-weight: 650; font-size: 11.5px; }
     &.err .net-icon { color: $amber; }
   }
   .badge {
     background-color: $leaf; color: $ink; border-radius: 99px;
     font-size: 9px; font-weight: 700; padding: 0 3px; margin: 2px;
-    min-height: 14px; min-width: 8px;
+    min-height: 14px; min-width: 14px;
   }
 
   // Tray icons: narrower + smaller than regular ibtn (proto: 28×31, 14px icon, 1px gap)
