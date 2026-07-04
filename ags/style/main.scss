@@ -437,10 +437,12 @@ switch {
     &:hover { background-color: $chip; color: $rose; } }
   // ---- drawer media card internal layout ----
   // .mrow: flex row gap 11 — art tile + title/artist + playback controls
+  // CDP .nc .media padding override: 10 11 9 (not ncard's 11 12)
+  &.media { padding: 10px 11px 9px; }
   .mrow { }
   .mart { background-color: $chip; border-radius: 10px; min-width: 46px; min-height: 46px;
     image { color: $mut; -gtk-icon-size: 22px; } }
-  .mmeta { }
+  .mmeta label { font-size: 13px; }   // CDP .mmeta b { font-size: 13px } — beats .ncard label
   .mbtns { }
   // .mbtn: 29×29 r8, chip bg on hover, 14px icon
   .mbtn { min-width: 29px; min-height: 29px; border-radius: 8px; color: $mut;
@@ -487,7 +489,7 @@ switch {
   // Continuous levelbar styled as a thin pill track (prototype .rail/.fill)
   levelbar > trough { min-height: 6px; border-radius: 99px; background-color: $chip; }
   levelbar > trough > block { min-height: 6px; border-radius: 99px; }
-  levelbar > trough > block.filled { background-color: $tx; }
+  levelbar > trough > block.filled { background-color: $leaf; }
   levelbar > trough > block.empty { background-color: transparent; }
   .sval { min-width: 32px; color: $mut; font-size: 11px; font-weight: 600; }
 }
