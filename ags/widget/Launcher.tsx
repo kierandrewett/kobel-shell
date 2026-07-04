@@ -7,7 +7,7 @@
 //   sections: best match / apps / actions / files / web (always-last real row)
 //   '=' calculator · ':' gnoblinctl commands · empty state: dock-tile grid + widgets
 import { App, Astal, Gdk, Gtk } from "astal/gtk4"
-import { Variable, bind, execAsync } from "astal"
+import { Variable, bind, execAsync, GLib } from "astal"
 import Apps from "gi://AstalApps"
 import { fuzzy, hl, boost, bump, frequency } from "../lib/fuzzy"
 import { EVENTS } from "./Calendar"
@@ -62,7 +62,8 @@ const CMDS = [
 
 export default function Launcher() {
   const apps = new Apps.Apps()
-  const query = Variable("")
+  // KOBEL_QUERY pre-fills the search so the devkit can render the results state.
+  const query = Variable(GLib.getenv("KOBEL_QUERY") || "")
   const selected = Variable(0)
   const ghost = Variable("")
 
