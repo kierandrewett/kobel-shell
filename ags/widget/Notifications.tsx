@@ -8,6 +8,7 @@ import { Variable, bind, timeout, GLib, execAsync } from "astal"
 import Notifd from "gi://AstalNotifd"
 import Mpris from "gi://AstalMpris"
 import { makeReveal, register } from "../lib/surface"
+import { DEMO, D } from "../lib/demo"
 
 // Lazy singleton — calling get_default() at module scope blocks the import while
 // AstalNotifd tries to acquire org.freedesktop.Notifications (hangs if gnome-shell
@@ -24,23 +25,39 @@ const drawerOpen = Variable(false)
 // Notification cards — fixed width so the toast/drawer doesn't stretch to hexpand text.
 // NCARD_W = 341 → ncard outer = 341 + 24px CSS padding = 365px = prototype --pw at 1280px.
 const NCARD_W = 341
-function Card({ n }: { n: Notifd.Notification }) {
+
+interface CardData {
+    icon: string
+    summary: string
+    body: string
+    when: string
+    dismiss: () => void
+}
+
+function toCardData(n: Notifd.Notification): CardData {
+    return {
+        icon: n.app_icon || "dialog-information-symbolic",
+        summary: n.summary,
+        body: n.body,
+        when: new Date(n.time * 1000).toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+        }),
+        dismiss: () => n.dismiss(),
+    }
+}
+
+function Card({ n }: { n: CardData }) {
     return (
         <box class="ncard" spacing={10} widthRequest={NCARD_W}>
             {/* app icon in a 30×30 r9 tile (prototype .nic) */}
             <box class="nic" valign={Gtk.Align.START}>
-                <image iconName={n.app_icon || "dialog-information-symbolic"} pixelSize={20} />
+                <image iconName={n.icon} pixelSize={20} />
             </box>
             <box orientation={Gtk.Orientation.VERTICAL} hexpand>
                 <box>
                     <label halign={Gtk.Align.START} hexpand ellipsize={3} label={n.summary} />
-                    <label
-                        class="when tn"
-                        label={new Date(n.time * 1000).toLocaleTimeString("en-GB", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                        })}
-                    />
+                    <label class="when tn" label={n.when} />
                 </box>
                 <label
                     class="body"
@@ -51,7 +68,7 @@ function Card({ n }: { n: Notifd.Notification }) {
                     label={n.body}
                 />
             </box>
-            <button class="nx" valign={Gtk.Align.START} onClicked={() => n.dismiss()}>
+            <button class="nx" valign={Gtk.Align.START} onClicked={n.dismiss}>
                 <image iconName="kobel-close-symbolic" />
             </button>
         </box>
@@ -104,7 +121,7 @@ export function Toasts(monitor: Gdk.Monitor) {
                         const n = nd().get_notification(id)
                         return n ? (
                             <box class="toast">
-                                <Card n={n} />
+                                <Card n={toCardData(n)} />
                             </box>
                         ) : (
                             <box />
@@ -118,38 +135,50 @@ export function Toasts(monitor: Gdk.Monitor) {
 
 function MediaCard() {
     const mpris = Mpris.get_default()
-    if (!mpris) return null
+    if (!mpris && !DEMO) return null
 
     const pick = (ps: any[]) =>
         ps.find((p) => p.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0] ?? null
 
-    const mediaTitle = bind(mpris, "players").as((ps) => pick(ps)?.title ?? "")
-    const mediaArtist = bind(mpris, "players").as((ps) => pick(ps)?.artist ?? "")
-    const playIcon = bind(mpris, "players").as((ps) => {
-        const p = pick(ps)
-        return p?.playback_status === Mpris.PlaybackStatus.PLAYING
-            ? "kobel-pause-symbolic"
-            : "kobel-play-symbolic"
-    })
-    const progress = bind(mpris, "players").as((ps) => {
-        const p = pick(ps)
-        if (!p || !p.length || p.length <= 0) return 0
-        return p.position / p.length
-    })
-    const curTime = bind(mpris, "players").as((ps) => {
-        const p = pick(ps)
-        if (!p || !p.position) return "0:00"
-        const s = Math.floor(p.position)
-        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
-    })
-    const totalTime = bind(mpris, "players").as((ps) => {
-        const p = pick(ps)
-        if (!p || !p.length || p.length <= 0) return "0:00"
-        const s = Math.floor(p.length)
-        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
-    })
-    const hasPlayer = bind(mpris, "players").as((ps) => ps.length > 0)
-    const noPlayer = bind(mpris, "players").as((ps) => ps.length === 0)
+    const mediaTitle = DEMO
+        ? D.media.title
+        : bind(mpris!, "players").as((ps) => pick(ps)?.title ?? "")
+    const mediaArtist = DEMO
+        ? D.media.artist
+        : bind(mpris!, "players").as((ps) => pick(ps)?.artist ?? "")
+    const playIcon = DEMO
+        ? "kobel-pause-symbolic"
+        : bind(mpris!, "players").as((ps) => {
+              const p = pick(ps)
+              return p?.playback_status === Mpris.PlaybackStatus.PLAYING
+                  ? "kobel-pause-symbolic"
+                  : "kobel-play-symbolic"
+          })
+    const progress = DEMO
+        ? 0.42
+        : bind(mpris!, "players").as((ps) => {
+              const p = pick(ps)
+              if (!p || !p.length || p.length <= 0) return 0
+              return p.position / p.length
+          })
+    const curTime = DEMO
+        ? "2:37"
+        : bind(mpris!, "players").as((ps) => {
+              const p = pick(ps)
+              if (!p || !p.position) return "0:00"
+              const s = Math.floor(p.position)
+              return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+          })
+    const totalTime = DEMO
+        ? "6:07"
+        : bind(mpris!, "players").as((ps) => {
+              const p = pick(ps)
+              if (!p || !p.length || p.length <= 0) return "0:00"
+              const s = Math.floor(p.length)
+              return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+          })
+    const hasPlayer = DEMO ? true : bind(mpris!, "players").as((ps) => ps.length > 0)
+    const noPlayer = DEMO ? false : bind(mpris!, "players").as((ps) => ps.length === 0)
 
     return (
         <box class="ncard media" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
@@ -226,17 +255,66 @@ function MediaCard() {
 }
 
 export function Drawer() {
-    if (skip()) return null
-    const nfd = nd()
-    const list = Variable<Notifd.Notification[]>(nfd.get_notifications() ?? [])
-    const refresh = () => list.set(nfd.get_notifications() ?? [])
-    nfd.connect("notified", refresh)
-    nfd.connect("resolved", refresh)
+    if (!DEMO && skip()) return null
 
     const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(200, 150)
     register("drawer", toggleFn)
     // Keep drawerOpen in sync with the revealed state (toasts adopt into drawer when open)
     revealed.subscribe((r) => drawerOpen.set(r))
+
+    // DEMO: static notification list pinned to prototype's initial state
+    if (DEMO) {
+        const demoCards: CardData[] = D.notifications.map((n) => ({
+            ...n,
+            dismiss: () => {},
+        }))
+        const demoCount = `${demoCards.length || ""}`
+        return (
+            <window
+                name="drawer"
+                namespace="kobel-drawer"
+                class="drawer-window"
+                visible={bind(winVisible)}
+                anchor={
+                    Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM
+                }
+                keymode={Astal.Keymode.ON_DEMAND}
+                onKeyPressed={(_self, key) => (key === Gdk.KEY_Escape ? (close(), true) : false)}
+            >
+                <revealer
+                    transitionType={Gtk.RevealerTransitionType.SLIDE_LEFT}
+                    transitionDuration={200}
+                    revealChild={bind(revealed)}
+                    setup={(r: Gtk.Revealer) => setRevealer(r)}
+                >
+                    <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+                        <MediaCard />
+                        <box class="nhead" spacing={8}>
+                            <label hexpand halign={Gtk.Align.START} label="Notifications" />
+                            <label class="tn sub" label={demoCount} />
+                            <button class="nclear">
+                                <box spacing={5}>
+                                    <image iconName="kobel-trash-symbolic" />
+                                    <label label="Clear" />
+                                </box>
+                            </button>
+                        </box>
+                        <box orientation={Gtk.Orientation.VERTICAL} spacing={8} vexpand>
+                            {demoCards.map((n) => (
+                                <Card n={n} />
+                            ))}
+                        </box>
+                    </box>
+                </revealer>
+            </window>
+        )
+    }
+
+    const nfd = nd()
+    const list = Variable<Notifd.Notification[]>(nfd.get_notifications() ?? [])
+    const refresh = () => list.set(nfd.get_notifications() ?? [])
+    nfd.connect("notified", refresh)
+    nfd.connect("resolved", refresh)
 
     return (
         <window
@@ -272,7 +350,7 @@ export function Drawer() {
                     <box orientation={Gtk.Orientation.VERTICAL} spacing={8} vexpand>
                         {bind(list).as((ns) =>
                             ns && ns.length
-                                ? ns.map((n) => <Card n={n} />)
+                                ? ns.map((n) => <Card n={toCardData(n)} />)
                                 : [
                                       <box
                                           class="nempty"

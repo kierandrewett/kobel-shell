@@ -30,4 +30,13 @@ export const D = {
     widgetDate: "Friday 3 July",
     widgetEvent: "09:45 · Daily Standup",
     media: { title: "Weightless", artist: "Marconi Union" },
+    // prototype initial notification store (store.push at load time, when:"10:38")
+    notifications: [
+        {
+            icon: "kobel-leaf-symbolic",
+            summary: "gnoblin",
+            body: "Soft-reload complete — 4 extensions, 2 scripts. Windows untouched.",
+            when: "10:38",
+        },
+    ],
 }
