@@ -161,7 +161,7 @@ export default function Launcher() {
       return false
     }}>
     <box class="sheet launcher" orientation={Gtk.Orientation.VERTICAL} spacing={6}>
-      <box class="field">
+      <box class="field" spacing={11}>
         <image iconName="kobel-magnifying-glass-symbolic" />
         <overlay hexpand>
           <entry

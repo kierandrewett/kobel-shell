@@ -144,7 +144,7 @@ function wifiIcon(strength: number): string {
 function WifiList() {
   const wifi = Network.get_default().wifi
   if (!wifi) return <box />
-  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={2}>
     {bind(wifi, "accessPoints").as(aps => {
       const active = wifi.activeAccessPoint
       const seen = new Set<string>()
@@ -170,7 +170,7 @@ function WifiList() {
 // Bluetooth device list — same .xrow grammar as Wi-Fi; connected device is .active.
 function BtList() {
   const bt = Bluetooth.get_default()
-  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={2}>
     {bind(bt, "devices").as(devices => devices
       .filter(d => d.name || d.alias)
       .sort((a, b) => Number(b.connected) - Number(a.connected))
@@ -207,7 +207,7 @@ function MixList() {
   const wp = Wp.get_default()
   if (!wp) return <box />
   const speaker = wp.default_speaker
-  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={12}>
+  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={2}>
     {speaker && <MixRow icon="kobel-speaker-wave-symbolic" title="Output" target={speaker} />}
     {bind(wp.audio, "streams").as(streams => streams.slice(0, 5).map(s =>
       <MixRow icon="kobel-music-symbolic"

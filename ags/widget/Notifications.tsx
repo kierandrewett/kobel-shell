@@ -121,7 +121,7 @@ export function Drawer() {
     onKeyPressed={(self, key) => key === Gdk.KEY_Escape ? (self.hide(), true) : false}>
     <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
       <MediaCard />
-      <box class="nhead">
+      <box class="nhead" spacing={8}>
         <label hexpand halign={Gtk.Align.START} label="Notifications" />
         <label class="tn sub" label={bind(list).as(n => `${n.length || ""}`)} />
         <button class="nclear" onClicked={() =>

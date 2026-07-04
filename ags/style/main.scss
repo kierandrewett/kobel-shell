@@ -236,7 +236,7 @@ switch {
   image { color: $dim; -gtk-icon-size: 17px; }
   entry {
     background: none; border: none; box-shadow: none; outline: none;
-    color: $tx; font-size: 16px; caret-color: $leaf; padding: 6px 4px;
+    color: $tx; font-size: 16px; caret-color: $leaf; padding: 6px 0;
   }
   entry placeholder { color: $mut; }
   .kbd { background-color: $chip; color: $mut; border-radius: 6px;
