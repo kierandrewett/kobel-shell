@@ -37,9 +37,18 @@ export GNOME_SHELL_SESSION_MODE=gnoblin
 export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
 
 # --- isolated throwaway home/bus ---
+HOME_REAL="${HOME:-/home/kieran}"  # save real $HOME before we shadow it
 DK="$(mktemp -d /tmp/kobel-ags.XXXXXX)"
 mkdir -p "$DK"/{data,config,cache,home,bin}
 export HOME="$DK/home" XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
+# Seed Inter Variable into the devkit's isolated font path so GTK picks it up (fontconfig
+# reads $XDG_DATA_HOME/fonts and $XDG_CONFIG_HOME/fontconfig/conf.d).
+if [ -f "$HOME_REAL/.local/share/fonts/inter/InterVariable.ttf" ]; then
+  mkdir -p "$DK/data/fonts/inter"
+  cp "$HOME_REAL/.local/share/fonts/inter/InterVariable.ttf" "$DK/data/fonts/inter/"
+  mkdir -p "$DK/config/fontconfig/conf.d"
+  cp "$HOME_REAL/.config/fontconfig/conf.d/99-inter.conf" "$DK/config/fontconfig/conf.d/" 2>/dev/null || true
+fi
 # dconf (not memory) so the shell's SetFeature reaches the SEPARATE-process fdo
 # notification daemon via dconf's cross-process change signal — memory gsettings is
 # per-process, so `gnoblinctl disable notifications` never releases the fdo bus name
