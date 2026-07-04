@@ -75,7 +75,7 @@ function Sliders() {
 }
 
 function GnoblinBanner() {
-  return <box class="gbanner" visible={bind(connected).as(c => !c)} spacing={10}>
+  return <box class="gbanner" visible={DEMO ? false : bind(connected).as(c => !c)} spacing={10}>
     <image iconName="kobel-warning-symbolic" />
     <box orientation={Gtk.Orientation.VERTICAL} hexpand>
       <label class="t" halign={Gtk.Align.START} label="org.gnoblin.Shell disconnected" />
