@@ -370,7 +370,7 @@ switch {
   min-width: 309px;
   .sub  { color: $mut; font-size: 11.5px; }
   .hero { color: $tx; font-size: 19px; font-weight: 650; }
-  .calhero { padding: 5px 8px 8px 8px; }
+  .calhero { padding: 4px 8px 8px; }
   // sheet spacing is 0 — recreate the prototype's exact vertical rhythm with margins:
   // hero→nav 0 (calhero's own bottom pad), nav→grid 8, grid→events 10.
   .cal-grid { margin-top: 8px; }
@@ -425,7 +425,7 @@ switch {
 .ncard {
   background-color: $panel; border-radius: 20px; padding: 11px 12px;
   .nic { background-color: $chip; min-width: 30px; min-height: 30px; border-radius: 9px;
-         image { color: $mut; -gtk-icon-size: 16px; } }
+         image { color: $mut; -gtk-icon-size: 15px; } }
   box-shadow: 0 6px 18px rgba(0,0,0,0.3);
   label { font-size: 12.5px; font-weight: 650; }
   .body { color: $mut; font-size: 11.8px; font-weight: 400; }
