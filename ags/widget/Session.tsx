@@ -2,6 +2,10 @@
 // Restart/Shut down (auto-revert 4s), resting rose on Shut down.
 import { Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, execAsync, timeout } from "astal"
+// Pin a deterministic render for the DOM-vs-GTK overlay diff (labels/icons already
+// fixed; importing DEMO keeps the surface render consistent under KOBEL_DEMO).
+import { DEMO, D } from "../lib/demo"
+void DEMO; void D
 
 const ACTIONS = [
   { id: "lock", label: "Lock", icon: "kobel-lock-symbolic",
@@ -45,9 +49,13 @@ export default function Session() {
             onClicked={self => press(a, () => self.get_root()?.hide?.())}>
             <box orientation={Gtk.Orientation.VERTICAL} spacing={10}
               class={bind(armed).as(x => x === a.id ? "confirm" : "")}>
-              <box class="sic"
+              <box class="sic" hexpand={false} vexpand={false}
                 halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER}>
-                <image iconName={a.icon} pixelSize={26}
+                {/* horizontal GtkBox ignores a child's main-axis halign, so the icon
+                    left-packs; hexpand makes the image fill the 59px tile → GtkImage
+                    centres the glyph. hexpand={false} on .sic blocks propagation so the
+                    tile stays 59 wide instead of stretching the row. */}
+                <image iconName={a.icon} pixelSize={22} hexpand
                   halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} />
               </box>
               <label label={bind(armed).as(x => x === a.id ? "Press again" : a.label)} />
