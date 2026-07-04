@@ -167,8 +167,12 @@ function EventsCard() {
                             <box class="evic" valign={Gtk.Align.CENTER}>
                                 <image iconName={e.icon} />
                             </box>
-                            <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER}>
-                                <label halign={Gtk.Align.START} label={e.n} />
+                            <box
+                                orientation={Gtk.Orientation.VERTICAL}
+                                valign={Gtk.Align.CENTER}
+                                hexpand
+                            >
+                                <label halign={Gtk.Align.START} ellipsize={3} label={e.n} />
                                 <label class="sub tn" halign={Gtk.Align.START} label={e.t} />
                             </box>
                         </box>

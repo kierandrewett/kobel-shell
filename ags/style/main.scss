@@ -437,8 +437,8 @@ switch {
     &:hover { background-color: $chip; color: $rose; } }
   // ---- drawer media card internal layout ----
   // .mrow: flex row gap 11 — art tile + title/artist + playback controls
-  // CDP .nc .media padding override: 10 11 9 (not ncard's 11 12)
-  &.media { padding: 10px 11px 9px; }
+  // CDP .nc .media padding 10/11/9, margin-bottom 10 (drawer spacing=8 → +2)
+  &.media { padding: 10px 11px 9px; margin-bottom: 2px; }
   .mrow { }
   .mart { background-color: $chip; border-radius: 10px; min-width: 46px; min-height: 46px;
     image { color: $mut; -gtk-icon-size: 22px; } }
