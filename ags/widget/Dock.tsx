@@ -94,22 +94,22 @@ function DockButton({ app }: { app: Apps.Application }) {
 
 function MediaWidget() {
     const mpris = Mpris.get_default()
-    // Pick the first active player, or null if nothing is playing
-    const player = bind(mpris, "players").as(
-        (ps) => ps.find((p) => p.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0] ?? null
-    )
-    const progress = bind(mpris, "players").as((ps) => {
-        const p = ps.find((q) => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
-        if (!p || !p.length || p.length <= 0) return 0
-        return p.position / p.length
-    })
-    const icon = bind(mpris, "players").as((ps) => {
-        const p = ps.find((q) => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
-        if (!p) return "kobel-music-symbolic"
-        return p.playback_status === Mpris.PlaybackStatus.PLAYING
-            ? "kobel-pause-symbolic"
-            : "kobel-play-symbolic"
-    })
+    const progress = DEMO
+        ? 0.42
+        : bind(mpris, "players").as((ps) => {
+              const p = ps.find((q) => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
+              if (!p || !p.length || p.length <= 0) return 0
+              return p.position / p.length
+          })
+    const icon = DEMO
+        ? "kobel-pause-symbolic"
+        : bind(mpris, "players").as((ps) => {
+              const p = ps.find((q) => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
+              if (!p) return "kobel-music-symbolic"
+              return p.playback_status === Mpris.PlaybackStatus.PLAYING
+                  ? "kobel-pause-symbolic"
+                  : "kobel-play-symbolic"
+          })
     return (
         <button class="dbtn dwidget" onClicked={() => execAsync("playerctl play-pause")}>
             <overlay>
