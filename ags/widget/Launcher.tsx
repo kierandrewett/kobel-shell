@@ -211,7 +211,10 @@ export default function Launcher() {
               class={bind(selected).as(s => s === flatIdx ? "row sel" : "row")}
               onClicked={() => { r.run(); App.get_window("launcher")?.hide() }}>
               <box spacing={11}>
-                <image iconName={r.icon} pixelSize={24} />
+                {/* 28×28 r8 panel2 frame around the 24px icon (prototype .ri) */}
+                <box class="ri" valign={Gtk.Align.CENTER}>
+                  <image iconName={r.icon} pixelSize={24} />
+                </box>
                 <label useMarkup label={r.markup} />
                 <label class="hint" hexpand halign={Gtk.Align.START}
                   ellipsize={3} label={r.hint} />
