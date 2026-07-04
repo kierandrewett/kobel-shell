@@ -2,9 +2,10 @@
 // (title click = today), ISO week numbers as quiet dim text, DIMMED WEEKENDS,
 // clickable days w/ selection ring (ink ring on today), event-dot markers,
 // events card in the notification-card language. Months slide (multiview motion).
-import { App, Astal, Gdk, Gtk } from "astal/gtk4"
+import { Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, GLib } from "astal"
 import { DEMO, D } from "../lib/demo"
+import { makeReveal, register } from "../lib/surface"
 
 interface Ev { t: string; n: string; icon: string }
 // "today" — under KOBEL_DEMO, pinned to D.today; real clock otherwise.
@@ -116,10 +117,18 @@ function EventsCard() {
 }
 
 export default function Calendar() {
+  const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(220, 150)
+  register("calendar", toggleFn)
   return <window
-    name="calendar" namespace="kobel-calendar" class="calendar-window" visible={false}
+    name="calendar" namespace="kobel-calendar" class="calendar-window"
+    visible={bind(winVisible)}
     anchor={Astal.WindowAnchor.TOP} exclusivity={Astal.Exclusivity.NORMAL} keymode={Astal.Keymode.ON_DEMAND}
-    onKeyPressed={(self, key) => key === Gdk.KEY_Escape ? (self.hide(), true) : false}>
+    onKeyPressed={(_self, key) => key === Gdk.KEY_Escape ? (close(), true) : false}>
+    <revealer
+      transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+      transitionDuration={220}
+      revealChild={bind(revealed)}
+      setup={(r: Gtk.Revealer) => setRevealer(r)}>
     <box class="sheet cal" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
       <box class="calhero" orientation={Gtk.Orientation.VERTICAL}>
         <label class="sub" halign={Gtk.Align.START}
@@ -146,5 +155,6 @@ export default function Calendar() {
       <Grid />
       <EventsCard />
     </box>
+    </revealer>
   </window>
 }

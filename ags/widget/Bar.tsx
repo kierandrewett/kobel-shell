@@ -8,6 +8,7 @@ import Wp from "gi://AstalWp"
 import Network from "gi://AstalNetwork"
 import Tray from "gi://AstalTray"
 import { connected, windows } from "../services/gnoblin"
+import { toggle as surfaceToggle } from "../lib/surface"
 import { unread } from "../services/notifd"
 import { DEMO, D } from "../lib/demo"
 
@@ -44,7 +45,7 @@ function StatusPill() {
     : "kobel-speaker-mute-symbolic"
   return <button valign={Gtk.Align.CENTER}
     class={bind(connected).as(c => c ? "status" : "status err")}
-    onClicked={() => App.toggle_window("quicksettings")}>
+    onClicked={() => surfaceToggle("quicksettings")}>
     <box spacing={10}>
       <image class="net-icon" iconName={wifiIcon} />
       <image iconName={volIcon} />
@@ -64,7 +65,7 @@ function Bell() {
   // headless/contended bus; never call it during construction). unread() is a plain
   // Variable an async init fills in.
   return <button class="ibtn bell" valign={Gtk.Align.CENTER}
-    onClicked={() => App.toggle_window("drawer")}>
+    onClicked={() => surfaceToggle("drawer")}>
     <overlay>
       <image iconName="kobel-bell-symbolic" />
       <label type="overlay" halign={Gtk.Align.END} valign={Gtk.Align.START}
@@ -86,13 +87,13 @@ export default function Bar(monitor: Gdk.Monitor) {
     <centerbox class="bar">
       <box spacing={4}>
         <button class="ibtn" valign={Gtk.Align.CENTER}
-          onClicked={() => App.toggle_window("launcher")}>
+          onClicked={() => surfaceToggle("launcher")}>
           <image iconName="kobel-magnifying-glass-symbolic" />
         </button>
         <FocusedTitle />
       </box>
       <button class="bcenter" valign={Gtk.Align.CENTER}
-        onClicked={() => App.toggle_window("calendar")}>
+        onClicked={() => surfaceToggle("calendar")}>
         <box spacing={8}>
           <label class="clock tn" valign={Gtk.Align.BASELINE}
             label={DEMO ? D.clock : bind(time).as(t => t.format("%H:%M")!)} />
@@ -118,7 +119,7 @@ export default function Bar(monitor: Gdk.Monitor) {
         <StatusPill />
         <Bell />
         <button class="ibtn" valign={Gtk.Align.CENTER}
-          onClicked={() => App.toggle_window("session")}>
+          onClicked={() => surfaceToggle("session")}>
           <image iconName="kobel-power-symbolic" />
         </button>
       </box>

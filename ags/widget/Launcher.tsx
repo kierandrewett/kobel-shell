@@ -8,6 +8,7 @@
 //   '=' calculator · ':' gnoblinctl commands · empty state: dock-tile grid + widgets
 import { App, Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, execAsync, GLib } from "astal"
+import { makeReveal, register, toggle as surfaceToggle } from "../lib/surface"
 import Apps from "gi://AstalApps"
 import Mpris from "gi://AstalMpris"
 import { fuzzy, hl, boost, bump, frequency } from "../lib/fuzzy"
@@ -71,11 +72,11 @@ const ACTIONS = [
   { n: "Lock", icon: "kobel-lock-symbolic", d: "Lock the session",
     al: ["lock screen"], run: () => execAsync("loginctl lock-session") },
   { n: "Log Out", icon: "kobel-logout-symbolic", d: "End this session",
-    al: ["exit", "sign out", "logout"], run: () => App.toggle_window("session") },
+    al: ["exit", "sign out", "logout"], run: () => surfaceToggle("session") },
   { n: "Restart", icon: "kobel-reload-symbolic", d: "Reboot the machine",
-    al: ["reboot"], run: () => App.toggle_window("session") },
+    al: ["reboot"], run: () => surfaceToggle("session") },
   { n: "Shut Down", icon: "kobel-power-symbolic", d: "Power off",
-    al: ["poweroff", "halt"], run: () => App.toggle_window("session") },
+    al: ["poweroff", "halt"], run: () => surfaceToggle("session") },
   { n: "Soft-reload gnoblin", icon: "kobel-reload-symbolic",
     d: "Reload the shell — windows survive", al: [],
     run: () => execAsync("gnoblinctl reload") },
@@ -158,15 +159,18 @@ export default function Launcher() {
 
   const sections = bind(query).as(results)
 
+  const { winVisible, revealed: launchRevealed, setRevealer: setLaunchRevealer, close: launchClose, toggle: toggleFn } = makeReveal(220, 150)
+  register("launcher", toggleFn)
   return <window
     name="launcher" namespace="kobel-launcher" class="launcher-window"
     anchor={Astal.WindowAnchor.TOP} exclusivity={Astal.Exclusivity.NORMAL}
-    keymode={Astal.Keymode.EXCLUSIVE} visible={false}
-    onKeyPressed={(self, key, _code, mods) => {
+    keymode={Astal.Keymode.EXCLUSIVE}
+    visible={bind(winVisible)}
+    onKeyPressed={(_self, key, _code, mods) => {
       const flat = results(query.get()).flatMap(s => s.rows)
       if (key === Gdk.KEY_Escape) {
         if (query.get()) { query.set(""); return true }
-        self.hide(); return true
+        launchClose(); return true
       }
       if (key === Gdk.KEY_Tab) {                       // Tab is ALWAYS owned
         const g = ghost.get(), q = query.get()
@@ -184,10 +188,15 @@ export default function Launcher() {
       if (key === Gdk.KEY_Down) { selected.set((selected.get() + 1) % Math.max(flat.length, 1)); return true }
       if (key === Gdk.KEY_Up) { selected.set((selected.get() - 1 + flat.length) % Math.max(flat.length, 1)); return true }
       if (key === Gdk.KEY_Return) {
-        flat[selected.get()]?.run(); self.hide(); query.set(""); return true
+        flat[selected.get()]?.run(); launchClose(); query.set(""); return true
       }
       return false
     }}>
+    <revealer
+      transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+      transitionDuration={220}
+      revealChild={bind(launchRevealed)}
+      setup={(r: Gtk.Revealer) => setLaunchRevealer(r)}>
     <box class="sheet launcher" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
       <box class="field" spacing={11}>
         <image iconName="kobel-magnifying-glass-symbolic" />
@@ -218,7 +227,7 @@ export default function Launcher() {
         <box orientation={Gtk.Orientation.VERTICAL} spacing={0}>
           <box class="tiles" halign={Gtk.Align.CENTER} spacing={6}>
             {gridTiles(apps).map(t =>
-              <button class="tile" onClicked={() => { t.launch(); App.get_window("launcher")?.hide() }}>
+              <button class="tile" onClicked={() => { t.launch(); launchClose() }}>
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={8} halign={Gtk.Align.CENTER}>
                   <image class="icon-tile" iconName={t.iconName} pixelSize={30}
                     halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} />
@@ -281,7 +290,7 @@ export default function Launcher() {
             const flatIdx = secs.flatMap(s => s.rows).indexOf(r)
             return <button
               class={bind(selected).as(s => s === flatIdx ? "row sel" : "row")}
-              onClicked={() => { r.run(); App.get_window("launcher")?.hide() }}>
+              onClicked={() => { r.run(); launchClose() }}>
               <box spacing={11}>
                 {/* 28×28 r8 panel2 frame around the 24px icon (prototype .ri) */}
                 <box class="ri" valign={Gtk.Align.CENTER}>
@@ -308,5 +317,6 @@ export default function Launcher() {
         <label label="↑↓ select · ↵ run" halign={Gtk.Align.END} />
       </box>
     </box>
+    </revealer>
   </window>
 }

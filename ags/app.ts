@@ -19,6 +19,7 @@ import { tokenCss, tokens } from "./config"
 import * as gnoblin from "./services/gnoblin"
 import * as notifdSvc from "./services/notifd"
 import { armDump } from "./lib/inspect"
+import { toggle as surfaceToggle } from "./lib/surface"
 import Bar from "./widget/Bar"
 import Dock from "./widget/Dock"
 import Launcher from "./widget/Launcher"
@@ -82,7 +83,7 @@ App.start({
   // `astal -i kobel -t <window>` handled by App's request framework
   requestHandler(request, res) {
     const [cmd, arg] = request.split(" ")
-    if (cmd === "toggle") { App.toggle_window(arg); return res("ok") }
+    if (cmd === "toggle") { surfaceToggle(arg); return res("ok") }
     if (cmd === "reload-css") { App.apply_css(style + tokenCss(tokens), true); return res("ok") }
     res("unknown")
   },

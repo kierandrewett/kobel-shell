@@ -2,7 +2,7 @@
 // persisted), GNOME thin sliders, drilldowns as a spring-slid two-view stack
 // (Wi-Fi networks / BT devices / per-app mixer with a Master row), compact top row
 // (battery · pencil/leaf/lock/power), gnoblin banner + reconnect while degraded.
-import { App, Astal, Gdk, Gtk } from "astal/gtk4"
+import { Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, execAsync, GLib } from "astal"
 import Network from "gi://AstalNetwork"
 import Bluetooth from "gi://AstalBluetooth"
@@ -12,6 +12,7 @@ import Gio from "gi://Gio"
 import Battery from "gi://AstalBattery"
 import { connected, reload } from "../services/gnoblin"
 import { MOTION } from "../lib/spring"
+import { makeReveal, register, toggle as surfaceToggle } from "../lib/surface"
 import { DEMO, D } from "../lib/demo"
 import { TinySlider } from "../lib/tinyslider"
 import { FixedChev } from "../lib/fixedchev"
@@ -177,7 +178,7 @@ function Root({ name }: { name?: string }) {
         <image iconName="kobel-lock-symbolic" /></button>
       <button class="rbtn" onClicked={() => editMode.set(!editMode.get())}>
         <image iconName="kobel-pencil-symbolic" /></button>
-      <button class="rbtn danger" onClicked={() => App.toggle_window("session")}>
+      <button class="rbtn danger" onClicked={() => surfaceToggle("session")}>
         <image iconName="kobel-power-symbolic" /></button>
     </box>
     <GnoblinBanner />
@@ -327,26 +328,35 @@ function DrillView({ name }: { name?: string }) {
 }
 
 export default function QuickSettings() {
+  const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(220, 150)
+  register("quicksettings", toggleFn)
   return <window
-    name="quicksettings" namespace="kobel-qs" class="qs-window" visible={false}
+    name="quicksettings" namespace="kobel-qs" class="qs-window"
+    visible={bind(winVisible)}
     anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT}
     exclusivity={Astal.Exclusivity.NORMAL}
     keymode={Astal.Keymode.ON_DEMAND}
-    onKeyPressed={(self, key) => {
+    onKeyPressed={(_self, key) => {
       if (key !== Gdk.KEY_Escape) return false
       if (drill.get()) { drill.set(null); return true }   // Esc steps back first
-      self.hide(); return true
+      close(); return true
     }}>
-    <box class="sheet qs">
-      {/* Gtk.Stack with slide-left/right = the multiview; height animates
-          via Adw spring on a size-group wrapper (MOTION.drill / drillBack) */}
-      <stack
-        transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
-        transitionDuration={220}
-        visibleChildName={bind(drill).as(d => d ? "drill" : "root")}>
-        <Root name="root" />
-        <DrillView name="drill" />
-      </stack>
-    </box>
+    <revealer
+      transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+      transitionDuration={220}
+      revealChild={bind(revealed)}
+      setup={(r: Gtk.Revealer) => setRevealer(r)}>
+      <box class="sheet qs">
+        {/* Gtk.Stack with slide-left/right = the multiview; height animates
+            via Adw spring on a size-group wrapper (MOTION.drill / drillBack) */}
+        <stack
+          transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
+          transitionDuration={220}
+          visibleChildName={bind(drill).as(d => d ? "drill" : "root")}>
+          <Root name="root" />
+          <DrillView name="drill" />
+        </stack>
+      </box>
+    </revealer>
   </window>
 }
