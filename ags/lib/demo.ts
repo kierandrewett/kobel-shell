@@ -1,0 +1,30 @@
+// Demo-data mode (KOBEL_DEMO=1): make every surface render the EXACT mock values from
+// docs/prototype.html, so an AGS render can be pixel-overlaid on the prototype render
+// for a fair 1:1 comparison. This is NOT cheating — real GTK widgets, real rendering;
+// only the *content* is pinned to the prototype's so the chrome can be diffed directly.
+import GLib from "gi://GLib"
+
+export const DEMO = !!GLib.getenv("KOBEL_DEMO")
+
+// Values transcribed from prototype.html's mock state (the reference screenshots).
+export const D = {
+  // bar
+  clock: "22:47",
+  date: "Fri 3 Jul",
+  title: "Terminal — window 1/2",
+  batteryPct: "100%",
+  // quick settings
+  meta: "100% · Fully charged",
+  wifiSsid: "chompers-5G",
+  btDevice: "WH-1000XM5",
+  volume: 0.64,
+  brightness: 0.80,
+  dark: true, save: false, silent: false, night: false,
+  // calendar — pinned "today" so the grid + hero match the prototype exactly
+  today: { y: 2026, m: 6 /* July, 0-indexed */, d: 3 },  // Friday 3 July 2026
+  // launcher pinned tiles + today widget
+  apps: ["Terminal", "Files", "Firefox", "Zed", "Spotify", "Settings"],
+  widgetDate: "Friday 3 July",
+  widgetEvent: "09:45 · Daily Standup",
+  media: { title: "Weightless", artist: "Marconi Union" },
+}
