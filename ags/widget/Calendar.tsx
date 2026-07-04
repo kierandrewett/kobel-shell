@@ -3,14 +3,16 @@
 // clickable days w/ selection ring (ink ring on today), event-dot markers,
 // events card in the notification-card language. Months slide (multiview motion).
 import { App, Astal, Gdk, Gtk } from "astal/gtk4"
-import { Variable, bind } from "astal"
+import { Variable, bind, GLib } from "astal"
 import { DEMO, D } from "../lib/demo"
 
 interface Ev { t: string; n: string; icon: string }
-// "today" — under KOBEL_DEMO, pinned to D.today (the demo's mock "today", kept in sync
-// with the prototype so the hero, grid highlight, event-dots and events card overlay it
-// 1:1); real clock otherwise. Every "today"/selected default flows from this single `now`.
-const now = DEMO ? new Date(D.today.y, D.today.m, D.today.d) : new Date()
+// "today" — under KOBEL_DEMO, pinned to D.today; real clock otherwise.
+// todayVar polls every 60s so the hero date updates without a reload.
+const todayVar = DEMO
+  ? Variable(new Date(D.today.y, D.today.m, D.today.d))
+  : Variable(new Date()).poll(60_000, () => new Date())
+const now = todayVar.get()
 const key = (y: number, m: number, d: number) => `${y}-${m + 1}-${d}`
 export const EVENTS: Record<string, Ev[]> = {
   [key(now.getFullYear(), now.getMonth(), now.getDate())]:
@@ -121,9 +123,9 @@ export default function Calendar() {
     <box class="sheet cal" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
       <box class="calhero" orientation={Gtk.Orientation.VERTICAL}>
         <label class="sub" halign={Gtk.Align.START}
-          label={now.toLocaleDateString("en-GB", { weekday: "long" })} />
+          label={bind(todayVar).as(d => d.toLocaleDateString("en-GB", { weekday: "long" }))} />
         <label class="hero" halign={Gtk.Align.START}
-          label={now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} />
+          label={bind(todayVar).as(d => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }))} />
       </box>
       <centerbox>
         <button onClicked={() => {

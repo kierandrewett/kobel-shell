@@ -9,6 +9,7 @@ import { App, Astal, Gdk, Gtk } from "astal/gtk4"
 import { bind, Variable, execAsync } from "astal"
 import Apps from "gi://AstalApps"
 import Gio from "gi://Gio"
+import Mpris from "gi://AstalMpris"
 import { MOTION, spring, springTo } from "../lib/spring"
 import * as gnoblin from "../services/gnoblin"
 import { DEMO } from "../lib/demo"
@@ -76,15 +77,29 @@ function DockButton({ app }: { app: Apps.Application }) {
 }
 
 function MediaWidget() {
-  // dock widget proof-of-concept: album glyph (rounded chip) + live progress, click = play/pause
-  return <button class="dbtn dwidget" onClicked={() => execAsync("playerctl play-pause")}>
+  const mpris = Mpris.get_default()
+  // Pick the first active player, or null if nothing is playing
+  const player = bind(mpris, "players").as(ps => ps.find(p => p.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0] ?? null)
+  const progress = bind(mpris, "players").as(ps => {
+    const p = ps.find(q => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
+    if (!p || !p.length || p.length <= 0) return 0
+    return p.position / p.length
+  })
+  const icon = bind(mpris, "players").as(ps => {
+    const p = ps.find(q => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
+    if (!p) return "kobel-music-symbolic"
+    return p.playback_status === Mpris.PlaybackStatus.PLAYING
+      ? "kobel-pause-symbolic" : "kobel-play-symbolic"
+  })
+  return <button class="dbtn dwidget"
+    onClicked={() => execAsync("playerctl play-pause")}>
     <overlay>
       <box class="dtile">
-        <image class="dg" iconName="kobel-music-symbolic" pixelSize={18}
+        <image class="dg" iconName={icon} pixelSize={18}
                halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} hexpand vexpand />
       </box>
       <levelbar type="overlay" class="mprog" halign={Gtk.Align.CENTER} valign={Gtk.Align.END}
-                value={0.34} />
+                value={progress} />
     </overlay>
   </button>
 }

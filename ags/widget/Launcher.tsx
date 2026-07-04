@@ -9,6 +9,7 @@
 import { App, Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, execAsync, GLib } from "astal"
 import Apps from "gi://AstalApps"
+import Mpris from "gi://AstalMpris"
 import { fuzzy, hl, boost, bump, frequency } from "../lib/fuzzy"
 import { EVENTS } from "./Calendar"
 import { DEMO, D } from "../lib/demo"
@@ -235,21 +236,39 @@ export default function Launcher() {
               <label class="hint" halign={Gtk.Align.START} label={todayEventLabel()} />
             </box>
             {/* right card — media mini-card: art · title/artist · play */}
-            <box class="widget lwm" hexpand spacing={10}>
-              <box class="lwart" valign={Gtk.Align.CENTER}>
-                <image iconName="kobel-music-symbolic"
-                  halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} />
+            {(() => {
+              const mpris = Mpris.get_default()
+              const activePlayer = bind(mpris, "players").as(ps =>
+                ps.find(p => p.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0] ?? null)
+              const mediaTitle = DEMO ? D.media.title : bind(mpris, "players").as(ps => {
+                const p = ps.find(q => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
+                return p?.title ?? "Nothing playing"
+              })
+              const mediaArtist = DEMO ? D.media.artist : bind(mpris, "players").as(ps => {
+                const p = ps.find(q => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
+                return p?.artist ?? ""
+              })
+              const playIcon = DEMO ? "kobel-play-symbolic" : bind(mpris, "players").as(ps => {
+                const p = ps.find(q => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
+                return p?.playback_status === Mpris.PlaybackStatus.PLAYING
+                  ? "kobel-pause-symbolic" : "kobel-play-symbolic"
+              })
+              return <box class="widget lwm" hexpand spacing={10}>
+                <box class="lwart" valign={Gtk.Align.CENTER}>
+                  <image iconName="kobel-music-symbolic"
+                    halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} />
+                </box>
+                <box class="lwt" hexpand orientation={Gtk.Orientation.VERTICAL}
+                  valign={Gtk.Align.CENTER}>
+                  <label class="mtitle" halign={Gtk.Align.START} ellipsize={3} label={mediaTitle} />
+                  <label class="hint" halign={Gtk.Align.START} ellipsize={3} label={mediaArtist} />
+                </box>
+                <button class="mbtn play" valign={Gtk.Align.CENTER}
+                  onClicked={() => execAsync("playerctl play-pause")}>
+                  <image iconName={playIcon} />
+                </button>
               </box>
-              <box class="lwt" hexpand orientation={Gtk.Orientation.VERTICAL}
-                valign={Gtk.Align.CENTER}>
-                <label class="mtitle" halign={Gtk.Align.START} ellipsize={3} label={D.media.title} />
-                <label class="hint" halign={Gtk.Align.START} ellipsize={3} label={D.media.artist} />
-              </box>
-              <button class="mbtn play" valign={Gtk.Align.CENTER}
-                onClicked={() => execAsync("playerctl play-pause")}>
-                <image iconName="kobel-play-symbolic" />
-              </button>
-            </box>
+            })()}
           </box>
         </box>
       </revealer>
