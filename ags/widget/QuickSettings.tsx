@@ -27,7 +27,7 @@ function Chip(props: {
   active: any, sub?: any, onToggled: () => void, onDrill?: () => void,
 }) {
   return <box class={bind(props.active).as((a: boolean) => a ? "chip pill on" : "chip pill")}>
-    <button hexpand onClicked={props.onToggled}>
+    <button hexpand={true} onClicked={props.onToggled}>
       <box spacing={9}>
         <image iconName={props.icon} />
         <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER}>
@@ -37,8 +37,9 @@ function Chip(props: {
         </box>
       </box>
     </button>
+    {/* fixed 32px seam+chevron (proto .chevb) — hexpand=false so the main button owns slack */}
     {props.onDrill &&
-      <button class="chev" onClicked={props.onDrill}>
+      <button class="chev" hexpand={false} widthRequest={32} onClicked={props.onDrill}>
         <image iconName="kobel-chevron-right-symbolic" />
       </button>}
   </box>
@@ -46,21 +47,29 @@ function Chip(props: {
 
 function Sliders() {
   const speaker = Wp.get_default()?.default_speaker ?? null
-  if (!speaker) return <box />
-  return <box class="sliders" orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+  // In DEMO mode render the two sliders regardless of a real speaker, pinned to the
+  // prototype's mock values (volume 0.64, brightness 0.80) for a fair overlay.
+  if (!speaker && !DEMO) return <box />
+  const volIcon = speaker
+    ? bind(speaker, "volume_icon").as(i => i ?? "kobel-speaker-wave-symbolic")
+    : "kobel-speaker-wave-symbolic"
+  const volValue: any = DEMO ? D.volume : bind(speaker!, "volume")
+  // proto .sliders is a flex column with NO gap between the two srows (each min-h 42).
+  return <box class="sliders" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
     <box class="srow" spacing={9}>
-      <image iconName={bind(speaker, "volume_icon").as(i => i ?? "kobel-speaker-wave-symbolic")} />
-      <slider hexpand class="slider" value={bind(speaker, "volume")}
-        onChangeValue={(_s, v) => { speaker.volume = v }} />
+      <image iconName={volIcon} />
+      <slider hexpand class="slider" value={volValue}
+        onChangeValue={(_s, v) => { if (speaker) speaker.volume = v }} />
       <button class="chev" onClicked={() => drill.set("mix")}>
         <image iconName="kobel-chevron-right-symbolic" />
       </button>
     </box>
     <box class="srow" spacing={9}>
       <image iconName="kobel-brightness-symbolic" />
-      <slider hexpand class="slider" value={0.8}
+      <slider hexpand class="slider" value={DEMO ? D.brightness : 0.8}
         onChangeValue={(_s, v) => execAsync(`brightnessctl set ${Math.round(v * 100)}%`)} />
-      <box widthRequest={30} />  {/* gutter so rails end flush */}
+      {/* gutter matches the volume chev width so both rails end flush */}
+      <box widthRequest={31} />
     </box>
   </box>
 }
@@ -97,7 +106,11 @@ function Root({ name }: { name?: string }) {
   return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={0}>
     {/* top row: battery · reload · lock · power */}
     <box class="qs-top" spacing={0}>
-      <label class="tn meta" label={DEMO ? D.meta : "100% · Fully charged"} />
+      {/* battery pill: glyph + tabular meta (matches prototype .qb) */}
+      <box class="meta" spacing={6} valign={Gtk.Align.CENTER}>
+        <image iconName="kobel-battery-symbolic" />
+        <label class="tn" label={DEMO ? D.meta : "100% · Fully charged"} />
+      </box>
       <box hexpand />
       <button class="rbtn leaf" onClicked={() => reload()}><image iconName="kobel-leaf-symbolic" /></button>
       <button class="rbtn" onClicked={() => execAsync("loginctl lock-session")}>
@@ -112,12 +125,12 @@ function Root({ name }: { name?: string }) {
     <box class="chip-grid" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
       <box class="chips" homogeneous spacing={8}>
         {(DEMO || net.wifi) && <Chip id="wifi" label="Wi-Fi" icon="kobel-wifi-symbolic"
-          active={DEMO ? Variable(true) as any : bind(net.wifi!, "enabled")}
+          active={DEMO ? Variable(true) : bind(net.wifi!, "enabled")}
           sub={DEMO ? D.wifiSsid : bind(net.wifi!, "ssid").as(s => s ?? "Off")}
           onToggled={() => { if (!DEMO && net.wifi) net.wifi.enabled = !net.wifi.enabled }}
           onDrill={() => drill.set("wifi")} />}
         <Chip id="bt" label="Bluetooth" icon="kobel-bluetooth-symbolic"
-          active={DEMO ? Variable(true) as any : bind(bt, "devices").as(d => d.some(x => x.connected))}
+          active={DEMO ? Variable(true) : bind(bt, "devices").as(d => d.some(x => x.connected))}
           sub={DEMO ? D.btDevice : bind(bt, "devices").as(d =>
             d.find(x => x.connected)?.alias ?? "Off")}
           onToggled={() => { if (!DEMO) bt.toggle() }}
