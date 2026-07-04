@@ -8,9 +8,9 @@ export const DEMO = !!GLib.getenv("KOBEL_DEMO")
 
 // Values transcribed from prototype.html's mock state (the reference screenshots).
 export const D = {
-    // bar
-    clock: "14:23",
-    date: "Sat 4 Jul",
+    // bar — match prototype.html mock state exactly
+    clock: "10:42",
+    date: "Fri 3 Jul",
     title: "Terminal — window 1/2",
     batteryPct: "100%",
     // quick settings
@@ -23,11 +23,11 @@ export const D = {
     save: false,
     silent: false,
     night: false,
-    // calendar — pinned "today" so the grid + hero match the prototype exactly
-    today: { y: 2026, m: 6 /* July, 0-indexed */, d: 4 }, // Saturday 4 July 2026
+    // calendar — pinned to prototype date (Friday 3 July 2026)
+    today: { y: 2026, m: 6 /* July, 0-indexed */, d: 3 }, // Friday 3 July 2026
     // launcher pinned tiles + today widget
     apps: ["Terminal", "Files", "Firefox", "Zed", "Spotify", "Settings"],
-    widgetDate: "Saturday 4 July",
+    widgetDate: "Friday 3 July",
     widgetEvent: "09:45 · Daily Standup",
     media: { title: "Weightless", artist: "Marconi Union" },
 }
