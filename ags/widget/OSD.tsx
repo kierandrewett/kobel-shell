@@ -31,6 +31,7 @@ export default function OSD(monitor: Gdk.Monitor) {
                 <levelbar hexpand value={bind(speaker, "volume")} />
                 <label
                     class="sval tn"
+                    xalign={1}
                     label={bind(speaker, "volume").as((v) => `${Math.round(v * 100)}%`)}
                 />
             </box>
