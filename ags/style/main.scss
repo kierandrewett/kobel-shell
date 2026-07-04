@@ -35,8 +35,14 @@ button {
 image { -gtk-icon-style: regular; }
 
 // ============ BAR ============
-// Exact CDP values: height 42, radius 14, padding 0 7, gap 4; buttons 31×31 r9;
-// status pill padding 0 13, gap 10, r999, bg $chip; title 12.5/400; clock 13.5/600.
+// Prototype .bar: flex row, gap 4, padding 0 7, bg panel, radius 14, height 42.
+// Control size --ctl = bar-h - 11 = 31; .ibtn is a fixed 31×31 box with a 16px icon
+// centered (NO padding — config.ts's `.bar button {min 31}` already sizes it; adding
+// padding on top would inflate it to 45 and push the bar to 45px tall). Class selectors
+// (.ibtn/.bcenter/.status = 0,2,0) beat config's `.bar button` (0,1,1). Icon-size only
+// applies through class selectors — `.bar > box > button` never matches (AstalBox's CSS
+// node isn't `box`). Buttons are valign-centred so the 31px control floats in the 42 bar
+// (badge lands at y≈8; status pill stays 30 tall instead of filling to 42).
 .bar {
   background-color: $panel;
   border-radius: 14px;
@@ -44,26 +50,30 @@ image { -gtk-icon-style: regular; }
   min-height: 42px;
   color: $mut;
 
-  .title { color: $mut; font-size: 12.5px; font-weight: 400; margin-left: 4px; }
+  .title { color: $mut; font-size: 12.5px; font-weight: 400; margin: 0 9px; }
   .clock { color: $tx; font-size: 13.5px; font-weight: 600; }
-  .date  { color: $mut; font-size: 11.5px; margin-left: 2px; }
+  .date  { color: $mut; font-size: 11.5px; }
 
-  // round icon buttons — size follows the 17px icon + 7px padding (= 31), not a fixed box
-  > box > button, .bar-btn {
-    padding: 7px; border-radius: 9px; color: $mut;
-    image { -gtk-icon-size: 17px; }
+  // icon buttons (search / bell / power): fixed 31×31 (config min), no padding, 16px icon
+  .ibtn {
+    padding: 0; border-radius: 9px; color: $mut;
+    image { -gtk-icon-size: 16px; }
     &:hover { background-color: $panel2; color: $tx; }
   }
-  // centered clock button (direct child of the .bar centerbox)
-  > button { padding: 5px 11px; border-radius: 9px;
-    &:hover { background-color: $panel2; } }
 
-  // status pill — padding drives the height (7px v → ~30), gap 10
+  // centered clock button — padding 6/12, gap 8 (baseline-aligned clk + date)
+  .bcenter {
+    min-height: 0; padding: 6px 12px; border-radius: 9px;
+    &:hover { background-color: $panel2; }
+  }
+
+  // status pill — fixed 30 tall (ctl-1), padding 0 13, gap 10; wifi/vol 16px, battery 15px
   .status {
-    background-color: $panel2; border-radius: 999px;   // CDP .status = panel2
-    padding: 7px 13px; margin: 0 4px;
+    min-height: 30px; padding: 0 13px; border-radius: 999px;
+    background-color: $panel2;   // CDP .status = panel2
     &:hover { background-color: $chip; }
-    image { color: $mut; -gtk-icon-size: 15px; }
+    image { color: $mut; -gtk-icon-size: 16px; }
+    .pct image { -gtk-icon-size: 13px; }   // proto battery renders ~12px
     label { color: $tx; font-weight: 650; font-size: 11.5px; }
     &.err .net-icon { color: $amber; }
   }

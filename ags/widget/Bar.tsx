@@ -9,6 +9,7 @@ import Network from "gi://AstalNetwork"
 import Tray from "gi://AstalTray"
 import { connected, windows } from "../services/gnoblin"
 import { unread } from "../services/notifd"
+import { DEMO, D } from "../lib/demo"
 
 const time = Variable(GLib.DateTime.new_now_local()).poll(10_000,
   () => GLib.DateTime.new_now_local())
@@ -18,7 +19,7 @@ function FocusedTitle() {
     class="title"
     ellipsize={3 /* Pango.EllipsizeMode.END */}
     maxWidthChars={28}
-    label={bind(windows).as(ws => {
+    label={DEMO ? D.title : bind(windows).as(ws => {
       const f = ws.find(w => w.focused)
       if (!f) return "desktop"
       const siblings = ws.filter(w => w.appId === f.appId)
@@ -32,17 +33,17 @@ function StatusPill() {
   const speaker = Wp.get_default()?.default_speaker ?? null
   const net = Network.get_default()
   const bat = Battery.get_default()
-  return <button
+  return <button valign={Gtk.Align.CENTER}
     class={bind(connected).as(c => c ? "status" : "status err")}
     onClicked={() => App.toggle_window("quicksettings")}>
     <box spacing={10}>
       <image class="net-icon" iconName="kobel-wifi-symbolic" />
       <image iconName="kobel-speaker-wave-symbolic" />
-      <box spacing={6}>
+      <box class="pct" spacing={6}>
         <image iconName="kobel-battery-symbolic" />
-        <label class="tn" label={bat
+        <label class="tn" label={DEMO ? D.batteryPct : (bat
           ? bind(bat, "percentage").as(p => `${Math.round(p * 100)}%`)
-          : "100%"} />
+          : "100%")} />
       </box>
     </box>
   </button>
@@ -52,12 +53,13 @@ function Bell() {
   // Badge hydrates once notifd is available (deferred — get_default() can block on a
   // headless/contended bus; never call it during construction). unread() is a plain
   // Variable an async init fills in.
-  return <button onClicked={() => App.toggle_window("drawer")}>
+  return <button class="ibtn bell" valign={Gtk.Align.CENTER}
+    onClicked={() => App.toggle_window("drawer")}>
     <overlay>
       <image iconName="kobel-bell-symbolic" />
       <label type="overlay" halign={Gtk.Align.END} valign={Gtk.Align.START}
-        class="badge tn" visible={bind(unread).as(n => n > 0)}
-        label={bind(unread).as(n => n > 9 ? "9+" : `${n}`)} />
+        class="badge tn" visible={DEMO ? true : bind(unread).as(n => n > 0)}
+        label={DEMO ? "1" : bind(unread).as(n => n > 9 ? "9+" : `${n}`)} />
     </overlay>
   </button>
 }
@@ -73,15 +75,19 @@ export default function Bar(monitor: Gdk.Monitor) {
     anchor={TOP | LEFT | RIGHT}>
     <centerbox class="bar">
       <box spacing={4}>
-        <button onClicked={() => App.toggle_window("launcher")}>
+        <button class="ibtn" valign={Gtk.Align.CENTER}
+          onClicked={() => App.toggle_window("launcher")}>
           <image iconName="kobel-magnifying-glass-symbolic" />
         </button>
         <FocusedTitle />
       </box>
-      <button onClicked={() => App.toggle_window("calendar")}>
+      <button class="bcenter" valign={Gtk.Align.CENTER}
+        onClicked={() => App.toggle_window("calendar")}>
         <box spacing={8}>
-          <label class="clock tn" label={bind(time).as(t => t.format("%H:%M")!)} />
-          <label class="date" label={bind(time).as(t => t.format("%a %-d %b")!)} />
+          <label class="clock tn" valign={Gtk.Align.BASELINE}
+            label={DEMO ? D.clock : bind(time).as(t => t.format("%H:%M")!)} />
+          <label class="date" valign={Gtk.Align.BASELINE}
+            label={DEMO ? D.date : bind(time).as(t => t.format("%a %-d %b")!)} />
         </box>
       </button>
       <box spacing={4}>
@@ -91,7 +97,8 @@ export default function Bar(monitor: Gdk.Monitor) {
           </menubutton>))}
         <StatusPill />
         <Bell />
-        <button onClicked={() => App.toggle_window("session")}>
+        <button class="ibtn" valign={Gtk.Align.CENTER}
+          onClicked={() => App.toggle_window("session")}>
           <image iconName="kobel-power-symbolic" />
         </button>
       </box>
