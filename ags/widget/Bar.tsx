@@ -176,7 +176,9 @@ export default function Bar(monitor: Gdk.Monitor) {
                             >
                                 <image iconName="kobel-paper-plane-symbolic" />
                             </button>
-                            <label class="tn tray-lang" valign={Gtk.Align.CENTER} label="en" />
+                            <button class="ibtn tray-lang tn" valign={Gtk.Align.CENTER}>
+                                <label label="en" />
+                            </button>
                         </box>
                     ) : (
                         bind(Tray.get_default(), "items").as((items) =>
