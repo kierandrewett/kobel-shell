@@ -216,6 +216,15 @@ switch {
   &:hover { background-color: $chip; }
   &.active { image { color: $leaf; } .xs { color: $leaf; } }
 }
+// volume mixer rows — CDP: mrow gap 11; art 46×46 r10 chip; mmeta b 13/650, span 11.5/mut
+.mrow {
+  .art { background-color: $chip; border-radius: 10px; padding: 12px;   // 22px icon + 24 → 46
+    image { color: $mut; } }
+  .mmeta {
+    label { font-size: 13px; font-weight: 650; color: $tx; }
+    scale { margin: 5px 0 0; }
+  }
+}
 
 // ============ LAUNCHER ============
 .launcher { min-width: 567px; padding: 8px; }  // CDP: 567/pad8/r24 (via .sheet)

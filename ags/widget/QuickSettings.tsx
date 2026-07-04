@@ -183,6 +183,32 @@ function BtList() {
   </box>
 }
 
+// One mixer row: 46×46 art tile + name + its own volume slider.
+function MixRow(props: { icon: string, title: string, target: any }) {
+  return <box class="mrow" spacing={11}>
+    <box class="art" valign={Gtk.Align.CENTER}>
+      <image iconName={props.icon} pixelSize={22} /></box>
+    <box class="mmeta" orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
+      <label halign={Gtk.Align.START} label={props.title} />
+      <slider class="slider" value={bind(props.target, "volume")}
+        onChangeValue={(_s, v) => { props.target.volume = v }} />
+    </box>
+  </box>
+}
+
+// Per-app volume mixer — Master (default speaker) + each audio stream (AstalWp).
+function MixList() {
+  const wp = Wp.get_default()
+  if (!wp) return <box />
+  const speaker = wp.default_speaker
+  return <box class="dlist" orientation={Gtk.Orientation.VERTICAL} spacing={12}>
+    {speaker && <MixRow icon="kobel-speaker-wave-symbolic" title="Output" target={speaker} />}
+    {bind(wp.audio, "streams").as(streams => streams.slice(0, 5).map(s =>
+      <MixRow icon="kobel-music-symbolic"
+        title={s.description || s.name || "Application"} target={s} />))}
+  </box>
+}
+
 function DrillView({ name }: { name?: string }) {
   const net = Network.get_default()
   return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={8}>
@@ -201,7 +227,8 @@ function DrillView({ name }: { name?: string }) {
       </box>
     </centerbox>
     {bind(drill).as(d =>
-      d === "wifi" ? <WifiList /> : d === "bt" ? <BtList /> : <box />)}
+      d === "wifi" ? <WifiList /> : d === "bt" ? <BtList /> :
+      d === "mix" ? <MixList /> : <box />)}
   </box>
 }
 
