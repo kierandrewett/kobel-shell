@@ -3,38 +3,49 @@
 // Change a value here and bar, panels, dock, snap-anchored surfaces all reflow.
 
 export interface Tokens {
-  barH: number      // px — bar height; controls derive from it
-  barR: number      // bar corner radius
-  gap: number       // screen gap (bar top offset, dock bottom offset)
-  edge: number      // side insets
-  icon: number      // dock/launcher icon tile size
-  dockPad: number   // dock padding (concentric radius derives)
-  tileH: number     // QS tile height
-  panelW: number    // QS/notifications/toasts width
-  launcherW: number
-  calendarW: number
+    barH: number // px — bar height; controls derive from it
+    barR: number // bar corner radius
+    gap: number // screen gap (bar top offset, dock bottom offset)
+    edge: number // side insets
+    icon: number // dock/launcher icon tile size
+    dockPad: number // dock padding (concentric radius derives)
+    tileH: number // QS tile height
+    panelW: number // QS/notifications/toasts width
+    launcherW: number
+    calendarW: number
 }
 
 export const floating: Tokens = {
-  barH: 42, barR: 14, gap: 10, edge: 12,
-  icon: 44, dockPad: 5, tileH: 54,
-  panelW: 352, launcherW: 560, calendarW: 330,
+    barH: 42,
+    barR: 14,
+    gap: 10,
+    edge: 12,
+    icon: 44,
+    dockPad: 5,
+    tileH: 54,
+    panelW: 352,
+    launcherW: 560,
+    calendarW: 330,
 }
 
 // gapless = a token preset, exactly like the prototype's .gapless class
 export const gapless: Tokens = {
-  ...floating, barH: 38, barR: 0, gap: 0, edge: 0,
+    ...floating,
+    barH: 38,
+    barR: 0,
+    gap: 0,
+    edge: 0,
 }
 
 export let tokens: Tokens = floating
 
-export const ctl = () => tokens.barH - 11              // bar control size
+export const ctl = () => tokens.barH - 11 // bar control size
 export const panelTop = () => tokens.gap + tokens.barH + 6
 
 // GTK CSS can't calc() from JS state; we regenerate a :root-ish block and
 // let App.apply_css re-skin live (the "bar 42 cycler" of the QML/AGS world).
 export function tokenCss(t: Tokens = tokens): string {
-  return `
+    return `
   .bar { min-height: ${t.barH}px; border-radius: ${t.barR}px;
          margin: 0; }
   .bar button { min-width: ${ctl()}px; min-height: ${ctl()}px; }
@@ -50,6 +61,6 @@ export function tokenCss(t: Tokens = tokens): string {
 }
 
 export function setTokens(next: Partial<Tokens>, apply: (css: string) => void) {
-  tokens = { ...tokens, ...next }
-  apply(tokenCss(tokens))
+    tokens = { ...tokens, ...next }
+    apply(tokenCss(tokens))
 }

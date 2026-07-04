@@ -14,20 +14,26 @@ export const unread = Variable(0)
 export const ready = Variable(false)
 let n: Notifd.Notifd | null = null
 
-export function notifd() { return n }
+export function notifd() {
+    return n
+}
 
 export function init() {
-  // getenv returns "" (falsy) when the var is set-but-empty, null when unset — both skip
-  // correctly only when the value is truthy ("1").
-  if (GLib.getenv("KOBEL_SKIP_NOTIFD")) return
-  // defer past first paint; if get_default blocks, it blocks only this idle tick,
-  // never construction/first render.
-  timeout(50, () => {
-    try {
-      n = Notifd.get_default()
-      ready.set(true)
-      const sync = () => unread.set(n!.notifications.length)
-      n.connect("notified", sync); n.connect("resolved", sync); sync()
-    } catch (e) { printerr(`kobel: notifd init skipped: ${e}`) }
-  })
+    // getenv returns "" (falsy) when the var is set-but-empty, null when unset — both skip
+    // correctly only when the value is truthy ("1").
+    if (GLib.getenv("KOBEL_SKIP_NOTIFD")) return
+    // defer past first paint; if get_default blocks, it blocks only this idle tick,
+    // never construction/first render.
+    timeout(50, () => {
+        try {
+            n = Notifd.get_default()
+            ready.set(true)
+            const sync = () => unread.set(n!.notifications.length)
+            n.connect("notified", sync)
+            n.connect("resolved", sync)
+            sync()
+        } catch (e) {
+            printerr(`kobel: notifd init skipped: ${e}`)
+        }
+    })
 }

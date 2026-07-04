@@ -24,122 +24,184 @@ const drawerOpen = Variable(false)
 // doesn't stretch to the hexpand text column; the drawer cards fill the same width.
 const NCARD_W = 327
 function Card({ n }: { n: Notifd.Notification }) {
-  return <box class="ncard" spacing={10} widthRequest={NCARD_W}>
-    {/* app icon in a 30×30 r9 tile (prototype .nic) */}
-    <box class="nic" valign={Gtk.Align.START}>
-      <image iconName={n.app_icon || "dialog-information-symbolic"} pixelSize={20} />
-    </box>
-    <box orientation={Gtk.Orientation.VERTICAL} hexpand>
-      <box>
-        <label halign={Gtk.Align.START} hexpand ellipsize={3} label={n.summary} />
-        <label class="when tn" label={new Date(n.time * 1000)
-          .toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} />
-      </box>
-      <label class="body" halign={Gtk.Align.START} xalign={0} wrap
-        maxWidthChars={40} label={n.body} />
-    </box>
-    <button class="nx" valign={Gtk.Align.START} onClicked={() => n.dismiss()}>
-      <image iconName="kobel-close-symbolic" />
-    </button>
-  </box>
+    return (
+        <box class="ncard" spacing={10} widthRequest={NCARD_W}>
+            {/* app icon in a 30×30 r9 tile (prototype .nic) */}
+            <box class="nic" valign={Gtk.Align.START}>
+                <image iconName={n.app_icon || "dialog-information-symbolic"} pixelSize={20} />
+            </box>
+            <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                <box>
+                    <label halign={Gtk.Align.START} hexpand ellipsize={3} label={n.summary} />
+                    <label
+                        class="when tn"
+                        label={new Date(n.time * 1000).toLocaleTimeString("en-GB", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        })}
+                    />
+                </box>
+                <label
+                    class="body"
+                    halign={Gtk.Align.START}
+                    xalign={0}
+                    wrap
+                    maxWidthChars={40}
+                    label={n.body}
+                />
+            </box>
+            <button class="nx" valign={Gtk.Align.START} onClicked={() => n.dismiss()}>
+                <image iconName="kobel-close-symbolic" />
+            </button>
+        </box>
+    )
 }
 
 export function Toasts(monitor: Gdk.Monitor) {
-  if (skip()) return null
-  // Only render notifications younger than TOAST_MS while the drawer is CLOSED —
-  // opening the drawer "adopts" them (they simply continue life as drawer cards,
-  // which is the FLIP handoff expressed in retained-mode terms).
-  const live = Variable<number[]>([])
-  // `shown` = what the toast column renders. Recomputed explicitly on every input
-  // change (Variable.derive didn't produce a reactive binding here). Empty while the
-  // drawer is open (toasts are ADOPTED into the drawer stack).
-  const shown = Variable<number[]>([])
-  const recompute = () => shown.set(drawerOpen.get() ? [] : live.get())
-  live.subscribe(recompute)
-  drawerOpen.subscribe(recompute)
-  nd().connect("notified", (_n, id) => {
-    if (drawerOpen.get() || nd().dont_disturb) return
-    live.set([...live.get(), id])
-    timeout(TOAST_MS, () => live.set(live.get().filter(x => x !== id)))
-  })
-  return <window
-    name="toasts" namespace="kobel-toasts" gdkmonitor={monitor}
-    // Hide the whole toast surface while the drawer is open (toasts are ADOPTED into
-    // the drawer) — a reactive window-visibility bind, robust regardless of the
-    // per-item list reconciliation.
-    visible={bind(drawerOpen).as(o => !o)}
-    // Toasts are a floating overlay (like the prototype's absolute top/right); the
-    // float inset clears the floating bar (marginTop 10 + height 42) + a small gap,
-    // and the right inset matches the bar's edge margin.
-    marginTop={58} marginRight={12}
-    anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT}>
-    {/* fixed toast column width so the card can't stretch to its hexpand text column */}
-    <box orientation={Gtk.Orientation.VERTICAL} spacing={8}
-      widthRequest={NCARD_W + 26} halign={Gtk.Align.END}>
-      {bind(shown).as(ids => ids.map(id => {
-        const n = nd().get_notification(id)
-        return n ? <box class="toast"><Card n={n} /></box> : <box />
-      }))}
-    </box>
-  </window>
+    if (skip()) return null
+    // Only render notifications younger than TOAST_MS while the drawer is CLOSED —
+    // opening the drawer "adopts" them (they simply continue life as drawer cards,
+    // which is the FLIP handoff expressed in retained-mode terms).
+    const live = Variable<number[]>([])
+    // `shown` = what the toast column renders. Recomputed explicitly on every input
+    // change (Variable.derive didn't produce a reactive binding here). Empty while the
+    // drawer is open (toasts are ADOPTED into the drawer stack).
+    const shown = Variable<number[]>([])
+    const recompute = () => shown.set(drawerOpen.get() ? [] : live.get())
+    live.subscribe(recompute)
+    drawerOpen.subscribe(recompute)
+    nd().connect("notified", (_n, id) => {
+        if (drawerOpen.get() || nd().dont_disturb) return
+        live.set([...live.get(), id])
+        timeout(TOAST_MS, () => live.set(live.get().filter((x) => x !== id)))
+    })
+    return (
+        <window
+            name="toasts"
+            namespace="kobel-toasts"
+            gdkmonitor={monitor}
+            // Hide the whole toast surface while the drawer is open (toasts are ADOPTED into
+            // the drawer) — a reactive window-visibility bind, robust regardless of the
+            // per-item list reconciliation.
+            visible={bind(drawerOpen).as((o) => !o)}
+            // Toasts are a floating overlay (like the prototype's absolute top/right); the
+            // float inset clears the floating bar (marginTop 10 + height 42) + a small gap,
+            // and the right inset matches the bar's edge margin.
+            marginTop={58}
+            marginRight={12}
+            anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT}
+        >
+            {/* fixed toast column width so the card can't stretch to its hexpand text column */}
+            <box
+                orientation={Gtk.Orientation.VERTICAL}
+                spacing={8}
+                widthRequest={NCARD_W + 26}
+                halign={Gtk.Align.END}
+            >
+                {bind(shown).as((ids) =>
+                    ids.map((id) => {
+                        const n = nd().get_notification(id)
+                        return n ? (
+                            <box class="toast">
+                                <Card n={n} />
+                            </box>
+                        ) : (
+                            <box />
+                        )
+                    })
+                )}
+            </box>
+        </window>
+    )
 }
 
 function MediaCard() {
-  let player: any = null
-  try { player = Mpris.get_default()?.players?.[0] ?? null } catch { player = null }
-  if (!player) return <box visible={false} />
-  return <box class="ncard media" spacing={11}>
-    <image pixelSize={46} iconName="kobel-music-symbolic" />
-    <box orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
-      <label halign={Gtk.Align.START} ellipsize={3} label={bind(player, "title")} />
-      <label class="sub" halign={Gtk.Align.START} label={bind(player, "artist")} />
-    </box>
-    <button onClicked={() => player.previous()}><image iconName="kobel-skip-back-symbolic" /></button>
-    <button onClicked={() => player.play_pause()}>
-      <image iconName={bind(player, "playback_status").as(s =>
-        s === Mpris.PlaybackStatus.PLAYING ? "kobel-pause-symbolic" : "kobel-play-symbolic")} />
-    </button>
-    <button onClicked={() => player.next()}><image iconName="kobel-skip-fwd-symbolic" /></button>
-  </box>
+    let player: any = null
+    try {
+        player = Mpris.get_default()?.players?.[0] ?? null
+    } catch {
+        player = null
+    }
+    if (!player) return <box visible={false} />
+    return (
+        <box class="ncard media" spacing={11}>
+            <image pixelSize={46} iconName="kobel-music-symbolic" />
+            <box orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
+                <label halign={Gtk.Align.START} ellipsize={3} label={bind(player, "title")} />
+                <label class="sub" halign={Gtk.Align.START} label={bind(player, "artist")} />
+            </box>
+            <button onClicked={() => player.previous()}>
+                <image iconName="kobel-skip-back-symbolic" />
+            </button>
+            <button onClicked={() => player.play_pause()}>
+                <image
+                    iconName={bind(player, "playback_status").as((s) =>
+                        s === Mpris.PlaybackStatus.PLAYING
+                            ? "kobel-pause-symbolic"
+                            : "kobel-play-symbolic"
+                    )}
+                />
+            </button>
+            <button onClicked={() => player.next()}>
+                <image iconName="kobel-skip-fwd-symbolic" />
+            </button>
+        </box>
+    )
 }
 
 export function Drawer() {
-  if (skip()) return null
-  const nfd = nd()
-  // Drive the list from a Variable off get_notifications() + signals, not a property
-  // bind — AstalNotifd's `notifications` isn't reliably bindable across GJS versions.
-  const list = Variable<Notifd.Notification[]>(nfd.get_notifications() ?? [])
-  const refresh = () => list.set(nfd.get_notifications() ?? [])
-  nfd.connect("notified", refresh)
-  nfd.connect("resolved", refresh)
-  return <window
-    name="drawer" namespace="kobel-drawer" class="drawer-window" visible={false}
-    anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
-    keymode={Astal.Keymode.ON_DEMAND}
-    setup={(self: Gtk.Window) => self.connect("notify::visible",
-      () => drawerOpen.set(self.visible))}
-    onKeyPressed={(self, key) => key === Gdk.KEY_Escape ? (self.hide(), true) : false}>
-    <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-      <MediaCard />
-      <box class="nhead" spacing={8}>
-        <label hexpand halign={Gtk.Align.START} label="Notifications" />
-        <label class="tn sub" label={bind(list).as(n => `${n.length || ""}`)} />
-        <button class="nclear" onClicked={() =>
-          nfd.get_notifications().forEach(n => n.dismiss())}>
-          <box spacing={5}><image iconName="kobel-trash-symbolic" /><label label="Clear" /></box>
-        </button>
-      </box>
-      {/* full-height drawer, so cards just stack (holds many). A Gtk.ScrolledWindow
+    if (skip()) return null
+    const nfd = nd()
+    // Drive the list from a Variable off get_notifications() + signals, not a property
+    // bind — AstalNotifd's `notifications` isn't reliably bindable across GJS versions.
+    const list = Variable<Notifd.Notification[]>(nfd.get_notifications() ?? [])
+    const refresh = () => list.set(nfd.get_notifications() ?? [])
+    nfd.connect("notified", refresh)
+    nfd.connect("resolved", refresh)
+    return (
+        <window
+            name="drawer"
+            namespace="kobel-drawer"
+            class="drawer-window"
+            visible={false}
+            anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
+            keymode={Astal.Keymode.ON_DEMAND}
+            setup={(self: Gtk.Window) =>
+                self.connect("notify::visible", () => drawerOpen.set(self.visible))
+            }
+            onKeyPressed={(self, key) => (key === Gdk.KEY_Escape ? (self.hide(), true) : false)}
+        >
+            <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+                <MediaCard />
+                <box class="nhead" spacing={8}>
+                    <label hexpand halign={Gtk.Align.START} label="Notifications" />
+                    <label class="tn sub" label={bind(list).as((n) => `${n.length || ""}`)} />
+                    <button
+                        class="nclear"
+                        onClicked={() => nfd.get_notifications().forEach((n) => n.dismiss())}
+                    >
+                        <box spacing={5}>
+                            <image iconName="kobel-trash-symbolic" />
+                            <label label="Clear" />
+                        </box>
+                    </button>
+                </box>
+                {/* full-height drawer, so cards just stack (holds many). A Gtk.ScrolledWindow
           wrapper collapses here — astal's reactive bind() children don't render inside
           a manually-constructed ScrolledWindow child, so it reports 0 natural size.
           Proper scrolling for 20+ notifications is a follow-up. */}
-      <box orientation={Gtk.Orientation.VERTICAL} spacing={8} vexpand>
-        {bind(list).as(ns => (ns && ns.length)
-          ? ns.map(n => <Card n={n} />)
-          : [<box class="ncard empty" halign={Gtk.Align.CENTER}>
-              <label label="All caught up ✓" />
-            </box>])}
-      </box>
-    </box>
-  </window>
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={8} vexpand>
+                    {bind(list).as((ns) =>
+                        ns && ns.length
+                            ? ns.map((n) => <Card n={n} />)
+                            : [
+                                  <box class="ncard empty" halign={Gtk.Align.CENTER}>
+                                      <label label="All caught up ✓" />
+                                  </box>,
+                              ]
+                    )}
+                </box>
+            </box>
+        </window>
+    )
 }
