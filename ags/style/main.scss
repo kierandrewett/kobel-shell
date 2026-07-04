@@ -154,6 +154,8 @@ image { -gtk-icon-style: regular; }
   }
 }
 .chips { margin-bottom: 0; }
+// exact QS section rhythm (Root spacing 0): chips grid → sliders gap = 10px
+.chip-grid { margin-bottom: 10px; }
 
 // ---- GTK4 scale as a thin GNOME rail + round knob. Direct-child selectors match
 // Adwaita's specificity; our sheet loads after, so ours wins. Knob overhangs the
@@ -180,7 +182,7 @@ scale > trough > slider {
 
 // gnoblin banner
 .gbanner {
-  background-color: $panel2; border-radius: 12px; padding: 10px 12px;
+  background-color: $panel2; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px;
   .t { color: $amber; font-weight: 650; font-size: 11.5px; }
   .s { color: $mut; font-size: 10.5px; }
   image { color: $amber; }

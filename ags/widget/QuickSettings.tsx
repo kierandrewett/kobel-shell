@@ -89,7 +89,9 @@ function ToggleChip(props: { label: string, icon: string, v: Variable<boolean> }
 function Root({ name }: { name?: string }) {
   const net = Network.get_default()
   const bt = Bluetooth.get_default()
-  return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+  // spacing 0: exact section gaps come from margins (qtop→chips 1, chip rows 8,
+  // chips→sliders 10) — a uniform box spacing can't express all three.
+  return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={0}>
     {/* top row: battery · reload · lock · power */}
     <box class="qs-top" spacing={0}>
       <label class="tn meta" label="100% · Fully charged" />
@@ -103,27 +105,29 @@ function Root({ name }: { name?: string }) {
         <image iconName="kobel-power-symbolic" /></button>
     </box>
     <GnoblinBanner />
-    {/* 2-col pill grid */}
-    <box class="chips" homogeneous spacing={8}>
-      {net.wifi && <Chip id="wifi" label="Wi-Fi" icon="kobel-wifi-symbolic"
-        active={bind(net.wifi, "enabled")}
-        sub={bind(net.wifi, "ssid").as(s => s ?? "Off")}
-        onToggled={() => { net.wifi!.enabled = !net.wifi!.enabled }}
-        onDrill={() => drill.set("wifi")} />}
-      <Chip id="bt" label="Bluetooth" icon="kobel-bluetooth-symbolic"
-        active={bind(bt, "devices").as(d => d.some(x => x.connected))}
-        sub={bind(bt, "devices").as(d =>
-          d.find(x => x.connected)?.alias ?? "Off")}
-        onToggled={() => bt.toggle()}
-        onDrill={() => drill.set("bt")} />
-    </box>
-    <box class="chips" homogeneous spacing={8}>
-      <ToggleChip label="Power Saver" icon="kobel-bolt-symbolic" v={tSave} />
-      <ToggleChip label="Dark Style" icon="kobel-moon-symbolic" v={tDark} />
-    </box>
-    <box class="chips" homogeneous spacing={8}>
-      <ToggleChip label="Silent" icon="kobel-bell-slash-symbolic" v={tSilent} />
-      <ToggleChip label="Night Light" icon="kobel-sun-symbolic" v={tNight} />
+    {/* one chips grid: 3 rows at 8px, margin-bottom 10 before the sliders */}
+    <box class="chip-grid" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+      <box class="chips" homogeneous spacing={8}>
+        {net.wifi && <Chip id="wifi" label="Wi-Fi" icon="kobel-wifi-symbolic"
+          active={bind(net.wifi, "enabled")}
+          sub={bind(net.wifi, "ssid").as(s => s ?? "Off")}
+          onToggled={() => { net.wifi!.enabled = !net.wifi!.enabled }}
+          onDrill={() => drill.set("wifi")} />}
+        <Chip id="bt" label="Bluetooth" icon="kobel-bluetooth-symbolic"
+          active={bind(bt, "devices").as(d => d.some(x => x.connected))}
+          sub={bind(bt, "devices").as(d =>
+            d.find(x => x.connected)?.alias ?? "Off")}
+          onToggled={() => bt.toggle()}
+          onDrill={() => drill.set("bt")} />
+      </box>
+      <box class="chips" homogeneous spacing={8}>
+        <ToggleChip label="Power Saver" icon="kobel-bolt-symbolic" v={tSave} />
+        <ToggleChip label="Dark Style" icon="kobel-moon-symbolic" v={tDark} />
+      </box>
+      <box class="chips" homogeneous spacing={8}>
+        <ToggleChip label="Silent" icon="kobel-bell-slash-symbolic" v={tSilent} />
+        <ToggleChip label="Night Light" icon="kobel-sun-symbolic" v={tNight} />
+      </box>
     </box>
     <Sliders />
   </box>
