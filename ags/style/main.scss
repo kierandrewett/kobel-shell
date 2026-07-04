@@ -18,7 +18,7 @@ $amber:  #edbb64;
 $ovr: cubic-bezier(.24,1.36,.35,1);
 
 // Never `* { all: unset }` — it breaks GTK4 background rendering. Reset deliberately.
-window { font-family: "Inter", "InterVariable", sans-serif; font-size: 13px; color: $tx; }
+window { font-family: "Inter", "Inter Variable", "InterVariable", sans-serif; font-size: 13px; color: $tx; }
 .tn { font-feature-settings: "tnum"; }
 
 // Layer windows are transparent; the child sheet carries the rounded surface.
