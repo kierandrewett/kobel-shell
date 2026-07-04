@@ -140,7 +140,7 @@ image { -gtk-icon-style: regular; }
 // sheet gets cut off. The margin enlarges the window buffer (shadow room) AND is the
 // floating gap from the screen edge; the shadow is tuned to fit within it.
 .sheet {
-  background-color: $panel; border-radius: 14px; padding: 12px;
+  background-color: $panel; border-radius: 24px; padding: 12px;   // CDP --rp = rt+12 = 24px
   margin: 38px;
   // Prototype shadow is 0 18px 40px oklch(.08 .02 300/.45) + 0 2px 8px rgba(0,0,0,.35).
   // Reproduced as closely as the layer-surface margin allows (extent must stay < margin).
