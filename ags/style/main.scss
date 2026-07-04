@@ -218,14 +218,13 @@ switch {
   &:hover { background-color: $chip; }
   &.active { image { color: $leaf; } .xs { color: $leaf; } }
 }
-// volume mixer rows — CDP: mrow gap 11; art 46×46 r10 chip; mmeta b 13/650, span 11.5/mut
-.mrow {
-  .art { background-color: $chip; border-radius: 10px; padding: 12px;   // 22px icon + 24 → 46
-    image { color: $mut; } }
-  .mmeta {
-    label { font-size: 13px; font-weight: 650; color: $tx; }
-    scale { margin: 5px 0 0; }
-  }
+// volume mixer rows — CDP: mixrow pad 4/2 gap 10; mi 26×26 r8; em label 12/mut
+.mixrow {
+  padding: 4px 2px;
+  .mi { background-color: $chip; border-radius: 8px; padding: 5px;   // 15px icon + 10 → ~26
+    image { color: $mut; -gtk-icon-size: 15px; } }
+  label { font-size: 12px; color: $mut; }
+  scale { margin: 4px 0 0; }
 }
 
 // ============ LAUNCHER ============

@@ -189,12 +189,12 @@ function BtList() {
   </box>
 }
 
-// One mixer row: 46×46 art tile + name + its own volume slider.
+// One mixer row (.mixrow): 26×26 r8 icon tile + app name + its own volume slider.
 function MixRow(props: { icon: string, title: string, target: any }) {
-  return <box class="mrow" spacing={11}>
-    <box class="art" valign={Gtk.Align.CENTER}>
-      <image iconName={props.icon} pixelSize={22} /></box>
-    <box class="mmeta" orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
+  return <box class="mixrow" spacing={10}>
+    <box class="mi" valign={Gtk.Align.CENTER}>
+      <image iconName={props.icon} /></box>
+    <box orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
       <label halign={Gtk.Align.START} label={props.title} />
       <slider class="slider" value={bind(props.target, "volume")}
         onChangeValue={(_s, v) => { props.target.volume = v }} />
