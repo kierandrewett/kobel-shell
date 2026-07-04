@@ -90,10 +90,11 @@ image { -gtk-icon-style: regular; }
   background-color: $panel;
   padding: 5px; border-radius: 16px;
   .dbtn { border-radius: 12px; }
-  // tile size follows the 38px icon + 2px padding (≈42), not a fixed box
+  // tile: 38px icon + 2px padding = 42px → dock height = 5+42+5 = 52px matching prototype
   .icon-tile {
     padding: 2px; border-radius: 12px;
     transition: background-color 160ms;
+    image { -gtk-icon-size: 38px; }
   }
   .dbtn:hover .icon-tile { background-color: rgba(255,255,255,0.09); }
   .placeholder .icon-tile { background-color: $panel2; color: $dim; }
