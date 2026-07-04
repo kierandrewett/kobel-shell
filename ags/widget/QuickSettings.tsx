@@ -27,7 +27,7 @@ function Chip(props: {
   active: any, sub?: any, onToggled: () => void, onDrill?: () => void,
 }) {
   return <box class={bind(props.active).as((a: boolean) => a ? "chip pill on" : "chip pill")}>
-    <button hexpand={true} onClicked={props.onToggled}>
+    <button class="chipb" hexpand={true} onClicked={props.onToggled}>
       <box spacing={9}>
         <image iconName={props.icon} />
         <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER}>

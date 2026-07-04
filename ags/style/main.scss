@@ -170,8 +170,8 @@ image { -gtk-icon-style: regular; }
 .chip {
   background-color: $panel2; border-radius: 999px; min-height: 54px;
   transition: background-color 220ms;
-  // Only the main (non-chev) button gets chip padding — .chev uses padding: 0 to stay 32px
-  > button:not(.chev) { padding: 9px 8px 9px 12px; border-radius: 999px; }
+  // .chipb = main toggle button (not .chev) — targeted by class to avoid leaking padding to .chev
+  .chipb { padding: 9px 8px 9px 12px; border-radius: 999px; }
   image { color: $mut; -gtk-icon-size: 17px; }   // proto .chipb icon 17px (18 pushed the label +1px)
   label { font-size: 12.5px; font-weight: 650; color: $tx; }
   .sub { color: $mut; font-size: 10.5px; font-weight: 400; margin-top: 0; }
@@ -187,7 +187,7 @@ image { -gtk-icon-style: regular; }
   }
 
   .chev {
-    min-width: 32px; padding: 0; border-radius: 0 999px 999px 0;
+    min-width: 32px; border-radius: 0 999px 999px 0;
     color: $dim; border-left: 1px solid rgba(0,0,0,0.18);   // CDP seam
     image { -gtk-icon-size: 15px; color: inherit; }
     &:hover { background-color: rgba(0,0,0,0.14); }
