@@ -189,7 +189,7 @@ scale > trough > slider {
 }
 .gbtn {
   background-color: $leaf; color: $ink; border-radius: 10px;
-  font-weight: 650; font-size: 11.5px; padding: 7px 13px;
+  font-weight: 650; font-size: 11.5px; padding: 7px 12px;   // CDP
   &:hover { background-color: $leaf2; }
 }
 
@@ -240,7 +240,7 @@ switch {
   }
   entry placeholder { color: $mut; }
   .kbd { background-color: $chip; color: $mut; border-radius: 6px;
-         font-size: 10.5px; padding: 3px 8px; }
+         font-size: 10.5px; padding: 3px 7px; }   // CDP
 }
 .tiles { padding: 6px 2px 8px; }
 .tile {
@@ -264,7 +264,7 @@ switch {
   label { font-size: 13px; font-weight: 600; }   // .crow b
   .hint { color: $mut; font-size: 11.5px; }
   .runk { background-color: $hover; color: $mut; border-radius: 6px;
-          font-size: 10.5px; padding: 2px 8px; }
+          font-size: 10.5px; padding: 2px 7px; }   // CDP
   &:hover { background-color: $panel2; }
   &.sel { background-color: $chip; }
 }
@@ -328,8 +328,8 @@ switch {
 .nhead {
   background-color: $panel; border-radius: 14px; padding: 8px 8px 8px 14px; margin-bottom: 8px;
   label { font-size: 13.5px; font-weight: 650; }
-  .nclear { color: $rose; font-size: 11.5px; font-weight: 600; border-radius: 7px;   // CDP
-            padding: 5px 10px; &:hover { background-color: $panel2; } }
+  .nclear { color: $rose; font-size: 11.5px; font-weight: 600; border-radius: 7px;
+            padding: 4px 9px; &:hover { background-color: $panel2; } }   // CDP pad 4/9
 }
 
 // ============ OSD ============
