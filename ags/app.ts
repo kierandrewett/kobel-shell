@@ -18,6 +18,7 @@ import style from "./style/main.scss"
 import { tokenCss, tokens } from "./config"
 import * as gnoblin from "./services/gnoblin"
 import * as notifdSvc from "./services/notifd"
+import { armDump } from "./lib/inspect"
 import Bar from "./widget/Bar"
 import Dock from "./widget/Dock"
 import Launcher from "./widget/Launcher"
@@ -75,6 +76,8 @@ App.start({
     make("calendar", () => Calendar(), false)
     make("drawer", () => Drawer(), false)
     make("session", () => Session(), false)
+    // KOBEL_DUMP=<window>: dump the live GTK geometry tree for DOM-vs-GTK diffing.
+    armDump((name) => App.get_window(name) as any)
   },
   // `astal -i kobel -t <window>` handled by App's request framework
   requestHandler(request, res) {
