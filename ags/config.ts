@@ -24,8 +24,8 @@ export const floating: Tokens = {
     dockPad: 5,
     tileH: 54,
     panelW: 365,  // 28.5cqw at 1280px = 364.8 ≈ 365
-    launcherW: 560,
-    calendarW: 330,
+    launcherW: 584,  // 46cqw at 1280px = 588.8 → clamped to 584 max
+    calendarW: 336,  // 27cqw at 1280px = 345.6 → clamped to 336 max
 }
 
 // gapless = a token preset, exactly like the prototype's .gapless class
