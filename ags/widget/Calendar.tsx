@@ -93,8 +93,10 @@ function EventsCard() {
           <label class="sub" label="No events" /></box>]
       return [head, ...evs.map(e =>
         <box class="evrow" spacing={10}>
-          <image iconName={e.icon} />
-          <box orientation={Gtk.Orientation.VERTICAL}>
+          {/* 26×26 r8 colored icon tile (prototype .evic), white glyph */}
+          <box class="evic" valign={Gtk.Align.CENTER}>
+            <image iconName={e.icon} /></box>
+          <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER}>
             <label halign={Gtk.Align.START} label={e.n} />
             <label class="sub tn" halign={Gtk.Align.START} label={e.t} />
           </box>

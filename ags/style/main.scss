@@ -305,7 +305,8 @@ switch {
   }
   .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 8px; }   // CDP .calev>b
   .evrow { background-color: $panel2; border-radius: 10px; padding: 8px 10px;
-    image { color: $leaf; -gtk-icon-size: 15px; }
+    .evic { background-color: #628835; border-radius: 8px; padding: 5px;   // CDP evic green, white glyph
+      image { color: #fff; -gtk-icon-size: 15px; } }
     label { font-size: 12px; font-weight: 650; }   // .evt b
     .sub { color: $mut; font-size: 10.5px; font-weight: 400; } }
 }
