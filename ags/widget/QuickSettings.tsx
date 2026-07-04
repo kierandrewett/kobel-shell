@@ -10,6 +10,7 @@ import Wp from "gi://AstalWp"
 import Mpris from "gi://AstalMpris"
 import { connected, reload } from "../services/gnoblin"
 import { MOTION } from "../lib/spring"
+import { DEMO, D } from "../lib/demo"
 
 type Drill = null | "wifi" | "bt" | "mix"
 // KOBEL_DRILL lets the devkit render a drilldown directly (no pointer to click the
@@ -96,7 +97,7 @@ function Root({ name }: { name?: string }) {
   return <box name={name} orientation={Gtk.Orientation.VERTICAL} spacing={0}>
     {/* top row: battery · reload · lock · power */}
     <box class="qs-top" spacing={0}>
-      <label class="tn meta" label="100% · Fully charged" />
+      <label class="tn meta" label={DEMO ? D.meta : "100% · Fully charged"} />
       <box hexpand />
       <button class="rbtn leaf" onClicked={() => reload()}><image iconName="kobel-leaf-symbolic" /></button>
       <button class="rbtn" onClicked={() => execAsync("loginctl lock-session")}>
@@ -110,16 +111,16 @@ function Root({ name }: { name?: string }) {
     {/* one chips grid: 3 rows at 8px, margin-bottom 10 before the sliders */}
     <box class="chip-grid" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
       <box class="chips" homogeneous spacing={8}>
-        {net.wifi && <Chip id="wifi" label="Wi-Fi" icon="kobel-wifi-symbolic"
-          active={bind(net.wifi, "enabled")}
-          sub={bind(net.wifi, "ssid").as(s => s ?? "Off")}
-          onToggled={() => { net.wifi!.enabled = !net.wifi!.enabled }}
+        {(DEMO || net.wifi) && <Chip id="wifi" label="Wi-Fi" icon="kobel-wifi-symbolic"
+          active={DEMO ? Variable(true) as any : bind(net.wifi!, "enabled")}
+          sub={DEMO ? D.wifiSsid : bind(net.wifi!, "ssid").as(s => s ?? "Off")}
+          onToggled={() => { if (!DEMO && net.wifi) net.wifi.enabled = !net.wifi.enabled }}
           onDrill={() => drill.set("wifi")} />}
         <Chip id="bt" label="Bluetooth" icon="kobel-bluetooth-symbolic"
-          active={bind(bt, "devices").as(d => d.some(x => x.connected))}
-          sub={bind(bt, "devices").as(d =>
+          active={DEMO ? Variable(true) as any : bind(bt, "devices").as(d => d.some(x => x.connected))}
+          sub={DEMO ? D.btDevice : bind(bt, "devices").as(d =>
             d.find(x => x.connected)?.alias ?? "Off")}
-          onToggled={() => bt.toggle()}
+          onToggled={() => { if (!DEMO) bt.toggle() }}
           onDrill={() => drill.set("bt")} />
       </box>
       <box class="chips" homogeneous spacing={8}>

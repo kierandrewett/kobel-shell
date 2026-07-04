@@ -98,7 +98,6 @@ image { -gtk-icon-style: regular; }
     min-width: 30px; min-height: 30px;
     padding: 6px; border-radius: 12px;
     transition: background-color 160ms;
-    image { -gtk-icon-size: 38px; }
   }
   .dbtn:hover .icon-tile { background-color: rgba(255,255,255,0.09); }
   .placeholder .icon-tile { background-color: $panel2; color: $dim; }
