@@ -240,7 +240,7 @@ switch {
   image { color: $dim; -gtk-icon-size: 16px; }
   entry {
     background: none; border: none; box-shadow: none; outline: none;
-    color: $tx; font-size: 14.5px; caret-color: $leaf; padding: 6px 0;
+    color: $tx; font-size: 14.5px; caret-color: $leaf; padding: 8px 0;   // proto input pad
     min-height: 0; min-width: 0;
   }
   entry text { min-height: 0; }   // drop GTK's tall default text node → proto input h≈33
