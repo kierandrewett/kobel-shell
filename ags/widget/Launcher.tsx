@@ -279,6 +279,7 @@ export default function Launcher() {
             namespace="kobel-launcher"
             class="launcher-window"
             anchor={Astal.WindowAnchor.TOP}
+            marginTop={56}
             exclusivity={Astal.Exclusivity.NORMAL}
             keymode={Astal.Keymode.EXCLUSIVE}
             visible={bind(winVisible)}

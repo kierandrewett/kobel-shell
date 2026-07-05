@@ -77,13 +77,13 @@ function Sliders() {
     // proto .sliders is a flex column with NO gap between the two srows (each min-h 42).
     // TinySlider overrides vfunc_measure to report natural=1px so the srow doesn't
     // inflate the panel beyond the chip-grid width (GTK CSS max-width is not respected).
-    const initVol = DEMO ? D.volume : (speaker?.volume ?? 0.64)
+    const initVol = DEMO ? D.volume : Math.min(speaker?.volume ?? 0.64, 1)
     const volValue = Variable(initVol)
     const volSlider = new TinySlider({ hexpand: true, cssClasses: ["slider"], value: initVol })
     if (!DEMO && speaker)
         bind(speaker, "volume").subscribe((v: number) => {
-            volSlider.get_adjustment().value = v
-            volValue.set(v)
+            volSlider.get_adjustment().value = Math.min(v, 1)
+            volValue.set(Math.min(v, 1))
         })
     // GtkRange::change-value args: (range, scrollType, value)
     volSlider.connect("change-value", (_s: any, _t: any, v: number) => {
