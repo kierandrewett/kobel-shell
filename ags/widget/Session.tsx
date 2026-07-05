@@ -88,7 +88,7 @@ export default function Session() {
                 setup={(r: Gtk.Revealer) => setRevealer(r)}
             >
                 {/* .session fills the whole window (the dim); buttons centered inside */}
-                <box class="session" hexpand vexpand>
+                <box class={DEMO ? "session session-demo" : "session"} hexpand vexpand>
                     <box halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} spacing={20} hexpand>
                         {ACTIONS.map((a) => (
                             <button class={a.red ? "sbtn red" : "sbtn"} onClicked={() => press(a)}>

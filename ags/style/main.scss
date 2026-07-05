@@ -1184,6 +1184,7 @@ switch {
 // bg $panel; icon 22px; resting glyph $tx, red glyph $rose; row gap 20; label 12/600.
 .session {
     background-color: rgba(9, 3, 14, 0.8);
+    &.session-demo { background-color: rgba(9, 3, 14, 1.0); }
     .sbtn {
         padding: 6px;
         border-radius: 12px;
