@@ -151,116 +151,149 @@ function MediaCard() {
     const pick = (ps: any[]) =>
         ps.find((p) => p.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0] ?? null
 
-    const mediaTitle = DEMO
-        ? D.media.title
-        : bind(mpris!, "players").as((ps) => pick(ps)?.title ?? "")
-    const mediaArtist = DEMO
-        ? D.media.artist
-        : bind(mpris!, "players").as((ps) => pick(ps)?.artist ?? "")
-    const playIcon = DEMO
-        ? "kobel-pause-symbolic"
-        : bind(mpris!, "players").as((ps) => {
-              const p = pick(ps)
-              return p?.playback_status === Mpris.PlaybackStatus.PLAYING
-                  ? "kobel-pause-symbolic"
-                  : "kobel-play-symbolic"
-          })
-    const progress = DEMO
-        ? 0.42
-        : bind(mpris!, "players").as((ps) => {
-              const p = pick(ps)
-              if (!p || !p.length || p.length <= 0) return 0
-              return p.position / p.length
-          })
-    const curTime = DEMO
-        ? "2:37"
-        : bind(mpris!, "players").as((ps) => {
-              const p = pick(ps)
-              if (!p || !p.position) return "0:00"
-              const s = Math.floor(p.position)
-              return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
-          })
-    const totalTime = DEMO
-        ? "6:07"
-        : bind(mpris!, "players").as((ps) => {
-              const p = pick(ps)
-              if (!p || !p.length || p.length <= 0) return "0:00"
-              const s = Math.floor(p.length)
-              return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
-          })
-    const hasPlayer = DEMO ? true : bind(mpris!, "players").as((ps) => ps.length > 0)
-    const noPlayer = DEMO ? false : bind(mpris!, "players").as((ps) => ps.length === 0)
+    if (DEMO) {
+        return (
+            <box class="ncard media" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
+                <box class="mrow" spacing={11}>
+                    <box class="mart" valign={Gtk.Align.CENTER}>
+                        <image
+                            iconName="kobel-music-symbolic"
+                            pixelSize={22}
+                            halign={Gtk.Align.CENTER}
+                            valign={Gtk.Align.CENTER}
+                            hexpand
+                        />
+                    </box>
+                    <box
+                        class="mmeta"
+                        hexpand
+                        orientation={Gtk.Orientation.VERTICAL}
+                        valign={Gtk.Align.CENTER}
+                    >
+                        <label halign={Gtk.Align.START} ellipsize={3} label={D.media.title} />
+                        <label
+                            class="sub"
+                            halign={Gtk.Align.START}
+                            ellipsize={3}
+                            label={D.media.artist}
+                        />
+                    </box>
+                    <box class="mbtns" valign={Gtk.Align.CENTER} spacing={1}>
+                        <button class="mbtn" onClicked={() => {}}>
+                            <image iconName="kobel-skip-back-symbolic" />
+                        </button>
+                        <button class="mbtn play" onClicked={() => {}}>
+                            <image iconName="kobel-pause-symbolic" />
+                        </button>
+                        <button class="mbtn" onClicked={() => {}}>
+                            <image iconName="kobel-skip-fwd-symbolic" />
+                        </button>
+                    </box>
+                </box>
+                <box class="mbar" spacing={8}>
+                    <label class="mtime tn" label="2:37" />
+                    <levelbar class="mtrack" hexpand value={0.42} />
+                    <label class="mtime tn" label="6:07" />
+                </box>
+            </box>
+        )
+    }
 
+    // Non-DEMO: conditionally render player or empty state using a single bind so
+    // invisible siblings never get allocated height (Astal doesn't collapse them).
     return (
         <box class="ncard media" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
-            {/* .mrow — art · title/artist · prev/play/next */}
-            <box class="mrow" spacing={11} visible={hasPlayer}>
-                <box class="mart" valign={Gtk.Align.CENTER}>
-                    <image
-                        iconName="kobel-music-symbolic"
-                        pixelSize={22}
-                        halign={Gtk.Align.CENTER}
-                        valign={Gtk.Align.CENTER}
-                        hexpand
-                        vexpand
-                    />
-                </box>
-                <box
-                    class="mmeta"
-                    hexpand
-                    orientation={Gtk.Orientation.VERTICAL}
-                    valign={Gtk.Align.CENTER}
-                >
-                    <label halign={Gtk.Align.START} ellipsize={3} label={mediaTitle} />
-                    <label class="sub" halign={Gtk.Align.START} ellipsize={3} label={mediaArtist} />
-                </box>
-                <box class="mbtns" valign={Gtk.Align.CENTER} spacing={1}>
-                    <button class="mbtn" onClicked={() => execAsync("playerctl previous")}>
-                        <image iconName="kobel-skip-back-symbolic" />
-                    </button>
-                    <button class="mbtn play" onClicked={() => execAsync("playerctl play-pause")}>
-                        <image iconName={playIcon} />
-                    </button>
-                    <button class="mbtn" onClicked={() => execAsync("playerctl next")}>
-                        <image iconName="kobel-skip-fwd-symbolic" />
-                    </button>
-                </box>
-            </box>
-            {/* .mbar — current time · track slider · total time */}
-            <box class="mbar" spacing={8} visible={hasPlayer}>
-                <label class="mtime tn" label={curTime} />
-                <levelbar class="mtrack" hexpand value={progress} />
-                <label class="mtime tn" label={totalTime} />
-            </box>
-            {/* empty state — disc icon + "Nothing playing" + "Open Music" */}
-            <box class="memptyrow" spacing={11} visible={noPlayer}>
-                <box class="mart" valign={Gtk.Align.CENTER}>
-                    <image
-                        iconName="kobel-disc-symbolic"
-                        pixelSize={22}
-                        halign={Gtk.Align.CENTER}
-                        valign={Gtk.Align.CENTER}
-                        hexpand
-                        vexpand
-                    />
-                </box>
-                <box hexpand orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER}>
-                    <label halign={Gtk.Align.START} label="Nothing playing" />
-                    <label
-                        class="sub"
-                        halign={Gtk.Align.START}
-                        label="Media controls appear when a player starts"
-                        wrap
-                    />
-                </box>
-                <button
-                    class="ghostb"
-                    valign={Gtk.Align.CENTER}
-                    onClicked={() => execAsync("xdg-open https://open.spotify.com")}
-                >
-                    <label label="Open Music" />
-                </button>
-            </box>
+            {bind(mpris!, "players").as((ps) => {
+                const p = pick(ps)
+                if (!p) {
+                    return (
+                        <box class="memptyrow" spacing={11}>
+                            <box class="mart" valign={Gtk.Align.CENTER}>
+                                <image
+                                    iconName="kobel-disc-symbolic"
+                                    pixelSize={22}
+                                    halign={Gtk.Align.CENTER}
+                                    valign={Gtk.Align.CENTER}
+                                    hexpand
+                                />
+                            </box>
+                            <box
+                                hexpand
+                                orientation={Gtk.Orientation.VERTICAL}
+                                valign={Gtk.Align.CENTER}
+                            >
+                                <label halign={Gtk.Align.START} label="Nothing playing" />
+                                <label
+                                    class="sub"
+                                    halign={Gtk.Align.START}
+                                    label="Media controls appear when a player starts"
+                                    wrap
+                                />
+                            </box>
+                            <button
+                                class="ghostb"
+                                valign={Gtk.Align.CENTER}
+                                onClicked={() => execAsync("xdg-open https://open.spotify.com")}
+                            >
+                                <label label="Open Music" />
+                            </button>
+                        </box>
+                    )
+                }
+                const playIcon =
+                    p.playback_status === Mpris.PlaybackStatus.PLAYING
+                        ? "kobel-pause-symbolic"
+                        : "kobel-play-symbolic"
+                const progress = p.length > 0 ? Math.min(1, p.position / p.length) : 0
+                const fmt = (s: number) =>
+                    `${Math.floor(s / 60)}:${String(Math.floor(s) % 60).padStart(2, "0")}`
+                return [
+                    <box class="mrow" spacing={11}>
+                        <box class="mart" valign={Gtk.Align.CENTER}>
+                            <image
+                                iconName="kobel-music-symbolic"
+                                pixelSize={22}
+                                halign={Gtk.Align.CENTER}
+                                valign={Gtk.Align.CENTER}
+                                hexpand
+                            />
+                        </box>
+                        <box
+                            class="mmeta"
+                            hexpand
+                            orientation={Gtk.Orientation.VERTICAL}
+                            valign={Gtk.Align.CENTER}
+                        >
+                            <label halign={Gtk.Align.START} ellipsize={3} label={p.title ?? ""} />
+                            <label
+                                class="sub"
+                                halign={Gtk.Align.START}
+                                ellipsize={3}
+                                label={p.artist ?? ""}
+                            />
+                        </box>
+                        <box class="mbtns" valign={Gtk.Align.CENTER} spacing={1}>
+                            <button class="mbtn" onClicked={() => execAsync("playerctl previous")}>
+                                <image iconName="kobel-skip-back-symbolic" />
+                            </button>
+                            <button
+                                class="mbtn play"
+                                onClicked={() => execAsync("playerctl play-pause")}
+                            >
+                                <image iconName={playIcon} />
+                            </button>
+                            <button class="mbtn" onClicked={() => execAsync("playerctl next")}>
+                                <image iconName="kobel-skip-fwd-symbolic" />
+                            </button>
+                        </box>
+                    </box>,
+                    <box class="mbar" spacing={8}>
+                        <label class="mtime tn" label={p.position > 0 ? fmt(p.position) : "0:00"} />
+                        <levelbar class="mtrack" hexpand value={progress} />
+                        <label class="mtime tn" label={p.length > 0 ? fmt(p.length) : "0:00"} />
+                    </box>,
+                ]
+            })}
         </box>
     )
 }
