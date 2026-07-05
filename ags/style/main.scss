@@ -433,8 +433,9 @@ switch {
   label { font-size: 12.5px; font-weight: 650; }
   .body { color: $mut; font-size: 11.8px; font-weight: 400; }
   .when { color: $dim; font-size: 10px; }
-  // close button: padding-driven 22×22 (11px icon-ish + padding)
-  .nx { padding: 5px; border-radius: 99px; color: $dim;
+  // close button: 22×22 r99 (CDP: top:6/right:6 on the .inner)
+  .nx { min-width: 22px; min-height: 22px; border-radius: 99px; color: $dim;
+    image { -gtk-icon-size: 11px; }
     &:hover { background-color: $chip; color: $rose; } }
   // ---- drawer media card internal layout ----
   // .mrow: flex row gap 11 — art tile + title/artist + playback controls
@@ -474,7 +475,8 @@ switch {
   label { font-size: 13.5px; font-weight: 650; }   // .nhead b (title)
   .sub { font-size: 11px; font-weight: 400; color: $dim; }   // .nhead span (count) — CDP dim
   .nclear { color: $rose; font-size: 11.5px; font-weight: 600; border-radius: 7px;
-            padding: 4px 9px; &:hover { background-color: $panel2; } }   // CDP pad 4/9
+            padding: 4px 9px; image { -gtk-icon-size: 12px; }
+            &:hover { background-color: $panel2; } }   // CDP .nclear i { 12px }
 }
 // empty-notifications card — prototype .nempty: panel bg, r20, shadow-sm, pad 20/0/16, center mut 12.5px
 .nempty {

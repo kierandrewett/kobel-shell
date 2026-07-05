@@ -63,7 +63,7 @@ function Card({ n }: { n: CardData }) {
                 valign={Gtk.Align.START}
                 css={NIC_BG[n.icon] ? `background-color: ${NIC_BG[n.icon]};` : ""}
             >
-                <image iconName={n.icon} pixelSize={20} />
+                <image iconName={n.icon} pixelSize={15} />
             </box>
             <box orientation={Gtk.Orientation.VERTICAL} hexpand>
                 <box spacing={8}>
