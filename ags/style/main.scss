@@ -201,8 +201,8 @@ image { -gtk-icon-style: regular; }
   }
 
   .chev {
-    min-width: 32px; border-radius: 0 999px 999px 0;
-    color: $dim; border-left: 1px solid rgba(0,0,0,0.18);   // CDP seam
+    min-width: 30px; min-height: 30px; border-radius: 0 999px 999px 0;
+    color: $dim; border-left: 1px solid rgba(0,0,0,0.18);   // CDP seam; .chevb 30×30
     image { -gtk-icon-size: 15px; color: inherit; }
     &:hover { background-color: rgba(0,0,0,0.14); }
   }
@@ -275,7 +275,7 @@ scale > trough > slider {
 }
 // GTK4 switch → leaf accent when on (Adwaita default is blue). Node tree: switch > slider.
 switch {
-  background-color: $chip; border-radius: 999px; min-width: 42px; min-height: 24px;
+  background-color: $chip; border-radius: 999px; min-width: 46px; min-height: 26px;   // CDP .sw 46×26
   &:checked { background-color: $leaf; }
   slider { background-color: $tx; border-radius: 999px; min-width: 20px; min-height: 20px; }
 }

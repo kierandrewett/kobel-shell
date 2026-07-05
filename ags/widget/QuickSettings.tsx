@@ -58,7 +58,7 @@ function Chip(props: {
             </button>
             {/* fixed 32px seam+chevron (proto .chevb) — hexpand=false so the main button owns slack */}
             {props.onDrill && (
-                <button class="chev" hexpand={false} widthRequest={32} onClicked={props.onDrill}>
+                <button class="chev" hexpand={false} widthRequest={30} onClicked={props.onDrill}>
                     <image iconName="kobel-chevron-right-symbolic" />
                 </button>
             )}
