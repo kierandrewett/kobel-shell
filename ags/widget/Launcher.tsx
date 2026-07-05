@@ -571,7 +571,12 @@ export default function Launcher() {
                     </revealer>
 
                     {/* results */}
-                    <box class="lrows" orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                    <box
+                        class="lrows"
+                        orientation={Gtk.Orientation.VERTICAL}
+                        spacing={2}
+                        visible={sections.as((secs) => secs.length > 0)}
+                    >
                         {sections.as((secs) =>
                             secs.flatMap((sec) => [
                                 <label class="sec" halign={Gtk.Align.START} label={sec.section} />,
