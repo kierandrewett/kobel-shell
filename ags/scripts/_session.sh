@@ -11,14 +11,7 @@ echo "== shell up on $DISP =="
 
 export WAYLAND_DISPLAY="$DISP" GDK_BACKEND=wayland
 
-# Set the prototype wallpaper so transparent sheet corners match the reference.
-# /tmp/kobel-wallpaper.png is the 1280×800 desktop canvas (x-offset=20px so QS
-# alignment is exact). picture-options=stretched means 1:1 since image == monitor.
-if [ -f /tmp/kobel-wallpaper.png ]; then
-  gsettings set org.gnome.desktop.background picture-uri "file:///tmp/kobel-wallpaper.png" 2>/dev/null || true
-  gsettings set org.gnome.desktop.background picture-uri-dark "file:///tmp/kobel-wallpaper.png" 2>/dev/null || true
-  gsettings set org.gnome.desktop.background picture-options "stretched" 2>/dev/null || true
-fi
+# Leave gnoblin background at its default — do not touch gnoblin config.
 
 gnoblinctl disable osd 2>/dev/null || true
 gnoblinctl disable notifications 2>/dev/null || true
@@ -30,7 +23,7 @@ fi
 # KOBEL_TEST_NOTIFD=1 enables the real notifd (bus was freed above) so the drawer/toasts
 # can be rendered; otherwise notifd is skipped (default, avoids blocking on a busy bus).
 if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then SKIP=""; else SKIP="1"; fi
-KOBEL_ICONS="/home/kieran/dev/kobel-shell/ags/icons" KOBEL_SKIP_NOTIFD="$SKIP" KOBEL_DRILL="${KOBEL_DRILL:-}" KOBEL_QUERY="${KOBEL_QUERY:-}" KOBEL_DUMP="${KOBEL_DUMP:-}" KOBEL_DUMP_OUT="${KOBEL_DUMP_OUT:-}" stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
+KOBEL_ICONS="/home/kieran/dev/kobel-shell/ags/icons" KOBEL_DEMO="${KOBEL_DEMO:-}" KOBEL_SKIP_NOTIFD="$SKIP" KOBEL_DRILL="${KOBEL_DRILL:-}" KOBEL_QUERY="${KOBEL_QUERY:-}" KOBEL_DUMP="${KOBEL_DUMP:-}" KOBEL_DUMP_OUT="${KOBEL_DUMP_OUT:-}" stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
 AP=$!
 sleep 8
 if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
@@ -44,8 +37,8 @@ if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
     "Calendar" 0 "" "Daily Standup" "Starting in 5 minutes" "[]" "{}" 0 >/dev/null 2>&1 || true
   sleep 2
 fi
-[ -n "${TOGGLE:-}" ] && { astal -i kobel -t "$TOGGLE" 2>/dev/null || true; sleep 3; }
-[ -n "${KOBEL_TEST_NOTIFD:-}" ] && echo "WINDOWS: $(astal -i kobel --list 2>&1 | tr '\n' ' ')"
+[ -n "${TOGGLE:-}" ] && { ags request -i kobel "toggle $TOGGLE" 2>/dev/null || astal -i kobel -t "$TOGGLE" 2>/dev/null || true; sleep 3; }
+[ -n "${KOBEL_TEST_NOTIFD:-}" ] && echo "WINDOWS: $(ags list -i kobel 2>&1 || astal -i kobel --list 2>&1 | tr '\n' ' ')"
 for _ in 1 2 3; do pkill -9 -f gnome-tour 2>/dev/null; sleep 0.3; done
 
 if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
