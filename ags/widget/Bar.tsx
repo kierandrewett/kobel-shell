@@ -48,9 +48,10 @@ function StatusPill() {
               on ? "kobel-wifi-symbolic" : "kobel-wifi-off-symbolic"
           )
         : "kobel-wifi-off-symbolic"
-    // Volume icon: track the speaker's own volume_icon property
     const volIcon = speaker
-        ? bind(speaker, "volume_icon").as((i) => i ?? "kobel-speaker-wave-symbolic")
+        ? bind(speaker, "volume").as((v) =>
+              v <= 0 || speaker.mute ? "kobel-speaker-mute-symbolic" : "kobel-speaker-wave-symbolic"
+          )
         : "kobel-speaker-mute-symbolic"
     return (
         <button

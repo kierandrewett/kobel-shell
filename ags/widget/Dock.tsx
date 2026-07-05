@@ -152,7 +152,7 @@ function DockButton({ app }: { app: Apps.Application }) {
             <overlay>
                 <image
                     class="icon-tile"
-                    iconName={app.icon_name || "application-x-executable"}
+                    iconName={app.icon_name || "kobel-app-symbolic"}
                     pixelSize={30}
                 />
                 {/* dots as OVERLAY — zero layout footprint */}
@@ -330,11 +330,7 @@ export default function Dock(monitor: Gdk.Monitor) {
                         <DockButton app={app} />
                     ) : (
                         <button class="dbtn placeholder" tooltipText={id.split(".").pop()}>
-                            <image
-                                class="icon-tile"
-                                iconName="application-x-executable-symbolic"
-                                pixelSize={30}
-                            />
+                            <image class="icon-tile" iconName="kobel-app-symbolic" pixelSize={30} />
                         </button>
                     )
                     return [...sep, btn]

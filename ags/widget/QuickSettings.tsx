@@ -72,7 +72,9 @@ function Sliders() {
     // prototype's mock values (volume 0.64, brightness 0.80) for a fair overlay.
     if (!speaker && !DEMO) return <box />
     const volIcon = speaker
-        ? bind(speaker, "volume_icon").as((i) => i ?? "kobel-speaker-wave-symbolic")
+        ? bind(speaker, "volume").as((v) =>
+              v <= 0 || speaker.mute ? "kobel-speaker-mute-symbolic" : "kobel-speaker-wave-symbolic"
+          )
         : "kobel-speaker-wave-symbolic"
     // proto .sliders is a flex column with NO gap between the two srows (each min-h 42).
     // TinySlider overrides vfunc_measure to report natural=1px so the srow doesn't

@@ -48,7 +48,7 @@ function gridTiles(apps: Apps.Apps): Tile[] {
         all.find((a) => a.entry?.toLowerCase().includes(id.toLowerCase().split(".").pop()!))
     const fromApp = (app: Apps.Application): Tile => ({
         name: app.name,
-        iconName: app.icon_name || "application-x-executable",
+        iconName: app.icon_name || "kobel-app-symbolic",
         launch: () => {
             bump(app.name)
             app.launch()
@@ -59,7 +59,7 @@ function gridTiles(apps: Apps.Apps): Tile[] {
             const app = resolve(id)
             return {
                 name,
-                iconName: app?.icon_name || id || "application-x-executable",
+                iconName: app?.icon_name || id || "kobel-app-symbolic",
                 launch: () => {
                     bump(name)
                     app?.launch()
@@ -199,7 +199,7 @@ export default function Launcher() {
                 const m = fuzzy(qt, a.name) ?? { score: 1, marks: null as any }
                 return {
                     name: a.name,
-                    icon: a.icon_name ?? "application-x-executable",
+                    icon: a.icon_name ?? "kobel-app-symbolic",
                     hint: "Application",
                     score: m.score + boost(a.name),
                     markup: hl(a.name, m.marks),

@@ -27,12 +27,20 @@ export default function OSD(monitor: Gdk.Monitor) {
             visible={bind(visible)}
         >
             <box class="osd" spacing={11} widthRequest={230}>
-                <image iconName={bind(speaker, "volume_icon")} />
-                <levelbar hexpand value={bind(speaker, "volume")} />
+                <image
+                    iconName={bind(speaker, "volume").as((v) =>
+                        v <= 0 || speaker.mute
+                            ? "kobel-speaker-mute-symbolic"
+                            : "kobel-speaker-wave-symbolic"
+                    )}
+                />
+                <levelbar hexpand value={bind(speaker, "volume").as((v) => Math.min(v, 1))} />
                 <label
                     class="sval tn"
                     xalign={1}
-                    label={bind(speaker, "volume").as((v) => `${Math.round(v * 100)}%`)}
+                    label={bind(speaker, "volume").as(
+                        (v) => `${Math.min(100, Math.round(v * 100))}%`
+                    )}
                 />
             </box>
         </window>

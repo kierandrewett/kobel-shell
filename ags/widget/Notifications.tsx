@@ -43,7 +43,7 @@ interface CardData {
 
 function toCardData(n: Notifd.Notification): CardData {
     return {
-        icon: n.app_icon || "dialog-information-symbolic",
+        icon: n.app_icon || "kobel-bell-symbolic",
         summary: n.summary,
         body: n.body,
         when: new Date(n.time * 1000).toLocaleTimeString("en-GB", {
