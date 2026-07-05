@@ -515,7 +515,7 @@ export default function Launcher() {
                                               return p?.artist ?? ""
                                           })
                                     const playIcon = DEMO
-                                        ? "kobel-pause-symbolic"
+                                        ? "kobel-play-symbolic"
                                         : bind(mpris, "players").as((ps) => {
                                               const p =
                                                   ps.find(

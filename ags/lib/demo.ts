@@ -27,7 +27,7 @@ export const D = {
     today: { y: 2026, m: 6 /* July, 0-indexed */, d: 5 }, // Sunday 5 July 2026
     // launcher pinned tiles + today widget
     apps: ["Terminal", "Files", "Firefox", "Zed", "Spotify", "Settings"],
-    widgetDate: "Friday 3 July",
+    widgetDate: "Sunday 5 July",
     widgetEvent: "09:45 · Daily Standup",
     media: { title: "Weightless", artist: "Marconi Union" },
     // prototype initial notification store (store.push at load time, when:"10:38")
