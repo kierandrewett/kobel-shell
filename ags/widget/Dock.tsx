@@ -48,8 +48,64 @@ function Dots({ appId }: { appId: string }) {
     )
 }
 
+function buildContextMenu(app: Apps.Application, appId: string): Gtk.Popover {
+    const vbox = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 0 })
+    const ws = gnoblin.appWindows(appId)
+
+    // window rows (click to focus/restore)
+    for (const w of ws) {
+        const row = new Gtk.Button({ cssClasses: ["cmi"] })
+        const hbox = new Gtk.Box({ spacing: 9 })
+        const img = new Gtk.Image({ iconName: "kobel-window-symbolic" })
+        img.cssClasses = []
+        const lbl = new Gtk.Label({
+            label: w.title || app.name,
+            halign: Gtk.Align.START,
+            ellipsize: 3 as any,
+            xalign: 0,
+            hexpand: true,
+        })
+        hbox.append(img)
+        hbox.append(lbl)
+        row.set_child(hbox)
+        row.connect("clicked", () => {
+            gnoblin.activate(w.id)
+            vbox.get_root()?.hide()
+        })
+        vbox.append(row)
+    }
+
+    if (ws.length > 0) {
+        const sep = new Gtk.Separator({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            cssClasses: ["csep"],
+        })
+        vbox.append(sep)
+    }
+
+    // quit row
+    const quit = new Gtk.Button({ cssClasses: ["cmi", "danger"] })
+    const qbox = new Gtk.Box({ spacing: 9 })
+    const qimg = new Gtk.Image({ iconName: "kobel-x-symbolic" })
+    qimg.cssClasses = []
+    const qlbl = new Gtk.Label({ label: "Quit", halign: Gtk.Align.START, xalign: 0, hexpand: true })
+    qbox.append(qimg)
+    qbox.append(qlbl)
+    quit.set_child(qbox)
+    quit.connect("clicked", () => {
+        execAsync(`pkill -f "${appId}"`)
+        vbox.get_root()?.hide()
+    })
+    vbox.append(quit)
+
+    const popover = new Gtk.Popover({ cssClasses: ["cmenu"], child: vbox, hasArrow: false })
+    popover.set_position(Gtk.PositionType.TOP)
+    return popover
+}
+
 function DockButton({ app }: { app: Apps.Application }) {
     const appId = app.entry.replace(/\.desktop$/, "")
+    let popover: Gtk.Popover | null = null
 
     const onClick = () => {
         const ws = gnoblin.appWindows(appId)
@@ -68,9 +124,23 @@ function DockButton({ app }: { app: Apps.Application }) {
             class="dbtn"
             tooltipText={app.name}
             onClicked={onClick}
+            setup={(self) => {
+                // Attach a Popover for right-click context menu
+                popover = buildContextMenu(app, appId)
+                popover.set_parent(self)
+            }}
             onButtonPressed={(_w, e) => {
-                // middle-click → new window
                 if (e.get_button() === Gdk.BUTTON_MIDDLE) app.launch()
+                if (e.get_button() === Gdk.BUTTON_SECONDARY) {
+                    // Rebuild to get fresh window list then show
+                    if (popover) {
+                        popover.unparent()
+                        popover.run_dispose()
+                    }
+                    popover = buildContextMenu(app, appId)
+                    popover.set_parent(_w)
+                    popover.popup()
+                }
             }}
             onScroll={(_w, _dx, dy) => {
                 const ws = gnoblin.appWindows(appId)
