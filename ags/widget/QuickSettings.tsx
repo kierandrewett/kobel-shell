@@ -117,17 +117,17 @@ function Sliders() {
 
     return (
         <box class="sliders" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
-            <box class="srow" spacing={9}>
+            <box class="srow" spacing={5}>
                 <image iconName={volIcon} />
                 {volSlider}
-                <button class="chev" widthRequest={30} onClicked={() => drill.set("mix")}>
+                <button class="chev" widthRequest={22} onClicked={() => drill.set("mix")}>
                     <image iconName="kobel-chevron-right-symbolic" />
                 </button>
             </box>
-            <box class="srow" spacing={9}>
+            <box class="srow" spacing={5}>
                 <image iconName="kobel-brightness-symbolic" />
                 {brightSlider}
-                <box widthRequest={30} />
+                <box widthRequest={22} />
             </box>
         </box>
     )

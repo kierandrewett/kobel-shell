@@ -239,9 +239,9 @@ scale > trough > slider {
 // internal padding of 12px regardless of CSS). Account for it in the srow layout instead.
 // Icon is at crop_x=14..29, proto glyph at ~26..38; sparse speaker icon → minimal diff.
 // Gutter spacer widthRequest=17; bright trough_left=51, bright trough_right=51+249-1≈299 ≈ proto.
-.srow { padding: 0 2px 0 2px; min-height: 42px; }
+.srow { padding: 0; min-height: 42px; }
 .srow image { color: $mut; -gtk-icon-size: 16px;
-              padding: 0; margin: 0 -12px 0 12px; }
+              padding: 0; margin: 0 -12px 0 14px; }
 .srow .chev { padding: 6px 8px; color: $dim; border-radius: 9px;
   image { -gtk-icon-size: 15px; padding: 0; margin: 0; }
   &:hover { background-color: $panel2; } }
