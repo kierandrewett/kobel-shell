@@ -324,9 +324,9 @@ export default function Dock(monitor: Gdk.Monitor) {
             anchor={Astal.WindowAnchor.BOTTOM}
         >
             <box class="dock" spacing={4}>
-                {slots.map(({ id, app }, i) => [
-                    i === 4 ? <box class="sep" valign={Gtk.Align.CENTER} /> : null,
-                    app ? (
+                {slots.flatMap(({ id, app }, i) => {
+                    const sep = i === 4 ? [<box class="sep" valign={Gtk.Align.CENTER} />] : []
+                    const btn = app ? (
                         <DockButton app={app} />
                     ) : (
                         <button class="dbtn placeholder" tooltipText={id.split(".").pop()}>
@@ -336,8 +336,9 @@ export default function Dock(monitor: Gdk.Monitor) {
                                 pixelSize={30}
                             />
                         </button>
-                    ),
-                ])}
+                    )
+                    return [...sep, btn]
+                })}
                 <box class="sep" valign={Gtk.Align.CENTER} />
                 <MediaWidget />
             </box>

@@ -266,8 +266,6 @@ function MediaCard() {
 }
 
 export function Drawer() {
-    if (!DEMO && skip()) return null
-
     const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(200, 150)
     register("drawer", toggleFn)
     // Keep drawerOpen in sync with the revealed state (toasts adopt into drawer when open)
@@ -323,11 +321,13 @@ export function Drawer() {
         )
     }
 
-    const nfd = nd()
-    const list = Variable<Notifd.Notification[]>(nfd.get_notifications() ?? [])
-    const refresh = () => list.set(nfd.get_notifications() ?? [])
-    nfd.connect("notified", refresh)
-    nfd.connect("resolved", refresh)
+    const nfd = skip() ? null : nd()
+    const list = Variable<Notifd.Notification[]>(nfd?.get_notifications() ?? [])
+    if (nfd) {
+        const refresh = () => list.set(nfd.get_notifications() ?? [])
+        nfd.connect("notified", refresh)
+        nfd.connect("resolved", refresh)
+    }
 
     return (
         <window
@@ -354,7 +354,7 @@ export function Drawer() {
                         <box hexpand />
                         <button
                             class="nclear"
-                            onClicked={() => nfd.get_notifications().forEach((n) => n.dismiss())}
+                            onClicked={() => nfd?.get_notifications().forEach((n) => n.dismiss())}
                         >
                             <box spacing={5}>
                                 <image iconName="kobel-trash-symbolic" />
