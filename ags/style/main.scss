@@ -69,7 +69,7 @@ image { -gtk-icon-style: regular; }
 
   // status pill — fixed 30 tall (ctl-1), padding 0 13, gap 10; wifi/vol 16px, battery 15px
   .status {
-    min-height: 30px; padding: 0 13px; border-radius: 999px;
+    min-height: 31px; padding: 0 13px; border-radius: 999px;
     background-color: $panel2;   // CDP .status = panel2
     &:hover { background-color: $chip; }
     image { color: $mut; -gtk-icon-size: 16px; }
