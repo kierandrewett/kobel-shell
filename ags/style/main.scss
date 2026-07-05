@@ -387,10 +387,10 @@ switch {
     // CDP: in-month 600, out-of-month 400, today 700
     background: none; background-color: transparent;
     color: $tx; font-size: 11px; font-weight: 600;
-    min-width: 24px; min-height: 24px; border-radius: 99px; margin: 1px;
+    min-width: 24px; min-height: 24px; border-radius: 99px;
     &:hover { background-color: $panel2; }
     &.we { color: $dim; }
-    &.out { color: $dim; font-weight: 400; }
+    &.out { color: $dim; }   // CDP .day.out inherits weight 600, just dim color
     &.today { background-color: $leaf; color: $ink; font-weight: 700;
               &:hover { background-color: $leaf; } }
     // selection ring: mut on a plain selected day, ink on today (proto .day.today.sel)
