@@ -392,7 +392,7 @@ switch {
     min-width: 24px; min-height: 24px; border-radius: 99px;
     &:hover { background-color: $panel2; }
     &.we { color: $dim; }
-    &.out { color: $dim; }   // CDP .day.out inherits weight 600, just dim color
+    &.out { color: $dim; font-weight: 400; }
     &.today { background-color: $leaf; color: $ink; font-weight: 700;
               &:hover { background-color: $leaf; } }
     // selection ring: mut on a plain selected day, ink on today (proto .day.today.sel)
