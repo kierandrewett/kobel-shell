@@ -167,9 +167,9 @@ function EventsCard() {
                 if (!evs.length)
                     return [
                         head,
-                        <box spacing={8}>
+                        <box class="evempty" spacing={8}>
                             <image iconName="kobel-calendar-symbolic" />
-                            <label class="sub" label="No events" />
+                            <label label="No events" />
                         </box>,
                     ]
                 return [
