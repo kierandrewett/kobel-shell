@@ -65,8 +65,8 @@ function Card({ n }: { n: CardData }) {
             >
                 <image iconName={n.icon} pixelSize={15} />
             </box>
-            <box orientation={Gtk.Orientation.VERTICAL} hexpand>
-                <box spacing={8}>
+            <box class="ntx" orientation={Gtk.Orientation.VERTICAL} hexpand>
+                <box class="t" spacing={8}>
                     <label halign={Gtk.Align.START} hexpand ellipsize={3} label={n.summary} />
                     <label class="when tn" label={n.when} />
                 </box>

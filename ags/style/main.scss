@@ -433,6 +433,7 @@ switch {
          image { color: $mut; -gtk-icon-size: 15px; } }
   box-shadow: 0 6px 18px rgba(0,0,0,0.3);
   label { font-size: 12.5px; font-weight: 650; }
+  .ntx { }   // hexpand min-width:0, handled in TSX
   .body { color: $mut; font-size: 11.8px; font-weight: 400; }
   .when { color: $dim; font-size: 10px; }
   // close button: 22×22 r99 (CDP: top:6/right:6 on the .inner)
