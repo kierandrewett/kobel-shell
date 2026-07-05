@@ -1,38 +1,56 @@
 // kobel sakura-pop — GTK4/Astal stylesheet. docs/prototype.html is the source of truth.
 // OKLCH tokens pre-resolved to sRGB (GTK CSS has no oklch()).
 
-$panel:  #100e14;
+$panel: #100e14;
 $panel2: #1d1a22;
-$chip:   #26232c;
-$hover:  #322e39;
-$tx:     #f3eef3;
-$mut:    #b5adbc;
-$dim:    #8d8693;
-$leaf:   #b5cb48;
-$leaf2:  #96ae30;
-$ink:    #192003;
-$rose:   #ef86a0;
-$roseink:#4b0f1f;
-$amber:  #edbb64;
+$chip: #26232c;
+$hover: #322e39;
+$tx: #f3eef3;
+$mut: #b5adbc;
+$dim: #8d8693;
+$leaf: #b5cb48;
+$leaf2: #96ae30;
+$ink: #192003;
+$rose: #ef86a0;
+$roseink: #4b0f1f;
+$amber: #edbb64;
 
-$ovr: cubic-bezier(.24,1.36,.35,1);
+$ovr: cubic-bezier(0.24, 1.36, 0.35, 1);
 
 // Never `* { all: unset }` — it breaks GTK4 background rendering. Reset deliberately.
-window { font-family: "Inter", "Inter Variable", "InterVariable", sans-serif; font-size: 13px; color: $tx; }
-.tn { font-feature-settings: "tnum"; }
+window {
+    font-family: "Inter", "Inter Variable", "InterVariable", sans-serif;
+    font-size: 13px;
+    color: $tx;
+}
+.tn {
+    font-feature-settings: "tnum";
+}
 
 // Layer windows are transparent; the child sheet carries the rounded surface.
-window { background: transparent; }
+window {
+    background: transparent;
+}
 
 // ---- global chrome reset: GTK buttons ship a background/border/shadow/min-size.
 // Strip it everywhere; each component re-adds only what it wants.
 button {
-  background: none; background-color: transparent;
-  border: none; box-shadow: none; outline: none;
-  min-height: 0; min-width: 0; padding: 0; margin: 0;
-  transition: background-color 160ms, color 160ms;
+    background: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    outline: none;
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    transition:
+        background-color 160ms,
+        color 160ms;
 }
-image { -gtk-icon-style: regular; }
+image {
+    -gtk-icon-style: regular;
+}
 
 // ============ BAR ============
 // Prototype .bar: flex row, gap 4, padding 0 7, bg panel, radius 14, height 42.
@@ -44,90 +62,192 @@ image { -gtk-icon-style: regular; }
 // node isn't `box`). Buttons are valign-centred so the 31px control floats in the 42 bar
 // (badge lands at y≈8; status pill stays 30 tall instead of filling to 42).
 .bar {
-  background-color: $panel;
-  border-radius: 14px;
-  padding: 0 7px;
-  min-height: 42px;
-  color: $mut;
+    background-color: $panel;
+    border-radius: 14px;
+    padding: 0 7px;
+    min-height: 42px;
+    color: $mut;
 
-  .title { color: $mut; font-size: 12.5px; font-weight: 400; margin: 0 9px; }
-  .clock { color: $tx; font-size: 13.5px; font-weight: 600; }
-  .date  { color: $mut; font-size: 11.5px; }
+    .title {
+        color: $mut;
+        font-size: 12.5px;
+        font-weight: 400;
+        margin: 0 9px;
+    }
+    .clock {
+        color: $tx;
+        font-size: 13.5px;
+        font-weight: 600;
+    }
+    .date {
+        color: $mut;
+        font-size: 11.5px;
+    }
 
-  // icon buttons (search / bell / power): fixed 31×31 (config min), no padding, 16px icon
-  .ibtn {
-    padding: 0; border-radius: 9px; color: $mut;
-    image { -gtk-icon-size: 16px; }
-    &:hover { background-color: $panel2; color: $tx; }
-  }
+    // icon buttons (search / bell / power): fixed 31×31 (config min), no padding, 16px icon
+    .ibtn {
+        padding: 0;
+        border-radius: 9px;
+        color: $mut;
+        image {
+            -gtk-icon-size: 16px;
+        }
+        &:hover {
+            background-color: $panel2;
+            color: $tx;
+        }
+    }
 
-  // centered clock button — padding 6/12, gap 8 (baseline-aligned clk + date)
-  .bcenter {
-    min-height: 0; padding: 6px 12px; border-radius: 9px;
-    &:hover { background-color: $panel2; }
-  }
+    // centered clock button — padding 6/12, gap 8 (baseline-aligned clk + date)
+    .bcenter {
+        min-height: 0;
+        padding: 6px 12px;
+        border-radius: 9px;
+        &:hover {
+            background-color: $panel2;
+        }
+    }
 
-  // status pill — fixed 30 tall (ctl-1), padding 0 13, gap 10; wifi/vol 16px, battery 15px
-  .status {
-    min-height: 31px; padding: 0 13px; border-radius: 999px;
-    background-color: $panel2;   // CDP .status = panel2
-    &:hover { background-color: $chip; }
-    image { color: $mut; -gtk-icon-size: 16px; }
-    .pct image { -gtk-icon-size: 15px; }   // CDP .status .pct i { font-size: 15px }
-    label { color: $tx; font-weight: 600; font-size: 11.5px; }   // CDP .pct { font-weight: 600 }
-    &.err .net-icon { color: $amber; }
-  }
-  .badge {
-    background-color: $leaf; color: $ink; border-radius: 99px;
-    font-size: 9px; font-weight: 700; padding: 0 3px; margin: 2px;
-    min-height: 14px; min-width: 14px;
-  }
+    // status pill — fixed 30 tall (ctl-1), padding 0 13, gap 10; wifi/vol 16px, battery 15px
+    .status {
+        min-height: 31px;
+        padding: 0 13px;
+        border-radius: 999px;
+        background-color: $panel2; // CDP .status = panel2
+        &:hover {
+            background-color: $chip;
+        }
+        image {
+            color: $mut;
+            -gtk-icon-size: 16px;
+        }
+        .pct image {
+            -gtk-icon-size: 15px;
+        } // CDP .status .pct i { font-size: 15px }
+        label {
+            color: $tx;
+            font-weight: 600;
+            font-size: 11.5px;
+        } // CDP .pct { font-weight: 600 }
+        &.err .net-icon {
+            color: $amber;
+        }
+    }
+    .badge {
+        background-color: $leaf;
+        color: $ink;
+        border-radius: 99px;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 0 3px;
+        margin: 2px;
+        min-height: 14px;
+        min-width: 14px;
+    }
 
-  // Tray icons: narrower + smaller than regular ibtn (proto: 28×31, 14px icon, 1px gap)
-  .tray-icon {
-    min-width: 28px;
-    image { -gtk-icon-size: 14px; color: $mut; }
-  }
-  .tray-lang {
-    font-size: 11px; font-weight: 650; color: $mut;
-    padding: 0 8px; min-width: 0;   // CDP .ibtn.lang: width:auto pad 0/8
-  }
+    // Tray icons: narrower + smaller than regular ibtn (proto: 28×31, 14px icon, 1px gap)
+    .tray-icon {
+        min-width: 28px;
+        image {
+            -gtk-icon-size: 14px;
+            color: $mut;
+        }
+    }
+    .tray-lang {
+        font-size: 11px;
+        font-weight: 650;
+        color: $mut;
+        padding: 0 8px;
+        min-width: 0; // CDP .ibtn.lang: width:auto pad 0/8
+    }
 }
 
 // ============ DOCK ============
+.dock-demo {
+    background-color: $panel;
+}
 // Prototype-exact (docs/prototype.html .dock): pad5 r16 gap4 bg panel; each cell ~44×44
 // (--icon:clamp(38,3.4cqw,48)=43.5@1280); sep 1×34 margin 0 3px bg chip; dot(on) 12×4
 // r99 leaf, dot 4×4 dim, gap 3; media chip 30×30 r9 chip + 25×3 progress track.
 .dock {
-  background-color: $panel;
-  padding: 5px; border-radius: 16px;
-  .dbtn { border-radius: 12px; }
-  .icon-tile {
-    min-width: 32px; min-height: 32px;
-    padding: 6px; border-radius: 12px;
-    transition: background-color 160ms;
-  }
-  .dbtn:hover .icon-tile { background-color: rgba(255,255,255,0.09); }
-  .placeholder .icon-tile { background-color: $panel2; color: $dim; }
-  // dots: absolute overlay (Gtk.Overlay), zero layout footprint. 3px gap = box spacing.
-  .dots { margin-bottom: 3px; }
-  .dot { background-color: $dim; border-radius: 99px; min-width: 4px; min-height: 4px;
-         transition: min-width 260ms $ovr, background-color 220ms; }
-  .dot.on { background-color: $leaf; min-width: 12px; }
-  .dot.mini { min-width: 3px; min-height: 3px; opacity: .7; }
-  // separator: 1×34 centred bar (icon*0.78=44*0.78≈34px) with 3px side margins
-  .sep { background-color: $chip; min-width: 1px; min-height: 34px; margin: 0 3px; }
-  // media widget: 44 cell holding a 32×32 rounded chip + a thin progress track
-  .dtile { min-width: 44px; min-height: 44px; }
-  .dwidget .dg {
-    background-color: $chip; color: $mut;
-    border-radius: 9px; padding: 6px;
-  }
-  // dock media progress bar — GTK CSS node: levelbar > trough > block.{filled,empty}
-  levelbar.mprog { min-width: 25px; min-height: 3px; margin-bottom: 6px; }
-  levelbar.mprog > trough { background-color: rgba(0,0,0,0.35); border-radius: 99px; min-height: 3px; }
-  levelbar.mprog > trough > block.filled { background-color: $leaf; border-radius: 99px; }
-  levelbar.mprog > trough > block.empty { background-color: transparent; }
+    background-color: $panel;
+    padding: 5px;
+    border-radius: 16px;
+    .dbtn {
+        border-radius: 12px;
+    }
+    .icon-tile {
+        min-width: 32px;
+        min-height: 32px;
+        padding: 6px;
+        border-radius: 12px;
+        transition: background-color 160ms;
+    }
+    .dbtn:hover .icon-tile {
+        background-color: rgba(255, 255, 255, 0.09);
+    }
+    .placeholder .icon-tile {
+        background-color: $panel2;
+        color: $dim;
+    }
+    // dots: absolute overlay (Gtk.Overlay), zero layout footprint. 3px gap = box spacing.
+    .dots {
+        margin-bottom: 3px;
+    }
+    .dot {
+        background-color: $dim;
+        border-radius: 99px;
+        min-width: 4px;
+        min-height: 4px;
+        transition:
+            min-width 260ms $ovr,
+            background-color 220ms;
+    }
+    .dot.on {
+        background-color: $leaf;
+        min-width: 12px;
+    }
+    .dot.mini {
+        min-width: 3px;
+        min-height: 3px;
+        opacity: 0.7;
+    }
+    // separator: 1×34 centred bar (icon*0.78=44*0.78≈34px) with 3px side margins
+    .sep {
+        background-color: $chip;
+        min-width: 1px;
+        min-height: 34px;
+        margin: 0 3px;
+    }
+    // media widget: 44 cell holding a 32×32 rounded chip + a thin progress track
+    .dtile {
+        min-width: 44px;
+        min-height: 44px;
+    }
+    .dwidget .dg {
+        background-color: $chip;
+        color: $mut;
+        border-radius: 9px;
+        padding: 6px;
+    }
+    // dock media progress bar — GTK CSS node: levelbar > trough > block.{filled,empty}
+    levelbar.mprog {
+        min-width: 25px;
+        min-height: 3px;
+        margin-bottom: 6px;
+    }
+    levelbar.mprog > trough {
+        background-color: rgba(0, 0, 0, 0.35);
+        border-radius: 99px;
+        min-height: 3px;
+    }
+    levelbar.mprog > trough > block.filled {
+        background-color: $leaf;
+        border-radius: 99px;
+    }
+    levelbar.mprog > trough > block.empty {
+        background-color: transparent;
+    }
 }
 
 // ============ shared sheet ============
@@ -135,11 +255,15 @@ image { -gtk-icon-style: regular; }
 // sheet gets cut off. The margin enlarges the window buffer (shadow room) AND is the
 // floating gap from the screen edge; the shadow is tuned to fit within it.
 .sheet {
-  background-color: $panel; border-radius: 24px; padding: 12px;   // CDP --rp = rt+12 = 24px
-  margin: 38px;
-  // Prototype shadow is 0 18px 40px oklch(.08 .02 300/.45) + 0 2px 8px rgba(0,0,0,.35).
-  // Reproduced as closely as the layer-surface margin allows (extent must stay < margin).
-  box-shadow: 0 15px 34px rgba(8,5,16,0.45), 0 2px 8px rgba(0,0,0,0.35);
+    background-color: $panel;
+    border-radius: 24px;
+    padding: 12px; // CDP --rp = rt+12 = 24px
+    margin: 38px;
+    // Prototype shadow is 0 18px 40px oklch(.08 .02 300/.45) + 0 2px 8px rgba(0,0,0,.35).
+    // Reproduced as closely as the layer-surface margin allows (extent must stay < margin).
+    box-shadow:
+        0 15px 34px rgba(8, 5, 16, 0.45),
+        0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 // ============ QUICK SETTINGS ============
@@ -149,88 +273,172 @@ image { -gtk-icon-style: regular; }
 // Noto-Sans fallback (Inter isn't installed) renders the chip sub-labels a few px wider,
 // so the chip grid — not min-width — sets the width. Overlay-diffing forces matching
 // widths, so this doesn't skew the comparison; the chrome matches the proto to >99%.
-.qs { min-width: 328px; }  /* matches panelW(352)−24; overridden by config.ts tokenCss at runtime */
+.qs {
+    min-width: 328px;
+} /* matches panelW(352)−24; overridden by config.ts tokenCss at runtime */
 
 // compact top row — prototype: 32×32 rbtns, r99. Proto .qtop is 43px tall with the
 // buttons pinned to the top 32px (11px dead space below for the edit view) + 1px
 // margin → chips sit 44px below the content top. We hold the buttons at 32px and put
 // the 11+1 gap in margin-bottom (12px) so the chip grid lands at the same offset.
 .qs-top {
-  margin-bottom: 12px;
-  padding: 0 2px;   // proto .qt-main inset:0 2px — meta 2px in, buttons 2px off the edge
-  // battery pill: 15px glyph + 6px gap + tabular meta text (proto .qb)
-  // padding/margin 0 zeros Adwaita's image inflation so icon footprint = 15px
-  // and meta text starts at sheet_pad(12)+qs-top_pad(2)+icon(15)+gap(6)=35,
-  // matching where Chrome renders it in the prototype.
-  .meta { color: $mut; font-size: 11.5px; font-weight: 600;
-    image { -gtk-icon-size: 15px; color: $mut;
-            padding: 0; margin: 0; } }
-  // circular top-row buttons: 9px padding around a 14px icon → 32px round; 7px gap (proto)
-  .rbtn {
-    padding: 9px; border-radius: 99px;
-    background-color: $chip; color: $mut; margin-left: 7px;
-    image { -gtk-icon-size: 14px; }   // proto rbtn glyph is 14px (was rendering 16)
-    &:hover { background-color: $hover; color: $tx; }
-    &.danger:hover { background-color: $rose; color: $roseink; }
-    &.leaf image { color: $leaf; }
-  }
+    margin-bottom: 12px;
+    padding: 0 2px; // proto .qt-main inset:0 2px — meta 2px in, buttons 2px off the edge
+    // battery pill: 15px glyph + 6px gap + tabular meta text (proto .qb)
+    // padding/margin 0 zeros Adwaita's image inflation so icon footprint = 15px
+    // and meta text starts at sheet_pad(12)+qs-top_pad(2)+icon(15)+gap(6)=35,
+    // matching where Chrome renders it in the prototype.
+    .meta {
+        color: $mut;
+        font-size: 11.5px;
+        font-weight: 600;
+        image {
+            -gtk-icon-size: 15px;
+            color: $mut;
+            padding: 0;
+            margin: 0;
+        }
+    }
+    // circular top-row buttons: 9px padding around a 14px icon → 32px round; 7px gap (proto)
+    .rbtn {
+        padding: 9px;
+        border-radius: 99px;
+        background-color: $chip;
+        color: $mut;
+        margin-left: 7px;
+        image {
+            -gtk-icon-size: 14px;
+        } // proto rbtn glyph is 14px (was rendering 16)
+        &:hover {
+            background-color: $hover;
+            color: $tx;
+        }
+        &.danger:hover {
+            background-color: $rose;
+            color: $roseink;
+        }
+        &.leaf image {
+            color: $leaf;
+        }
+    }
 }
 
 // pill tiles — prototype computed: border-radius 999px, min-height 54px,
 // chipm padding 9px 8px 9px 12px, gap 9px, label 12.5px/650, sub 10.5px/400 mt0
 .chip {
-  background-color: $panel2; border-radius: 999px; min-height: 54px;
-  transition: background-color 220ms;
-  // .chipb = main toggle button (not .chev) — targeted by class to avoid leaking padding to .chev
-  .chipb { padding: 9px 8px 9px 12px; border-radius: 999px; }
-  image { color: $mut; -gtk-icon-size: 17px; }   // proto .chipb icon 17px (18 pushed the label +1px)
-  label { font-size: 12.5px; font-weight: 650; color: $tx; }
-  .sub { color: $mut; font-size: 10.5px; font-weight: 400; margin-top: 0; }
-  &:hover { background-color: $chip; }
+    background-color: $panel2;
+    border-radius: 999px;
+    min-height: 54px;
+    transition: background-color 220ms;
+    // .chipb = main toggle button (not .chev) — targeted by class to avoid leaking padding to .chev
+    .chipb {
+        padding: 9px 8px 9px 12px;
+        border-radius: 999px;
+    }
+    image {
+        color: $mut;
+        -gtk-icon-size: 17px;
+    } // proto .chipb icon 17px (18 pushed the label +1px)
+    label {
+        font-size: 12.5px;
+        font-weight: 650;
+        color: $tx;
+    }
+    .sub {
+        color: $mut;
+        font-size: 10.5px;
+        font-weight: 400;
+        margin-top: 0;
+    }
+    &:hover {
+        background-color: $chip;
+    }
 
-  &.on {
-    background-color: $leaf;
-    image { color: $ink; }
-    label { color: $ink; }
-    .sub { color: #333d17; }   // CDP .chipb.on .cl span: oklch(34% .06 122)
-    &:hover { background-color: $leaf2; }
-    .chev { color: $ink; }
-  }
+    &.on {
+        background-color: $leaf;
+        image {
+            color: $ink;
+        }
+        label {
+            color: $ink;
+        }
+        .sub {
+            color: #333d17;
+        } // CDP .chipb.on .cl span: oklch(34% .06 122)
+        &:hover {
+            background-color: $leaf2;
+        }
+        .chev {
+            color: $ink;
+        }
+    }
 
-  .chev {
-    min-width: 32px; min-height: 32px; border-radius: 0 999px 999px 0;
-    color: $dim; border-left: 1px solid rgba(0,0,0,0.18);   // CDP seam; .chevb 32×32
-    image { -gtk-icon-size: 15px; color: inherit; }
-    &:hover { background-color: rgba(0,0,0,0.14); }
-  }
+    .chev {
+        min-width: 32px;
+        min-height: 32px;
+        border-radius: 0 999px 999px 0;
+        color: $dim;
+        border-left: 1px solid rgba(0, 0, 0, 0.18); // CDP seam; .chevb 32×32
+        image {
+            -gtk-icon-size: 15px;
+            color: inherit;
+        }
+        &:hover {
+            background-color: rgba(0, 0, 0, 0.14);
+        }
+    }
 }
-.chips { margin-bottom: 0; }
+.chips {
+    margin-bottom: 0;
+}
 // Right chip (last-child) pill AA renders 1px wider in GTK4 vs Chrome for ON chips.
 // margin-right:1px on the right chip narrows the drawable by 1px, bringing the last
 // pure-$leaf pixel from chip_right-1 to chip_right-2, matching proto exactly.
 // OFF chips: $panel2→$panel delta (~14) is too small to fail after blur; no new fails.
-.chips > box:last-child { margin-right: 1px; }
+.chips > box:last-child {
+    margin-right: 1px;
+}
 // exact QS section rhythm (Root spacing 0): chips grid → sliders gap = 10px
-.chip-grid { margin-bottom: 10px; }
+.chip-grid {
+    margin-bottom: 10px;
+}
 
 // ---- GTK4 scale as a thin GNOME rail + round knob. Direct-child selectors match
 // Adwaita's specificity; our sheet loads after, so ours wins. Knob overhangs the
 // thin trough via negative margin.
 // TinySlider (KobelTinyScale) overrides vfunc_measure to return natural=1px; the CSS
 // min-width:0 here suppresses the trough's own CSS minimum so it too doesn't inflate.
-scale, scale:horizontal, scale:vertical { min-height: 0; min-width: 0; padding: 0; margin: 6px 0; }
-scale > trough, scale:horizontal > trough, scale:vertical > trough {
-  min-height: 6px; min-width: 0; margin: 0; padding: 0;
-  border-radius: 999px; background-color: $chip;
+scale,
+scale:horizontal,
+scale:vertical {
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
+    margin: 6px 0;
+}
+scale > trough,
+scale:horizontal > trough,
+scale:vertical > trough {
+    min-height: 6px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border-radius: 999px;
+    background-color: $chip;
 }
 scale > trough > highlight,
 scale > trough > progress {
-  min-height: 6px; border-radius: 999px; background-color: $leaf;
+    min-height: 6px;
+    border-radius: 999px;
+    background-color: $leaf;
 }
 scale > trough > slider {
-  min-width: 17px; min-height: 17px; margin: -6px;   /* prototype knob 17×17 */
-  border-radius: 999px; background-color: $tx;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    min-width: 17px;
+    min-height: 17px;
+    margin: -6px; /* prototype knob 17×17 */
+    border-radius: 999px;
+    background-color: $tx;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 // CDP: srow gap=9, min-height=42. pad-left=2 so that:
 //   12(sheet-pad) + 2(srow-pad) + 16(icon) + 9(gap) + 12(Adwaita scale padding) = 51 = proto trough-left
@@ -239,176 +447,486 @@ scale > trough > slider {
 // internal padding of 12px regardless of CSS). Account for it in the srow layout instead.
 // Icon is at crop_x=14..29, proto glyph at ~26..38; sparse speaker icon → minimal diff.
 // Gutter spacer widthRequest=17; bright trough_left=51, bright trough_right=51+249-1≈299 ≈ proto.
-.srow { padding: 0; min-height: 42px; }
-.srow image { color: $mut; -gtk-icon-size: 16px;
-              padding: 0; margin: 0 -12px 0 14px; }
-.srow .chev { padding: 6px 7px; color: $dim; border-radius: 9px;
-  image { -gtk-icon-size: 15px; padding: 0; margin: 0; }
-  &:hover { background-color: $panel2; } }
+.srow {
+    padding: 0;
+    min-height: 42px;
+}
+.srow image {
+    color: $mut;
+    -gtk-icon-size: 16px;
+    padding: 0;
+    margin: 0 -12px 0 14px;
+}
+.srow .chev {
+    padding: 6px 7px;
+    color: $dim;
+    border-radius: 9px;
+    image {
+        -gtk-icon-size: 15px;
+        padding: 0;
+        margin: 0;
+    }
+    &:hover {
+        background-color: $panel2;
+    }
+}
 
 // gnoblin banner
 .gbanner {
-  background-color: $panel2; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px;
-  .t { color: $amber; font-weight: 650; font-size: 11.5px; }
-  .s { color: $mut; font-size: 10.5px; }
-  image { color: $amber; -gtk-icon-size: 16px; }
+    background-color: $panel2;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    .t {
+        color: $amber;
+        font-weight: 650;
+        font-size: 11.5px;
+    }
+    .s {
+        color: $mut;
+        font-size: 10.5px;
+    }
+    image {
+        color: $amber;
+        -gtk-icon-size: 16px;
+    }
 }
 .gbtn {
-  background-color: $leaf; color: $ink; border-radius: 10px;
-  font-weight: 650; font-size: 11.5px; padding: 7px 12px;   // CDP
-  &:hover { background-color: $leaf2; }
+    background-color: $leaf;
+    color: $ink;
+    border-radius: 10px;
+    font-weight: 650;
+    font-size: 11.5px;
+    padding: 7px 12px; // CDP
+    &:hover {
+        background-color: $leaf2;
+    }
 }
 
 // drilldown header
 // CDP: dhead pad 0 0 10; title centered 14/650; back button margin-right 15
 .dhead {
-  padding-bottom: 10px;
-  button { padding: 7px; border-radius: 9px; color: $mut;   // 17px icon + 7 → 31
-    &:hover { background-color: $panel2; color: $tx; } }
-  label { font-weight: 650; font-size: 14px; }
+    padding-bottom: 10px;
+    button {
+        padding: 7px;
+        border-radius: 9px;
+        color: $mut; // 17px icon + 7 → 31
+        &:hover {
+            background-color: $panel2;
+            color: $tx;
+        }
+    }
+    label {
+        font-weight: 650;
+        font-size: 14px;
+    }
 }
 // GTK4 switch: node tree switch > slider. OFF: chip bg + mut thumb. ON: leaf bg + ink thumb.
 switch {
-  background-color: $chip; border-radius: 999px; min-width: 46px; min-height: 26px;   // CDP .sw 46×26
-  slider { background-color: $mut; border-radius: 999px; min-width: 20px; min-height: 20px; }
-  &:checked { background-color: $leaf;
-    slider { background-color: $ink; } }
+    background-color: $chip;
+    border-radius: 999px;
+    min-width: 46px;
+    min-height: 26px; // CDP .sw 46×26
+    slider {
+        background-color: $mut;
+        border-radius: 999px;
+        min-width: 20px;
+        min-height: 20px;
+    }
+    &:checked {
+        background-color: $leaf;
+        slider {
+            background-color: $ink;
+        }
+    }
 }
 
 // drilldown AP/device rows — CDP: xrow pad 9/11 r9 gap 10 bg panel2; xs meta; active=leaf tint
-.dlist { }   // gap=2 handled by spacing={2} in TSX
+.dlist {
+} // gap=2 handled by spacing={2} in TSX
 .xrow {
-  background-color: transparent; border-radius: 9px; padding: 9px 11px;
-  image { color: $mut; -gtk-icon-size: 16px; }   // CDP .xrow > iconify-icon { font-size: 16px }
-  label { font-size: 12.5px; font-weight: 600; color: $tx; }   // .xrow b
-  .xs { color: $mut; font-size: 10.5px; font-weight: 400; }   // CDP mut
-  &:hover { background-color: $panel2; }
-  &.active { background-color: rgba(106,197,143,0.08); image { color: $leaf; } .xs { color: $leaf; } }
+    background-color: transparent;
+    border-radius: 9px;
+    padding: 9px 11px;
+    image {
+        color: $mut;
+        -gtk-icon-size: 16px;
+    } // CDP .xrow > iconify-icon { font-size: 16px }
+    label {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: $tx;
+    } // .xrow b
+    .xs {
+        color: $mut;
+        font-size: 10.5px;
+        font-weight: 400;
+    } // CDP mut
+    &:hover {
+        background-color: $panel2;
+    }
+    &.active {
+        background-color: rgba(106, 197, 143, 0.08);
+        image {
+            color: $leaf;
+        }
+        .xs {
+            color: $leaf;
+        }
+    }
 }
 // volume mixer rows — CDP: mixrow flex-ROW pad 4/2 gap 10 min-h40; mi 26×26 r8 panel2;
 // em name 72px fixed 12/mut; slider fills. Icon | name | slider on ONE row.
 .mixrow {
-  padding: 4px 2px; min-height: 40px;   // CDP .mixrow min-height:40px
-  .mi { background-color: $panel2; border-radius: 8px; padding: 6px;   // CDP 26×26 r8: padding(6)+icon(14)+padding(6)=26
-    image { color: $mut; -gtk-icon-size: 14px; } }
-  .mname { font-size: 12px; color: $mut; min-width: 72px; }   // fixed name column
+    padding: 4px 2px;
+    min-height: 40px; // CDP .mixrow min-height:40px
+    .mi {
+        background-color: $panel2;
+        border-radius: 8px;
+        padding: 6px; // CDP 26×26 r8: padding(6)+icon(14)+padding(6)=26
+        image {
+            color: $mut;
+            -gtk-icon-size: 14px;
+        }
+    }
+    .mname {
+        font-size: 12px;
+        color: $mut;
+        min-width: 72px;
+    } // fixed name column
 }
 
 // ============ LAUNCHER ============
 // .sheet.launcher (0,2,0) beats config.ts's `.launcher{min-width:584}` (0,1,0), which is
 // appended AFTER this sheet. GTK min-width is CONTENT-box, so 568 + 8px pad ×2 = 584px
 // border-box = the prototype's --lw at 1280px.
-.sheet.launcher { min-width: 568px; }
-.launcher { padding: 8px; }  // CDP: 584/pad8/r24 (via .sheet)
+.sheet.launcher {
+    min-width: 568px;
+}
+.launcher {
+    padding: 8px;
+} // CDP: 584/pad8/r24 (via .sheet)
 // CDP exact: field pad 3/12 r12 search 16px; tile pad 5/0 r10, icon 42×42 r12;
 // widget card pad 10/12 r12.
 .field {
-  background-color: $panel2; border-radius: 12px; padding: 3px 12px; margin-bottom: 6px;
-  image { color: $dim; -gtk-icon-size: 16px; }
-  entry {
-    background: none; border: none; box-shadow: none; outline: none;
-    color: $tx; font-size: 14.5px; caret-color: $leaf; padding: 8px 0;   // proto input pad
-    min-height: 0; min-width: 0;
-  }
-  entry text { min-height: 0; }   // drop GTK's tall default text node → proto input h≈33
-  .lplaceholder { color: $mut; font-size: 14.5px; }   // faux placeholder (see Launcher.tsx)
-  .ghost { color: $dim; font-size: 14.5px; }
-  .kbd { background-color: $chip; color: $mut; border-radius: 5px;
-         font-size: 10.5px; padding: 3px 7px; }   // CDP
+    background-color: $panel2;
+    border-radius: 12px;
+    padding: 3px 12px;
+    margin-bottom: 6px;
+    image {
+        color: $dim;
+        -gtk-icon-size: 16px;
+    }
+    entry {
+        background: none;
+        border: none;
+        box-shadow: none;
+        outline: none;
+        color: $tx;
+        font-size: 14.5px;
+        caret-color: $leaf;
+        padding: 8px 0; // proto input pad
+        min-height: 0;
+        min-width: 0;
+    }
+    entry text {
+        min-height: 0;
+    } // drop GTK's tall default text node → proto input h≈33
+    .lplaceholder {
+        color: $mut;
+        font-size: 14.5px;
+    } // faux placeholder (see Launcher.tsx)
+    .ghost {
+        color: $dim;
+        font-size: 14.5px;
+    }
+    .kbd {
+        background-color: $chip;
+        color: $mut;
+        border-radius: 5px;
+        font-size: 10.5px;
+        padding: 3px 7px;
+    } // CDP
 }
-.tiles { padding: 8px 2px 10px; }   // CDP: lapps pad 8/2/10, gap 6
+.tiles {
+    padding: 8px 2px 10px;
+} // CDP: lapps pad 8/2/10, gap 6
 .tile {
-  padding: 5px 0 6px; border-radius: 10px; min-width: 64px;   // proto tile = icon(44)+20; max-width unsupported in GTK
-  // 42×42 icon box (r12): 30px icon (pixelSize) + 6px padding = 42, proto .di.
-  // min-width:0 (0,2,0) escapes config.ts's global `.icon-tile{min-width:44}` floor.
-  .icon-tile { min-width: 0; min-height: 0; padding: 6px; border-radius: 12px;
-               transition: background-color 160ms; }
-  label { color: $mut; font-size: 10.5px; }   // tile column gap 8 handled in markup
-  &:hover .icon-tile { background-color: rgba(255,255,255,0.09); }
-  &:hover label { color: $tx; }
+    padding: 5px 0 6px;
+    border-radius: 10px;
+    min-width: 64px; // proto tile = icon(44)+20; max-width unsupported in GTK
+    // 42×42 icon box (r12): 30px icon (pixelSize) + 6px padding = 42, proto .di.
+    // min-width:0 (0,2,0) escapes config.ts's global `.icon-tile{min-width:44}` floor.
+    .icon-tile {
+        min-width: 0;
+        min-height: 0;
+        padding: 6px;
+        border-radius: 12px;
+        transition: background-color 160ms;
+    }
+    label {
+        color: $mut;
+        font-size: 10.5px;
+    } // tile column gap 8 handled in markup
+    &:hover .icon-tile {
+        background-color: rgba(255, 255, 255, 0.09);
+    }
+    &:hover label {
+        color: $tx;
+    }
 }
-.lfoot { padding: 7px 10px 3px; color: $dim; font-size: 11px;
-  b { color: $mut; font-weight: 650; } }
-.lwidgets { padding: 0 2px 6px; }   // CDP: lwidgets pad 0/2/6, gap 7
+.lfoot {
+    padding: 7px 10px 3px;
+    color: $dim;
+    font-size: 11px;
+    b {
+        color: $mut;
+        font-weight: 650;
+    }
+}
+.lwidgets {
+    padding: 0 2px 6px;
+} // CDP: lwidgets pad 0/2/6, gap 7
 .widget {
-  background-color: $panel2; border-radius: 12px; padding: 10px 12px;
-  label { color: $tx; font-size: 12.5px; font-weight: 650; }
-  .hint { color: $mut; font-size: 11px; font-weight: 400; }
+    background-color: $panel2;
+    border-radius: 12px;
+    padding: 10px 12px;
+    label {
+        color: $tx;
+        font-size: 12.5px;
+        font-weight: 650;
+    }
+    .hint {
+        color: $mut;
+        font-size: 11px;
+        font-weight: 400;
+    }
 }
 // media mini-card (right widget): 34×34 art chip + title/artist + 29×29 play button
 .lwm {
-  .lwart { background-color: $chip; border-radius: 9px; min-width: 34px; min-height: 34px;
-    image { color: $mut; -gtk-icon-size: 16px; } }
-  .mbtn { color: $tx; border-radius: 8px; min-width: 29px; min-height: 29px;
-    image { -gtk-icon-size: 14px; }
-    &:hover { background-color: $chip; } }
+    .lwart {
+        background-color: $chip;
+        border-radius: 9px;
+        min-width: 34px;
+        min-height: 34px;
+        image {
+            color: $mut;
+            -gtk-icon-size: 16px;
+        }
+    }
+    .mbtn {
+        color: $tx;
+        border-radius: 8px;
+        min-width: 29px;
+        min-height: 29px;
+        image {
+            -gtk-icon-size: 14px;
+        }
+        &:hover {
+            background-color: $chip;
+        }
+    }
 }
-.lrows { padding: 4px 2px; }   // CDP .lrows pad 4/2/4; gap=2 handled by spacing={2} in TSX
-.sec { color: $dim; font-size: 10px; font-weight: 650; padding: 8px 10px 2px; }  // CDP
+.lrows {
+    padding: 4px 2px;
+} // CDP .lrows pad 4/2/4; gap=2 handled by spacing={2} in TSX
+.sec {
+    color: $dim;
+    font-size: 10px;
+    font-weight: 650;
+    padding: 8px 10px 2px;
+} // CDP
 .row {
-  border-radius: 10px; padding: 7px 10px;   // CDP: crow pad 7/10 r10 gap11
-  .ri { background-color: $panel2; border-radius: 8px; padding: 2px; }   // 24px icon + 4 → 28
-  image { -gtk-icon-size: 24px; }
-  label { font-size: 13px; font-weight: 600; }   // .crow b
-  .hint { color: $mut; font-size: 11.5px; }
-  .runk { background-color: $hover; color: $mut; border-radius: 6px;
-          font-size: 10.5px; padding: 2px 7px; }   // CDP
-  &:hover { background-color: $panel2; }
-  &.sel { background-color: $chip; }
+    border-radius: 10px;
+    padding: 7px 10px; // CDP: crow pad 7/10 r10 gap11
+    .ri {
+        background-color: $panel2;
+        border-radius: 8px;
+        padding: 2px;
+    } // 24px icon + 4 → 28
+    image {
+        -gtk-icon-size: 24px;
+    }
+    label {
+        font-size: 13px;
+        font-weight: 600;
+    } // .crow b
+    .hint {
+        color: $mut;
+        font-size: 11.5px;
+    }
+    .runk {
+        background-color: $hover;
+        color: $mut;
+        border-radius: 6px;
+        font-size: 10.5px;
+        padding: 2px 7px;
+    } // CDP
+    &:hover {
+        background-color: $panel2;
+    }
+    &.sel {
+        background-color: $chip;
+    }
 }
 
 // ============ CALENDAR ============
 // Exact CDP values: panel 333/pad12/r24; month 13/650; nav 26×26 r9; dow 9.5/600
 // wk 9; day 24×24 r99 size11 weight400; evrow pad 8/10 r10 gap10; evic 26×26 r8.
 .cal {
-  // content 309 + 12px sheet padding each side = 333 total (matches prototype .calp)
-  min-width: 309px;
-  .sub  { color: $mut; font-size: 11.5px; }
-  .hero { color: $tx; font-size: 19px; font-weight: 650; }
-  .calhero { padding: 4px 8px 8px; }
-  // sheet spacing is 0 — recreate the prototype's exact vertical rhythm with margins:
-  // hero→nav 0 (calhero's own bottom pad), nav→grid 8, grid→events 10.
-  .cal-grid { margin-top: 8px; }
-  // .calmon COMPUTED = 13px/650 pad 4 (a .calmon rule beats .calhead b 12.5 — source-grep missed it)
-  .month { border-radius: 8px; padding: 5px; font-weight: 650; font-size: 13px;
-           &:hover { background-color: $panel2; } }
-  centerbox > button { padding: 6px; border-radius: 9px; color: $mut;
-    image { -gtk-icon-size: 14px; min-width: 14px; min-height: 14px; }
-    &:hover { background-color: $panel2; color: $tx; } }
-  .dow { color: $dim; font-size: 9.5px; font-weight: 600; padding: 3px 0 5px; }   // CDP .dow
-  .wk  { color: $dim; font-size: 9px; font-weight: 600; }
+    // content 309 + 12px sheet padding each side = 333 total (matches prototype .calp)
+    min-width: 309px;
+    .sub {
+        color: $mut;
+        font-size: 11.5px;
+    }
+    .hero {
+        color: $tx;
+        font-size: 19px;
+        font-weight: 650;
+    }
+    .calhero {
+        padding: 4px 8px 8px;
+    }
+    // sheet spacing is 0 — recreate the prototype's exact vertical rhythm with margins:
+    // hero→nav 0 (calhero's own bottom pad), nav→grid 8, grid→events 10.
+    .cal-grid {
+        margin-top: 8px;
+    }
+    // .calmon COMPUTED = 13px/650 pad 4 (a .calmon rule beats .calhead b 12.5 — source-grep missed it)
+    .month {
+        border-radius: 8px;
+        padding: 5px;
+        font-weight: 650;
+        font-size: 13px;
+        &:hover {
+            background-color: $panel2;
+        }
+    }
+    centerbox > button {
+        padding: 6px;
+        border-radius: 9px;
+        color: $mut;
+        image {
+            -gtk-icon-size: 14px;
+            min-width: 14px;
+            min-height: 14px;
+        }
+        &:hover {
+            background-color: $panel2;
+            color: $tx;
+        }
+    }
+    .dow {
+        color: $dim;
+        font-size: 9.5px;
+        font-weight: 600;
+        padding: 3px 0 5px;
+    } // CDP .dow
+    .wk {
+        color: $dim;
+        font-size: 9px;
+        font-weight: 600;
+    }
 
-  // days: plain numbers, NO button chrome — 24×24, size 11, weight 400
-  .day {
-    // CDP: in-month 600, out-of-month 400, today 700
-    background: none; background-color: transparent;
-    color: $tx; font-size: 11px; font-weight: 600;
-    min-width: 24px; min-height: 24px; border-radius: 99px;
-    &:hover { background-color: $panel2; }
-    &.we { color: $dim; }
-    &.out { color: $dim; font-weight: 400; }
-    &.today { background-color: $leaf; color: $ink; font-weight: 700;
-              &:hover { background-color: $leaf; } }
-    // selection ring: mut on a plain selected day, ink on today (proto .day.today.sel)
-    &.sel:not(.today) { box-shadow: inset 0 0 0 1.5px $mut; }
-    &.today.sel { box-shadow: inset 0 0 0 1.5px $ink; }
-    // event dot: 3px leaf circle at bottom-centre (ink on today's leaf fill) — CDP ::after
-    .evdot { min-width: 3px; min-height: 3px; border-radius: 99px;
-             background-color: $leaf; margin-bottom: 2px; }
-    &.today .evdot { background-color: $ink; }
-  }
-  // events section = prototype .calev: a panel2 card (pad10/r12) holding the date
-  // header + darker (--panel) event rows — NOT a bare panel2 row on the sheet.
-  .evcard { margin-top: 12px; background-color: $panel2; border-radius: 12px; padding: 10px; }
-  .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 8px; }
-  .evempty { font-size: 11.5px; color: $mut; padding: 2px 3px 3px;
-    image { color: $dim; -gtk-icon-size: 14px; } }
-  .evrow { background-color: $panel; border-radius: 10px; padding: 8px 10px;
-    margin-bottom: 4px; &:last-child { margin-bottom: 0; }   // CDP .evrow (inset on panel)
-    .evic { background-color: #628933; border-radius: 8px; padding: 6px;   // CDP oklch(58% .12 130) 26×26: padding(6)+icon(14)+padding(6)
-      image { color: #fff; -gtk-icon-size: 14px; } }
-    label { font-size: 12px; font-weight: 650; }   // .evt b
-    .sub { color: $mut; font-size: 10.5px; font-weight: 400; } }
+    // days: plain numbers, NO button chrome — 24×24, size 11, weight 400
+    .day {
+        // CDP: in-month 600, out-of-month 400, today 700
+        background: none;
+        background-color: transparent;
+        color: $tx;
+        font-size: 11px;
+        font-weight: 600;
+        min-width: 24px;
+        min-height: 24px;
+        border-radius: 99px;
+        &:hover {
+            background-color: $panel2;
+        }
+        &.we {
+            color: $dim;
+        }
+        &.out {
+            color: $dim;
+            font-weight: 400;
+        }
+        &.today {
+            background-color: $leaf;
+            color: $ink;
+            font-weight: 700;
+            &:hover {
+                background-color: $leaf;
+            }
+        }
+        // selection ring: mut on a plain selected day, ink on today (proto .day.today.sel)
+        &.sel:not(.today) {
+            box-shadow: inset 0 0 0 1.5px $mut;
+        }
+        &.today.sel {
+            box-shadow: inset 0 0 0 1.5px $ink;
+        }
+        // event dot: 3px leaf circle at bottom-centre (ink on today's leaf fill) — CDP ::after
+        .evdot {
+            min-width: 3px;
+            min-height: 3px;
+            border-radius: 99px;
+            background-color: $leaf;
+            margin-bottom: 2px;
+        }
+        &.today .evdot {
+            background-color: $ink;
+        }
+    }
+    // events section = prototype .calev: a panel2 card (pad10/r12) holding the date
+    // header + darker (--panel) event rows — NOT a bare panel2 row on the sheet.
+    .evcard {
+        margin-top: 12px;
+        background-color: $panel2;
+        border-radius: 12px;
+        padding: 10px;
+    }
+    .evhead {
+        color: $tx;
+        font-size: 12.5px;
+        font-weight: 650;
+        padding: 1px 3px 8px;
+    }
+    .evempty {
+        font-size: 11.5px;
+        color: $mut;
+        padding: 2px 3px 3px;
+        image {
+            color: $dim;
+            -gtk-icon-size: 14px;
+        }
+    }
+    .evrow {
+        background-color: $panel;
+        border-radius: 10px;
+        padding: 8px 10px;
+        margin-bottom: 4px;
+        &:last-child {
+            margin-bottom: 0;
+        } // CDP .evrow (inset on panel)
+        .evic {
+            background-color: #628933;
+            border-radius: 8px;
+            padding: 6px; // CDP oklch(58% .12 130) 26×26: padding(6)+icon(14)+padding(6)
+            image {
+                color: #fff;
+                -gtk-icon-size: 14px;
+            }
+        }
+        label {
+            font-size: 12px;
+            font-weight: 650;
+        } // .evt b
+        .sub {
+            color: $mut;
+            font-size: 10.5px;
+            font-weight: 400;
+        }
+    }
 }
 
 // ============ NOTIFICATIONS ============
@@ -417,119 +935,350 @@ switch {
 // media card: mrow (art 46×46 r10 chip + mmeta 13/650 + sub 11.5/mut + mbtns 29×29 r8)
 //             mbar (mtime 10.5px/mut + mtrack 4px chip/leaf + mtime)
 //             memptyrow empty state + ghostb "Open Music" chip.
-.drawer { background: transparent; }
-.toast { background-color: rgba(16,13,20,0.82); border-radius: 20px; padding: 11px 13px;
-         box-shadow: 0 18px 40px rgba(5,3,10,0.45);
-         // ncard inside toast must be transparent — the toast box IS the translucent backing
-         .ncard { background: transparent; box-shadow: none; border-radius: 0; padding: 0; } }
+.drawer {
+    background: transparent;
+}
+.toast {
+    background-color: rgba(16, 13, 20, 0.82);
+    border-radius: 20px;
+    padding: 11px 13px;
+    box-shadow: 0 18px 40px rgba(5, 3, 10, 0.45);
+    // ncard inside toast must be transparent — the toast box IS the translucent backing
+    .ncard {
+        background: transparent;
+        box-shadow: none;
+        border-radius: 0;
+        padding: 0;
+    }
+}
 .ncard {
-  background-color: $panel; border-radius: 20px; padding: 11px 12px;
-  .nic { background-color: $chip; min-width: 30px; min-height: 30px; border-radius: 9px;
-         image { color: $mut; -gtk-icon-size: 15px; } }
-  box-shadow: 0 6px 18px rgba(0,0,0,0.3);
-  label { font-size: 12.5px; font-weight: 650; }
-  .ntx { }   // hexpand min-width:0, handled in TSX
-  .body { color: $mut; font-size: 11.8px; font-weight: 400; }
-  .when { color: $dim; font-size: 10px; }
-  // close button: 22×22 r99 (CDP: top:6/right:6 on the .inner)
-  .nx { min-width: 22px; min-height: 22px; border-radius: 99px; color: $dim;
-    image { -gtk-icon-size: 11px; }
-    &:hover { background-color: $chip; color: $rose; } }
-  // ---- drawer media card internal layout ----
-  // .mrow: flex row gap 11 — art tile + title/artist + playback controls
-  // CDP .nc .media: pad 10/11/9, margin-bottom 10 (drawer spacing=8 → +2), shadow (not sm)
-  &.media { padding: 10px 11px 9px; margin-bottom: 2px;
-    box-shadow: 0 15px 34px rgba(8,5,16,0.45), 0 2px 8px rgba(0,0,0,0.35); }
-  .mrow { }
-  .mart { background-color: $chip; border-radius: 10px; min-width: 46px; min-height: 46px;
-    image { color: $mut; -gtk-icon-size: 22px; } }
-  .mmeta label { font-size: 13px; }   // CDP .mmeta b { font-size: 13px } — beats .ncard label
-  .mmeta .sub { font-size: 11.5px; color: $mut; font-weight: 400; }   // CDP .mmeta span 11.5/mut
-  .mbtns { }
-  // .mbtn: 29×29 r8, chip bg on hover, 14px icon
-  .mbtn { min-width: 29px; min-height: 29px; border-radius: 8px; color: $mut;
-    image { -gtk-icon-size: 14px; }
-    &:hover { background-color: $chip; color: $tx; } }
-  // .mbar: margin-top 7px, gap 8 — mtime 10.5px/mut + track 4px chip/leaf + mtime
-  .mbar { margin-top: 7px; }
-  .mtime { color: $mut; font-size: 10.5px; font-weight: 400; }
-  // media track: GTK CSS node path is levelbar > trough > block.{filled,empty}
-  levelbar.mtrack { min-height: 4px; border-radius: 99px; }
-  levelbar.mtrack > trough { min-height: 4px; border-radius: 99px; background-color: $chip; }
-  levelbar.mtrack > trough > block.filled { background-color: $leaf; border-radius: 99px; }
-  levelbar.mtrack > trough > block.empty { background-color: transparent; }
-  // empty state row
-  .memptyrow label { color: $mut; font-size: 12px; font-weight: 400; }
-  .memptyrow .mart image { color: $dim; }
-  // "Open Music" ghost button — chip bg, tx color, 11.5px/600, pad 7/12 r10
-  .ghostb { background-color: $chip; color: $tx; font-size: 11.5px; font-weight: 600;
-    padding: 7px 12px; border-radius: 10px;
-    label { font-size: 11.5px; font-weight: 600; color: $tx; }
-    &:hover { background-color: $hover; } }
+    background-color: $panel;
+    border-radius: 20px;
+    padding: 11px 12px;
+    .nic {
+        background-color: $chip;
+        min-width: 30px;
+        min-height: 30px;
+        border-radius: 9px;
+        image {
+            color: $mut;
+            -gtk-icon-size: 15px;
+        }
+    }
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+    label {
+        font-size: 12.5px;
+        font-weight: 650;
+    }
+    .ntx {
+    } // hexpand min-width:0, handled in TSX
+    .body {
+        color: $mut;
+        font-size: 11.8px;
+        font-weight: 400;
+    }
+    .when {
+        color: $dim;
+        font-size: 10px;
+    }
+    // close button: 22×22 r99 (CDP: top:6/right:6 on the .inner)
+    .nx {
+        min-width: 22px;
+        min-height: 22px;
+        border-radius: 99px;
+        color: $dim;
+        image {
+            -gtk-icon-size: 11px;
+        }
+        &:hover {
+            background-color: $chip;
+            color: $rose;
+        }
+    }
+    // ---- drawer media card internal layout ----
+    // .mrow: flex row gap 11 — art tile + title/artist + playback controls
+    // CDP .nc .media: pad 10/11/9, margin-bottom 10 (drawer spacing=8 → +2), shadow (not sm)
+    &.media {
+        padding: 10px 11px 9px;
+        margin-bottom: 2px;
+        box-shadow:
+            0 15px 34px rgba(8, 5, 16, 0.45),
+            0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+    .mrow {
+    }
+    .mart {
+        background-color: $chip;
+        border-radius: 10px;
+        min-width: 46px;
+        min-height: 46px;
+        image {
+            color: $mut;
+            -gtk-icon-size: 22px;
+        }
+    }
+    .mmeta label {
+        font-size: 13px;
+    } // CDP .mmeta b { font-size: 13px } — beats .ncard label
+    .mmeta .sub {
+        font-size: 11.5px;
+        color: $mut;
+        font-weight: 400;
+    } // CDP .mmeta span 11.5/mut
+    .mbtns {
+    }
+    // .mbtn: 29×29 r8, chip bg on hover, 14px icon
+    .mbtn {
+        min-width: 29px;
+        min-height: 29px;
+        border-radius: 8px;
+        color: $mut;
+        image {
+            -gtk-icon-size: 14px;
+        }
+        &:hover {
+            background-color: $chip;
+            color: $tx;
+        }
+    }
+    // .mbar: margin-top 7px, gap 8 — mtime 10.5px/mut + track 4px chip/leaf + mtime
+    .mbar {
+        margin-top: 7px;
+    }
+    .mtime {
+        color: $mut;
+        font-size: 10.5px;
+        font-weight: 400;
+    }
+    // media track: GTK CSS node path is levelbar > trough > block.{filled,empty}
+    levelbar.mtrack {
+        min-height: 4px;
+        border-radius: 99px;
+    }
+    levelbar.mtrack > trough {
+        min-height: 4px;
+        border-radius: 99px;
+        background-color: $chip;
+    }
+    levelbar.mtrack > trough > block.filled {
+        background-color: $leaf;
+        border-radius: 99px;
+    }
+    levelbar.mtrack > trough > block.empty {
+        background-color: transparent;
+    }
+    // empty state row
+    .memptyrow label {
+        color: $mut;
+        font-size: 12px;
+        font-weight: 400;
+    }
+    .memptyrow .mart image {
+        color: $dim;
+    }
+    // "Open Music" ghost button — chip bg, tx color, 11.5px/600, pad 7/12 r10
+    .ghostb {
+        background-color: $chip;
+        color: $tx;
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 7px 12px;
+        border-radius: 10px;
+        label {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: $tx;
+        }
+        &:hover {
+            background-color: $hover;
+        }
+    }
 }
 .nhead {
-  background-color: $panel; border-radius: 14px; padding: 8px 8px 8px 14px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.3);   // CDP --shadow-sm
-  margin-bottom: 8px;
-  label { font-size: 13.5px; font-weight: 650; }   // .nhead b (title)
-  .sub { font-size: 11px; font-weight: 400; color: $dim; }   // .nhead span (count) — CDP dim
-  .nclear { color: $rose; font-size: 11.5px; font-weight: 600; border-radius: 7px;
-            padding: 4px 9px; image { -gtk-icon-size: 12px; color: $rose; }
-            label { color: $rose; }
-            &:hover { background-color: $panel2; } }   // CDP .nclear i { 12px }
+    background-color: $panel;
+    border-radius: 14px;
+    padding: 8px 8px 8px 14px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); // CDP --shadow-sm
+    margin-bottom: 8px;
+    label {
+        font-size: 13.5px;
+        font-weight: 650;
+    } // .nhead b (title)
+    .sub {
+        font-size: 11px;
+        font-weight: 400;
+        color: $dim;
+    } // .nhead span (count) — CDP dim
+    .nclear {
+        color: $rose;
+        font-size: 11.5px;
+        font-weight: 600;
+        border-radius: 7px;
+        padding: 4px 9px;
+        image {
+            -gtk-icon-size: 12px;
+            color: $rose;
+        }
+        label {
+            color: $rose;
+        }
+        &:hover {
+            background-color: $panel2;
+        }
+    } // CDP .nclear i { 12px }
 }
 // empty-notifications card — prototype .nempty: panel bg, r20, shadow-sm, pad 20/0/16, center mut 12.5px
 .nempty {
-  background-color: $panel; border-radius: 20px; padding: 20px 0 16px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.3);
-  image { color: $mut; -gtk-icon-size: 22px; margin-bottom: 4px; }   // CDP .nempty i {color: mut}
-  label { color: $mut; font-size: 12.5px; font-weight: 400; }
+    background-color: $panel;
+    border-radius: 20px;
+    padding: 20px 0 16px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+    image {
+        color: $mut;
+        -gtk-icon-size: 22px;
+        margin-bottom: 4px;
+    } // CDP .nempty i {color: mut}
+    label {
+        color: $mut;
+        font-size: 12.5px;
+        font-weight: 400;
+    }
 }
 
 // ============ OSD ============
 // CDP/source: padding 10/15, r999, bg panelT (blur), gap 11, icon 15px,
 // rail 6×230px chip-bg/tx-fill (continuous levelbar), sval 11px/600/32px.
-.osd { background-color: rgba(16,13,20,0.82); border-radius: 999px; padding: 10px 15px;
-  image { color: $tx; -gtk-icon-size: 15px; }
-  // OSD track is 8px tall (prototype .osd .rail { height: 8px }), wider than QS sliders (6px)
-  levelbar > trough { min-height: 8px; border-radius: 99px; background-color: $chip; }
-  levelbar > trough > block { min-height: 8px; border-radius: 99px; }
-  levelbar > trough > block.filled { background-color: $leaf; }
-  levelbar > trough > block.empty { background-color: transparent; }
-  .sval { min-width: 34px; font-size: 11px; font-weight: 600; }   // CDP .osd .sval width:34px; inherits $tx
+.osd {
+    background-color: rgba(16, 13, 20, 0.82);
+    border-radius: 999px;
+    padding: 10px 15px;
+    image {
+        color: $tx;
+        -gtk-icon-size: 15px;
+    }
+    // OSD track is 8px tall (prototype .osd .rail { height: 8px }), wider than QS sliders (6px)
+    levelbar > trough {
+        min-height: 8px;
+        border-radius: 99px;
+        background-color: $chip;
+    }
+    levelbar > trough > block {
+        min-height: 8px;
+        border-radius: 99px;
+    }
+    levelbar > trough > block.filled {
+        background-color: $leaf;
+    }
+    levelbar > trough > block.empty {
+        background-color: transparent;
+    }
+    .sval {
+        min-width: 34px;
+        font-size: 11px;
+        font-weight: 600;
+    } // CDP .osd .sval width:34px; inherits $tx
 }
 
 // ============ SESSION ============
 // CDP exact: dim oklch(.12 .03 310/.8)=rgb(9,3,14); sbtn pad6 r12 gap10; sic 59×59 r24
 // bg $panel; icon 22px; resting glyph $tx, red glyph $rose; row gap 20; label 12/600.
-.session { background-color: rgba(9,3,14,0.8);
-  .sbtn { padding: 6px; border-radius: 12px; }
-  .sic { background-color: $panel; border-radius: 24px;
-         min-width: 61px; min-height: 61px;
-         box-shadow: 0 6px 18px rgba(0,0,0,0.3);   // CDP --shadow-sm
-         color: $tx; transition: background-color 200ms, color 200ms; }
-  .red .sic { color: $rose; }                       // rose glyph at rest
-  .sbtn:hover .sic { background-color: $panel2; color: $tx; }
-  .red:hover .sic { background-color: $rose; color: $roseink; }
-  label { color: $tx; font-weight: 600; font-size: 12px; }
-  .confirm label { color: $rose; font-weight: 650; } }
+.session {
+    background-color: rgba(9, 3, 14, 0.8);
+    .sbtn {
+        padding: 6px;
+        border-radius: 12px;
+    }
+    .sic {
+        background-color: $panel;
+        border-radius: 24px;
+        min-width: 61px;
+        min-height: 61px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); // CDP --shadow-sm
+        color: $tx;
+        transition:
+            background-color 200ms,
+            color 200ms;
+    }
+    .red .sic {
+        color: $rose;
+    } // rose glyph at rest
+    .sbtn:hover .sic {
+        background-color: $panel2;
+        color: $tx;
+    }
+    .red:hover .sic {
+        background-color: $rose;
+        color: $roseink;
+    }
+    label {
+        color: $tx;
+        font-weight: 600;
+        font-size: 12px;
+    }
+    .confirm label {
+        color: $rose;
+        font-weight: 650;
+    }
+}
 
 // ============ context menu / tooltip ============
 // GTK Popover uses CSS node `popover` (not `box`) — target with element selector
 popover.cmenu {
-  background-color: $panel; border-radius: 12px; padding: 5px; min-width: 180px;
-  box-shadow: 0 15px 34px rgba(8,5,16,0.45), 0 2px 8px rgba(0,0,0,0.35);   // CDP --shadow
-  // strip Adwaita popover border/arrow defaults
-  border: none;
-  > arrow, > contents { background: transparent; border: none; border-radius: 12px; }
+    background-color: $panel;
+    border-radius: 12px;
+    padding: 5px;
+    min-width: 180px;
+    box-shadow:
+        0 15px 34px rgba(8, 5, 16, 0.45),
+        0 2px 8px rgba(0, 0, 0, 0.35); // CDP --shadow
+    // strip Adwaita popover border/arrow defaults
+    border: none;
+    > arrow,
+    > contents {
+        background: transparent;
+        border: none;
+        border-radius: 12px;
+    }
 }
-.cmi { border-radius: 8px; padding: 8px 10px; font-size: 12px; font-weight: 600;
-  image { -gtk-icon-size: 14px; color: $mut; }   // CDP .cmi iconify-icon 14px/mut
-  label { color: $tx; font-size: 12px; font-weight: 600; }
-  &:hover { background-color: $panel2; }
-  &.danger:hover { background-color: $rose; color: $roseink;
-    image { color: $roseink; } label { color: $roseink; } } }
-.csep { background-color: $panel2; min-height: 1px; margin: 4px 8px; }
-.dtip { background-color: $panel; color: $tx; border-radius: 10px;
-        padding: 6px 11px; font-size: 11.5px; font-weight: 600;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.3); }   // CDP --shadow-sm
+.cmi {
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    image {
+        -gtk-icon-size: 14px;
+        color: $mut;
+    } // CDP .cmi iconify-icon 14px/mut
+    label {
+        color: $tx;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    &:hover {
+        background-color: $panel2;
+    }
+    &.danger:hover {
+        background-color: $rose;
+        color: $roseink;
+        image {
+            color: $roseink;
+        }
+        label {
+            color: $roseink;
+        }
+    }
+}
+.csep {
+    background-color: $panel2;
+    min-height: 1px;
+    margin: 4px 8px;
+}
+.dtip {
+    background-color: $panel;
+    color: $tx;
+    border-radius: 10px;
+    padding: 6px 11px;
+    font-size: 11.5px;
+    font-weight: 600;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+} // CDP --shadow-sm

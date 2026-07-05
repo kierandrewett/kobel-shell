@@ -281,7 +281,7 @@ function DemoDock(monitor: Gdk.Monitor) {
         <window
             name="dock"
             namespace="kobel-dock"
-            class="dock-window"
+            class="dock-window dock-demo"
             gdkmonitor={monitor}
             anchor={Astal.WindowAnchor.BOTTOM}
         >
