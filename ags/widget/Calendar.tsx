@@ -45,7 +45,7 @@ function isoWeek(d: Date): number {
 
 function Grid() {
     return (
-        <box class="cal-grid" orientation={Gtk.Orientation.VERTICAL}>
+        <box class="cal-grid" orientation={Gtk.Orientation.VERTICAL} spacing={2}>
             {bind(Variable.derive([view, sel], (v, s) => ({ v, s }))).as(({ v, s }) => {
                 const first = new Date(v.y, v.m, 1)
                 const start = (first.getDay() + 6) % 7
