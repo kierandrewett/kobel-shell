@@ -110,7 +110,7 @@ export default function Session() {
                     tile stays 59 wide instead of stretching the row. */}
                                         <image
                                             iconName={a.icon}
-                                            pixelSize={22}
+                                            pixelSize={23}
                                             hexpand
                                             halign={Gtk.Align.CENTER}
                                             valign={Gtk.Align.CENTER}
