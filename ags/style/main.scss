@@ -410,9 +410,8 @@ switch {
     image { color: $dim; -gtk-icon-size: 14px; } }
   .evrow { background-color: $panel; border-radius: 10px; padding: 8px 10px;
     margin-bottom: 4px; &:last-child { margin-bottom: 0; }   // CDP .evrow (inset on panel)
-    .evic { background-color: #628933; border-radius: 8px; padding: 6px;   // CDP oklch(58% .12 130) 26×26
-      min-width: 26px; min-height: 26px;
-      image { color: #fff; -gtk-icon-size: 14px; } }   // 6+14+6=26 exact
+    .evic { background-color: #628933; border-radius: 8px; padding: 6px;   // CDP oklch(58% .12 130) 26×26: padding(6)+icon(14)+padding(6)
+      image { color: #fff; -gtk-icon-size: 14px; } }
     label { font-size: 12px; font-weight: 650; }   // .evt b
     .sub { color: $mut; font-size: 10.5px; font-weight: 400; } }
 }
