@@ -529,4 +529,5 @@ switch {
       image { color: $roseink; } label { color: $roseink; } } }
   .csep { background-color: $panel2; min-height: 1px; margin: 4px 8px; } }
 .dtip { background-color: $panel; color: $tx; border-radius: 10px;
-        padding: 6px 11px; font-size: 11.5px; font-weight: 600; }
+        padding: 6px 11px; font-size: 11.5px; font-weight: 600;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.3); }   // CDP --shadow-sm
