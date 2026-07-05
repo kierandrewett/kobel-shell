@@ -198,8 +198,8 @@ image { -gtk-icon-style: regular; }
   }
 
   .chev {
-    min-width: 30px; min-height: 30px; border-radius: 0 999px 999px 0;
-    color: $dim; border-left: 1px solid rgba(0,0,0,0.18);   // CDP seam; .chevb 30×30
+    min-width: 32px; min-height: 32px; border-radius: 0 999px 999px 0;
+    color: $dim; border-left: 1px solid rgba(0,0,0,0.18);   // CDP seam; .chevb 32×32
     image { -gtk-icon-size: 15px; color: inherit; }
     &:hover { background-color: rgba(0,0,0,0.14); }
   }
@@ -242,7 +242,7 @@ scale > trough > slider {
 .srow { padding: 0; min-height: 42px; }
 .srow image { color: $mut; -gtk-icon-size: 16px;
               padding: 0; margin: 0 -12px 0 14px; }
-.srow .chev { padding: 6px 8px; color: $dim; border-radius: 9px;
+.srow .chev { padding: 6px 7px; color: $dim; border-radius: 9px;
   image { -gtk-icon-size: 15px; padding: 0; margin: 0; }
   &:hover { background-color: $panel2; } }
 

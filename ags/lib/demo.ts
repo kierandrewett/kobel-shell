@@ -18,7 +18,7 @@ export const D = {
     wifiSsid: "chompers-5G",
     btDevice: "WH-1000XM5",
     volume: 0.64, // prototype initial vol=64 (let vol=64 in JS)
-    brightness: 0.8, // measured: AGS trough 2px narrower than proto; 0.800 aligns knob center
+    brightness: 0.8, // measured: AGS trough narrower than proto; 0.800 aligns knob center
     dark: true,
     save: false,
     silent: false,
