@@ -120,27 +120,14 @@ function Sliders() {
             <box class="srow" spacing={9}>
                 <image iconName={volIcon} />
                 {volSlider}
-                <label
-                    class="sval tn"
-                    xalign={1}
-                    widthRequest={32}
-                    label={bind(volValue).as((v) => `${Math.round(v * 100)}%`)}
-                />
-                <button class="chev" widthRequest={31} onClicked={() => drill.set("mix")}>
+                <button class="chev" widthRequest={30} onClicked={() => drill.set("mix")}>
                     <image iconName="kobel-chevron-right-symbolic" />
                 </button>
             </box>
             <box class="srow" spacing={9}>
                 <image iconName="kobel-brightness-symbolic" />
                 {brightSlider}
-                <label
-                    class="sval tn"
-                    xalign={1}
-                    widthRequest={32}
-                    label={bind(brightValue).as((v) => `${Math.round(v * 100)}%`)}
-                />
-                {/* gutter aligns with chev width (≈31px); sval=32 + spacing=9 → space taken */}
-                <box />
+                <box widthRequest={30} />
             </box>
         </box>
     )

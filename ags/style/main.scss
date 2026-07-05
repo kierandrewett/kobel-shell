@@ -96,15 +96,12 @@ image { -gtk-icon-style: regular; }
 
 // ============ DOCK ============
 // Prototype-exact (docs/prototype.html .dock): pad5 r16 gap4 bg panel; each cell 42×42
-// holding a 30px icon (14% inset → 6px pad); sep 1×33 margin 0 3px bg chip; dot(on) 12×4
+// holding a 30px icon (6px pad); sep 1×34 margin 0 3px bg chip; dot(on) 12×4
 // r99 leaf, dot 4×4 dim, gap 3; media chip 30×30 r9 chip + 25×3 progress track.
 .dock {
   background-color: $panel;
   padding: 5px; border-radius: 16px;
   .dbtn { border-radius: 12px; }
-  // 30px icon + 6px padding → 42×42 cell (matches the prototype .di tile exactly).
-  // NB: GTK min-width is the CONTENT box, and a global token rule sets `.icon-tile`
-  // min-w/h to the icon token (~44) — override it to 30 here so 30 + 12 padding = 42.
   .icon-tile {
     min-width: 30px; min-height: 30px;
     padding: 6px; border-radius: 12px;
@@ -242,10 +239,7 @@ scale > trough > slider {
 // internal padding of 12px regardless of CSS). Account for it in the srow layout instead.
 // Icon is at crop_x=14..29, proto glyph at ~26..38; sparse speaker icon → minimal diff.
 // Gutter spacer widthRequest=17; bright trough_left=51, bright trough_right=51+249-1≈299 ≈ proto.
-.srow { padding: 0 2px 0 2px; min-height: 42px;
-  .sval { font-size: 11px; font-weight: 600; color: $mut; min-width: 32px; } }
-// Icon shift: margin-left=12 shifts icon right to match proto (x=26..41), margin-right=-12
-// keeps scale at same x (net layout contribution = 16px, unchanged). Trough stays at x=51.
+.srow { padding: 0 2px 0 2px; min-height: 42px; }
 .srow image { color: $mut; -gtk-icon-size: 16px;
               padding: 0; margin: 0 -12px 0 12px; }
 .srow .chev { padding: 6px 8px; color: $dim; border-radius: 9px;
