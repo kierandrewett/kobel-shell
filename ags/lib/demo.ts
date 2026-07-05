@@ -9,8 +9,8 @@ export const DEMO = !!GLib.getenv("KOBEL_DEMO")
 // Values transcribed from prototype.html's mock state (the reference screenshots).
 export const D = {
     // bar — match prototype.html mock state exactly
-    clock: "10:42",
-    date: "Fri 3 Jul",
+    clock: "04:21",
+    date: "Sat 5 Jul",
     title: "Terminal — window 1/2",
     batteryPct: "100%",
     // quick settings
