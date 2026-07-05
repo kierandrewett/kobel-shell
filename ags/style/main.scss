@@ -405,7 +405,7 @@ switch {
   }
   // events section = prototype .calev: a panel2 card (pad10/r12) holding the date
   // header + darker (--panel) event rows — NOT a bare panel2 row on the sheet.
-  .evcard { margin-top: 10px; background-color: $panel2; border-radius: 12px; padding: 10px; }
+  .evcard { margin-top: 12px; background-color: $panel2; border-radius: 12px; padding: 10px; }
   .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 8px; }
   .evempty { font-size: 11.5px; color: $mut; padding: 2px 3px 3px;
     image { color: $dim; -gtk-icon-size: 14px; } }
