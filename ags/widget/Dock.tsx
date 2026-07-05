@@ -153,7 +153,7 @@ function DockButton({ app }: { app: Apps.Application }) {
                 <image
                     class="icon-tile"
                     iconName={app.icon_name || "kobel-app-symbolic"}
-                    pixelSize={32}
+                    pixelSize={31}
                 />
                 {/* dots as OVERLAY — zero layout footprint */}
                 <Dots type="overlay" appId={appId} />
@@ -256,7 +256,7 @@ function DemoButton({ app }: { app: (typeof DEMO_APPS)[number] }) {
                 <image
                     class="icon-tile"
                     gicon={fileIcon(app.icon)}
-                    pixelSize={32}
+                    pixelSize={31}
                     halign={Gtk.Align.CENTER}
                     valign={Gtk.Align.CENTER}
                 />
@@ -330,7 +330,7 @@ export default function Dock(monitor: Gdk.Monitor) {
                         <DockButton app={app} />
                     ) : (
                         <button class="dbtn placeholder" tooltipText={id.split(".").pop()}>
-                            <image class="icon-tile" iconName="kobel-app-symbolic" pixelSize={32} />
+                            <image class="icon-tile" iconName="kobel-app-symbolic" pixelSize={31} />
                         </button>
                     )
                     return [...sep, btn]
