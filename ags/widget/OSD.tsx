@@ -22,7 +22,7 @@ export default function OSD(monitor: Gdk.Monitor) {
             namespace="kobel-osd"
             gdkmonitor={monitor}
             anchor={Astal.WindowAnchor.BOTTOM}
-            marginBottom={70}
+            marginBottom={72}
             clickThrough
             visible={bind(visible)}
         >

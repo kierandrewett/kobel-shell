@@ -407,8 +407,9 @@ switch {
   .evhead { color: $tx; font-size: 12.5px; font-weight: 650; padding: 1px 3px 8px; }
   .evrow { background-color: $panel; border-radius: 10px; padding: 8px 10px;
     margin-bottom: 4px; &:last-child { margin-bottom: 0; }   // CDP .evrow (inset on panel)
-    .evic { background-color: #628933; border-radius: 8px; padding: 5px;   // CDP oklch(58% .12 130)
-      image { color: #fff; -gtk-icon-size: 15px; } }   // 5+15+5 = 25 ≈ proto 26
+    .evic { background-color: #628933; border-radius: 8px; padding: 6px;   // CDP oklch(58% .12 130) 26×26
+      min-width: 26px; min-height: 26px;
+      image { color: #fff; -gtk-icon-size: 14px; } }   // 6+14+6=26 exact
     label { font-size: 12px; font-weight: 650; }   // .evt b
     .sub { color: $mut; font-size: 10.5px; font-weight: 400; } }
 }
@@ -484,9 +485,9 @@ switch {
 // rail 6×230px chip-bg/tx-fill (continuous levelbar), sval 11px/600/32px.
 .osd { background-color: rgba(16,13,20,0.82); border-radius: 999px; padding: 10px 15px;
   image { color: $tx; -gtk-icon-size: 15px; }
-  // Continuous levelbar styled as a thin pill track (prototype .rail/.fill)
-  levelbar > trough { min-height: 6px; border-radius: 99px; background-color: $chip; }
-  levelbar > trough > block { min-height: 6px; border-radius: 99px; }
+  // OSD track is 8px tall (prototype .osd .rail { height: 8px }), wider than QS sliders (6px)
+  levelbar > trough { min-height: 8px; border-radius: 99px; background-color: $chip; }
+  levelbar > trough > block { min-height: 8px; border-radius: 99px; }
   levelbar > trough > block.filled { background-color: $leaf; }
   levelbar > trough > block.empty { background-color: transparent; }
   .sval { min-width: 32px; color: $mut; font-size: 11px; font-weight: 600; }
