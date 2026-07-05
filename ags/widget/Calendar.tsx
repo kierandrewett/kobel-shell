@@ -53,19 +53,25 @@ function Grid() {
                 const prevDays = new Date(v.y, v.m, 0).getDate()
                 const rows = []
                 rows.push(
-                    <box homogeneous>
-                        {["", "M", "T", "W", "T", "F", "S", "S"].map((d) => (
-                            <label class="dow" label={d} />
-                        ))}
+                    <box>
+                        <label widthRequest={28} label="" />
+                        <box homogeneous hexpand>
+                            {["M", "T", "W", "T", "F", "S", "S"].map((d) => (
+                                <label class="dow" label={d} />
+                            ))}
+                        </box>
                     </box>
                 )
                 for (let r = 0; r < 6; r++) {
-                    const cells = [
+                    const wkLabel = (
                         <label
                             class="wk tn"
+                            widthRequest={28}
+                            halign={Gtk.Align.CENTER}
                             label={`${isoWeek(new Date(v.y, v.m, r * 7 - start + 1))}`}
-                        />,
-                    ]
+                        />
+                    )
+                    const dayCells = []
                     for (let c = 0; c < 7; c++) {
                         const i = r * 7 + c,
                             d = i - start + 1
@@ -91,9 +97,8 @@ function Grid() {
                                 cls.push("sel")
                         }
                         const hasEv = !out && !!EVENTS[key(v.y, v.m, d)]
-                        // day sits at its natural 24×24 centred in the grid column (not filling it),
-                        // so today's leaf fill is a tight circle rather than a column-wide oval
-                        cells.push(
+                        // day sits at its natural 24×24 centred in the grid column
+                        dayCells.push(
                             out ? (
                                 <label
                                     class={cls.join(" ")}
@@ -125,7 +130,15 @@ function Grid() {
                             )
                         )
                     }
-                    rows.push(<box homogeneous>{cells}</box>)
+                    // wk col fixed 28px, day cells share remaining space equally (homogeneous)
+                    rows.push(
+                        <box>
+                            {wkLabel}
+                            <box homogeneous hexpand>
+                                {dayCells}
+                            </box>
+                        </box>
+                    )
                 }
                 return rows
             })}
