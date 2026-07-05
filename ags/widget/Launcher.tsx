@@ -11,6 +11,7 @@ import { Variable, bind, execAsync, GLib } from "astal"
 import { makeReveal, register, toggle as surfaceToggle } from "../lib/surface"
 import Apps from "gi://AstalApps"
 import Mpris from "gi://AstalMpris"
+import Gio from "gi://Gio"
 import { fuzzy, hl, boost, bump, frequency } from "../lib/fuzzy"
 import { EVENTS } from "./Calendar"
 import { DEMO, D } from "../lib/demo"
@@ -28,17 +29,42 @@ const PINNED = [
 // Demo grid: fixed order + labels transcribed from the prototype (D.apps), each mapped
 // to the real .desktop id so its themed icon renders (Ptyxis/Nautilus/…).
 const DEMO_TILES = [
-    { name: "Terminal", id: "org.gnome.Ptyxis" },
-    { name: "Files", id: "org.gnome.Nautilus" },
-    { name: "Firefox", id: "firefox" },
-    { name: "Zed", id: "dev.zed.Zed" },
-    { name: "Spotify", id: "com.spotify.Client" },
-    { name: "Settings", id: "org.gnome.Settings" },
+    {
+        name: "Terminal",
+        id: "org.gnome.Ptyxis",
+        icon: "/usr/share/icons/hicolor/scalable/apps/org.gnome.Ptyxis.svg",
+    },
+    {
+        name: "Files",
+        id: "org.gnome.Nautilus",
+        icon: "/usr/share/icons/hicolor/scalable/apps/org.gnome.Nautilus.svg",
+    },
+    {
+        name: "Firefox",
+        id: "firefox",
+        icon: "/usr/share/icons/hicolor/256x256/apps/firefox.png",
+    },
+    {
+        name: "Zed",
+        id: "dev.zed.Zed",
+        icon: "/home/kieran/.local/zed.app/share/icons/hicolor/512x512/apps/zed.png",
+    },
+    {
+        name: "Spotify",
+        id: "com.spotify.Client",
+        icon: "/var/lib/flatpak/exports/share/icons/hicolor/scalable/apps/com.spotify.Client.svg",
+    },
+    {
+        name: "Settings",
+        id: "org.gnome.Settings",
+        icon: "/usr/share/icons/hicolor/scalable/apps/org.gnome.Settings.svg",
+    },
 ]
 
 interface Tile {
     name: string
     iconName: string
+    gicon?: Gio.Icon
     launch: () => void
 }
 function gridTiles(apps: Apps.Apps): Tile[] {
@@ -55,11 +81,13 @@ function gridTiles(apps: Apps.Apps): Tile[] {
         },
     })
     if (DEMO)
-        return DEMO_TILES.map(({ name, id }) => {
+        return DEMO_TILES.map(({ name, id, icon }) => {
             const app = resolve(id)
+            const file = Gio.File.new_for_path(icon)
             return {
                 name,
                 iconName: app?.icon_name || id || "kobel-app-symbolic",
+                gicon: file.query_exists(null) ? Gio.FileIcon.new(file) : undefined,
                 launch: () => {
                     bump(name)
                     app?.launch()
@@ -413,7 +441,9 @@ export default function Launcher() {
                                         >
                                             <image
                                                 class="icon-tile"
-                                                iconName={t.iconName}
+                                                {...(t.gicon
+                                                    ? { gicon: t.gicon }
+                                                    : { iconName: t.iconName })}
                                                 pixelSize={30}
                                                 halign={Gtk.Align.CENTER}
                                                 valign={Gtk.Align.CENTER}
