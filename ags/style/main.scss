@@ -497,7 +497,7 @@ switch {
   levelbar > trough > block { min-height: 8px; border-radius: 99px; }
   levelbar > trough > block.filled { background-color: $leaf; }
   levelbar > trough > block.empty { background-color: transparent; }
-  .sval { min-width: 34px; color: $mut; font-size: 11px; font-weight: 600; }   // CDP .osd .sval width:34px
+  .sval { min-width: 34px; font-size: 11px; font-weight: 600; }   // CDP .osd .sval width:34px; inherits $tx
 }
 
 // ============ SESSION ============
