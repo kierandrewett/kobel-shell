@@ -165,7 +165,7 @@ function DockButton({ app }: { app: Apps.Application }) {
 function MediaWidget() {
     const mpris = Mpris.get_default()
     const progress = DEMO
-        ? 0.42
+        ? 161 / 480
         : bind(mpris, "players").as((ps) => {
               const p = ps.find((q) => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
               if (!p || !p.length || p.length <= 0) return 0
