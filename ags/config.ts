@@ -23,9 +23,9 @@ export const floating: Tokens = {
     icon: 44,
     dockPad: 5,
     tileH: 54,
-    panelW: 365,  // 28.5cqw at 1280px = 364.8 ≈ 365
-    launcherW: 584,  // 46cqw at 1280px = 588.8 → clamped to 584 max
-    calendarW: 336,  // 27cqw at 1280px = 345.6 → clamped to 336 max
+    panelW: 365, // 28.5cqw at 1280px = 364.8 ≈ 365
+    launcherW: 584, // 46cqw at 1280px = 588.8 → clamped to 584 max
+    calendarW: 336, // 27cqw at 1280px = 345.6 → clamped to 336 max
 }
 
 // gapless = a token preset, exactly like the prototype's .gapless class
@@ -52,10 +52,10 @@ export function tokenCss(t: Tokens = tokens): string {
   .dock { padding: ${t.dockPad}px; border-radius: ${12 + t.dockPad - 1}px;
           margin-bottom: ${t.gap}px; }
   .icon-tile { min-width: ${t.icon}px; min-height: ${t.icon}px; }
-  .qs, .drawer, .calendar { margin-top: ${panelTop()}px; }
+  .qs, .drawer, .calendar, .cal { margin-top: ${panelTop()}px; }
   .qs { min-width: ${t.panelW - 24}px; }  /* panelW is outer; subtract .sheet padding 12px×2 */
   .launcher { min-width: ${t.launcherW}px; }
-  .calendar { min-width: ${t.calendarW}px; }
+  .calendar, .cal { min-width: ${t.calendarW - 24}px; }  /* calendarW is outer; subtract .sheet padding 12×2 */
   .chip { min-height: ${t.tileH}px; }
   `
 }
