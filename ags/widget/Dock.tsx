@@ -172,7 +172,7 @@ function MediaWidget() {
               return p.position / p.length
           })
     const icon = DEMO
-        ? "kobel-pause-symbolic"
+        ? "kobel-music-symbolic"
         : bind(mpris, "players").as((ps) => {
               const p = ps.find((q) => q.playback_status === Mpris.PlaybackStatus.PLAYING) ?? ps[0]
               if (!p) return "kobel-music-symbolic"
@@ -187,7 +187,7 @@ function MediaWidget() {
                     <image
                         class="dg"
                         iconName={icon}
-                        pixelSize={20}
+                        pixelSize={18}
                         halign={Gtk.Align.CENTER}
                         valign={Gtk.Align.CENTER}
                         hexpand
