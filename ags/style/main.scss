@@ -372,8 +372,8 @@ switch {
   // .calmon COMPUTED = 13px/650 pad 4 (a .calmon rule beats .calhead b 12.5 — source-grep missed it)
   .month { border-radius: 8px; padding: 5px; font-weight: 650; font-size: 13px;
            &:hover { background-color: $panel2; } }
-  centerbox > button { padding: 6px; border-radius: 9px; color: $mut;   // 14px icon + 12 → 26×26 = proto calhead
-    image { -gtk-icon-size: 14px; }
+  centerbox > button { padding: 6px; border-radius: 9px; color: $mut;
+    image { -gtk-icon-size: 14px; min-width: 14px; min-height: 14px; }
     &:hover { background-color: $panel2; color: $tx; } }
   .dow { color: $dim; font-size: 9.5px; font-weight: 600; padding: 3px 0 5px; }   // CDP .dow
   .wk  { color: $dim; font-size: 9px; font-weight: 600; }

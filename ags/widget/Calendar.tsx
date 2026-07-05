@@ -239,6 +239,7 @@ export default function Calendar() {
                     </box>
                     <centerbox>
                         <button
+                            widthRequest={26}
                             onClicked={() => {
                                 const v = view.get()
                                 view.set(v.m ? { y: v.y, m: v.m - 1 } : { y: v.y - 1, m: 11 })
@@ -259,6 +260,7 @@ export default function Calendar() {
                             />
                         </button>
                         <button
+                            widthRequest={26}
                             onClicked={() => {
                                 const v = view.get()
                                 view.set(v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 })
