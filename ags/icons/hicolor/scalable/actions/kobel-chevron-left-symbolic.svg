@@ -1,16 +1,3 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg
-   width="24"
-   height="24"
-   viewBox="0 0 24 24"
-   version="1.1"
-   id="svg1"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <defs
-     id="defs1" />
-  <path
-     style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:currentColor;stroke-linecap:round;stroke-linejoin:round;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
-     d="m 15.75,3.75 a 0.75,0.75 0 0 0 -0.53125,0.21875 l -7.5,7.5 a 0.750075,0.750075 0 0 0 0,1.0625 l 7.5,7.5 a 0.75,0.75 0 0 0 1.0625,0 0.75,0.75 0 0 0 0,-1.0625 L 9.3125,12 16.28125,5.03125 a 0.75,0.75 0 0 0 0,-1.0625 A 0.75,0.75 0 0 0 15.75,3.75 Z"
-     id="path1" />
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+  <path fill-rule="evenodd" d="M7.72 12.53a.75.75 0 0 1 0-1.06l7.5-7.5a.75.75 0 1 1 1.06 1.06L9.31 12l6.97 6.97a.75.75 0 1 1-1.06 1.06l-7.5-7.5Z" clip-rule="evenodd" />
 </svg>

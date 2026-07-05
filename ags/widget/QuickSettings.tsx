@@ -44,7 +44,7 @@ function Chip(props: {
                 <box spacing={9}>
                     <image iconName={props.icon} />
                     <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER}>
-                        <label halign={Gtk.Align.START} label={props.label} />
+                        <label halign={Gtk.Align.START} ellipsize={3} label={props.label} />
                         {props.sub && (
                             <label
                                 class="sub"
@@ -166,37 +166,42 @@ function GnoblinBanner() {
 // ── real-backend toggles ──────────────────────────────────────────────────────
 // Dark Style: org.gnome.desktop.interface color-scheme
 const ifaceSettings = new Gio.Settings({ schema: "org.gnome.desktop.interface" })
-const tDark = Variable(ifaceSettings.get_string("color-scheme") === "prefer-dark")
-ifaceSettings.connect("changed::color-scheme", () =>
-    tDark.set(ifaceSettings.get_string("color-scheme") === "prefer-dark")
-)
+const tDark = Variable(DEMO ? D.dark : ifaceSettings.get_string("color-scheme") === "prefer-dark")
+if (!DEMO)
+    ifaceSettings.connect("changed::color-scheme", () =>
+        tDark.set(ifaceSettings.get_string("color-scheme") === "prefer-dark")
+    )
 
 // Night Light: org.gnome.settings-daemon.plugins.color
 let colorSettings: Gio.Settings | null = null
-const tNight = Variable(false)
-try {
-    colorSettings = new Gio.Settings({ schema: "org.gnome.settings-daemon.plugins.color" })
-    tNight.set(colorSettings.get_boolean("night-light-enabled"))
-    colorSettings.connect("changed::night-light-enabled", () =>
-        tNight.set(colorSettings!.get_boolean("night-light-enabled"))
-    )
-} catch {
-    /* schema absent on some systems */
-}
+const tNight = Variable(DEMO ? D.night : false)
+if (!DEMO)
+    try {
+        colorSettings = new Gio.Settings({ schema: "org.gnome.settings-daemon.plugins.color" })
+        tNight.set(colorSettings.get_boolean("night-light-enabled"))
+        colorSettings.connect("changed::night-light-enabled", () =>
+            tNight.set(colorSettings!.get_boolean("night-light-enabled"))
+        )
+    } catch {
+        /* schema absent on some systems */
+    }
 
 // Silent: mute on the default WirePlumber speaker
 const _speaker = Wp.get_default()?.default_speaker ?? null
-const tSilent = _speaker
-    ? (bind(_speaker, "mute") as unknown as Variable<boolean>)
-    : Variable(false)
+const tSilent = DEMO
+    ? Variable(D.silent)
+    : _speaker
+      ? (bind(_speaker, "mute") as unknown as Variable<boolean>)
+      : Variable(false)
 
 // Power Saver: powerprofilesctl (falls back to false if unavailable)
-const tSave = Variable(false)
-execAsync("powerprofilesctl get")
-    .then((v) => tSave.set(v.trim() === "power-saver"))
-    .catch(() => {
-        /* powerprofilesctl absent */
-    })
+const tSave = Variable(DEMO ? D.save : false)
+if (!DEMO)
+    execAsync("powerprofilesctl get")
+        .then((v) => tSave.set(v.trim() === "power-saver"))
+        .catch(() => {
+            /* powerprofilesctl absent */
+        })
 
 // edit-mode for the tile catalog (pencil button) — hook for tile rearrange/customise.
 const editMode = Variable(false)
