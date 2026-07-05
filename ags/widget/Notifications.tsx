@@ -286,6 +286,7 @@ export function Drawer() {
                 namespace="kobel-drawer"
                 class="drawer-window"
                 visible={bind(winVisible)}
+                marginRight={12}
                 anchor={
                     Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM
                 }
@@ -334,6 +335,7 @@ export function Drawer() {
             namespace="kobel-drawer"
             class="drawer-window"
             visible={bind(winVisible)}
+            marginRight={12}
             anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
             keymode={Astal.Keymode.ON_DEMAND}
             onKeyPressed={(_self, key) => (key === Gdk.KEY_Escape ? (close(), true) : false)}
