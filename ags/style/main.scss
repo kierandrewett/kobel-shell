@@ -379,7 +379,7 @@ switch {
   centerbox > button { padding: 6px; border-radius: 9px; color: $mut;   // 14px icon + 12 → 26×26 = proto calhead
     image { -gtk-icon-size: 14px; }
     &:hover { background-color: $panel2; color: $tx; } }
-  .dow { color: $dim; font-size: 9.5px; font-weight: 600; padding: 3px 0 6px; }
+  .dow { color: $dim; font-size: 9.5px; font-weight: 600; padding: 3px 0 5px; }   // CDP .dow
   .wk  { color: $dim; font-size: 9px; font-weight: 600; }
 
   // days: plain numbers, NO button chrome — 24×24, size 11, weight 400
