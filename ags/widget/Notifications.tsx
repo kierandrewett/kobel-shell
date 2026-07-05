@@ -26,6 +26,13 @@ const drawerOpen = Variable(false)
 // NCARD_W = 341 → ncard outer = 341 + 24px CSS padding = 365px = prototype --pw at 1280px.
 const NCARD_W = 341
 
+// Prototype ICBG map: icon-type → nic background color (oklch hues from docs/prototype.html)
+const NIC_BG: Record<string, string> = {
+    "kobel-leaf-symbolic": "#628933", // oklch(58% .12 130) green = gnoblin
+    "kobel-chat-symbolic": "#7c3f8c", // oklch(56% .13 300) purple = messages
+    "kobel-download-symbolic": "#3d6fa6", // oklch(58% .1 250) blue = downloads
+}
+
 interface CardData {
     icon: string
     summary: string
@@ -50,8 +57,12 @@ function toCardData(n: Notifd.Notification): CardData {
 function Card({ n }: { n: CardData }) {
     return (
         <box class="ncard" spacing={10} widthRequest={NCARD_W}>
-            {/* app icon in a 30×30 r9 tile (prototype .nic) */}
-            <box class="nic" valign={Gtk.Align.START}>
+            {/* app icon in a 30×30 r9 tile (prototype .nic); color-coded per icon type */}
+            <box
+                class="nic"
+                valign={Gtk.Align.START}
+                css={NIC_BG[n.icon] ? `background-color: ${NIC_BG[n.icon]};` : ""}
+            >
                 <image iconName={n.icon} pixelSize={20} />
             </box>
             <box orientation={Gtk.Orientation.VERTICAL} hexpand>
