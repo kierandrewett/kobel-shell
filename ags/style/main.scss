@@ -118,8 +118,8 @@ image { -gtk-icon-style: regular; }
          transition: min-width 260ms $ovr, background-color 220ms; }
   .dot.on { background-color: $leaf; min-width: 12px; }
   .dot.mini { min-width: 3px; min-height: 3px; opacity: .7; }
-  // separator: 1×33 centred bar with 3px side margins (adds to the 4px flex gap → 7px)
-  .sep { background-color: $chip; min-width: 1px; min-height: 33px; margin: 0 3px; }
+  // separator: 1×34 centred bar (icon*0.78=44*0.78≈34px) with 3px side margins
+  .sep { background-color: $chip; min-width: 1px; min-height: 34px; margin: 0 3px; }
   // media widget: 42 cell holding a 30×30 rounded chip + a thin progress track
   .dtile { min-width: 42px; min-height: 42px; }
   .dwidget .dg {
@@ -482,7 +482,7 @@ switch {
 .nempty {
   background-color: $panel; border-radius: 20px; padding: 20px 0 16px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.3);
-  image { color: $dim; -gtk-icon-size: 22px; margin-bottom: 4px; }
+  image { color: $mut; -gtk-icon-size: 22px; margin-bottom: 4px; }   // CDP .nempty i {color: mut}
   label { color: $mut; font-size: 12.5px; font-weight: 400; }
 }
 
