@@ -195,7 +195,7 @@ image { -gtk-icon-style: regular; }
     background-color: $leaf;
     image { color: $ink; }
     label { color: $ink; }
-    .sub { color: rgba(25,32,3,0.7); }
+    .sub { color: #333d17; }   // CDP .chipb.on .cl span: oklch(34% .06 122)
     &:hover { background-color: $leaf2; }
     .chev { color: $ink; }
   }
@@ -521,7 +521,7 @@ switch {
 // ============ context menu / tooltip ============
 // GTK Popover uses CSS node `popover` (not `box`) — target with element selector
 popover.cmenu {
-  background-color: $panel; border-radius: 12px; padding: 5px;
+  background-color: $panel; border-radius: 12px; padding: 5px; min-width: 180px;
   box-shadow: 0 15px 34px rgba(8,5,16,0.45), 0 2px 8px rgba(0,0,0,0.35);   // CDP --shadow
   // strip Adwaita popover border/arrow defaults
   border: none;
