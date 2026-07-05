@@ -449,6 +449,7 @@ switch {
   .mart { background-color: $chip; border-radius: 10px; min-width: 46px; min-height: 46px;
     image { color: $mut; -gtk-icon-size: 22px; } }
   .mmeta label { font-size: 13px; }   // CDP .mmeta b { font-size: 13px } — beats .ncard label
+  .mmeta .sub { font-size: 11.5px; color: $mut; font-weight: 400; }   // CDP .mmeta span 11.5/mut
   .mbtns { }
   // .mbtn: 29×29 r8, chip bg on hover, 14px icon
   .mbtn { min-width: 29px; min-height: 29px; border-radius: 8px; color: $mut;
