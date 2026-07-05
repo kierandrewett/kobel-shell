@@ -273,11 +273,12 @@ scale > trough > slider {
     &:hover { background-color: $panel2; color: $tx; } }
   label { font-weight: 650; font-size: 14px; }
 }
-// GTK4 switch → leaf accent when on (Adwaita default is blue). Node tree: switch > slider.
+// GTK4 switch: node tree switch > slider. OFF: chip bg + mut thumb. ON: leaf bg + ink thumb.
 switch {
   background-color: $chip; border-radius: 999px; min-width: 46px; min-height: 26px;   // CDP .sw 46×26
-  &:checked { background-color: $leaf; }
-  slider { background-color: $tx; border-radius: 999px; min-width: 20px; min-height: 20px; }
+  slider { background-color: $mut; border-radius: 999px; min-width: 20px; min-height: 20px; }
+  &:checked { background-color: $leaf;
+    slider { background-color: $ink; } }
 }
 
 // drilldown AP/device rows — CDP: xrow pad 9/11 r9 gap 10 bg panel2; xs meta; active=leaf tint
