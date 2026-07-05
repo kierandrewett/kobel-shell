@@ -24,7 +24,7 @@ export const D = {
     silent: false,
     night: false,
     // calendar — pinned to prototype date (Friday 3 July 2026)
-    today: { y: 2026, m: 6 /* July, 0-indexed */, d: 3 }, // Friday 3 July 2026
+    today: { y: 2026, m: 6 /* July, 0-indexed */, d: 5 }, // Sunday 5 July 2026
     // launcher pinned tiles + today widget
     apps: ["Terminal", "Files", "Firefox", "Zed", "Spotify", "Settings"],
     widgetDate: "Friday 3 July",
