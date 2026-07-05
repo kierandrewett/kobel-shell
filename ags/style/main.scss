@@ -349,6 +349,7 @@ switch {
     image { -gtk-icon-size: 14px; }
     &:hover { background-color: $chip; } }
 }
+.lrows { padding: 4px 2px; }   // CDP .lrows pad 4/2/4; gap=2 handled by spacing={2} in TSX
 .sec { color: $dim; font-size: 10px; font-weight: 650; padding: 8px 10px 2px; }  // CDP
 .row {
   border-radius: 10px; padding: 7px 10px;   // CDP: crow pad 7/10 r10 gap11
