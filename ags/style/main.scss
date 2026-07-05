@@ -318,7 +318,7 @@ switch {
 }
 .tiles { padding: 8px 2px 10px; }   // CDP: lapps pad 8/2/10, gap 6
 .tile {
-  padding: 5px 0; border-radius: 10px; min-width: 64px;   // proto tile = icon(44)+20; max-width unsupported in GTK
+  padding: 5px 0 6px; border-radius: 10px; min-width: 64px;   // proto tile = icon(44)+20; max-width unsupported in GTK
   // 42×42 icon box (r12): 30px icon (pixelSize) + 6px padding = 42, proto .di.
   // min-width:0 (0,2,0) escapes config.ts's global `.icon-tile{min-width:44}` floor.
   .icon-tile { min-width: 0; min-height: 0; padding: 6px; border-radius: 12px;
