@@ -54,7 +54,7 @@ function Grid() {
                 const rows = []
                 rows.push(
                     <box>
-                        <label widthRequest={28} label="" />
+                        <label widthRequest={22} label="" />
                         <box homogeneous hexpand>
                             {["M", "T", "W", "T", "F", "S", "S"].map((d) => (
                                 <label class="dow" label={d} />
@@ -66,7 +66,7 @@ function Grid() {
                     const wkLabel = (
                         <label
                             class="wk tn"
-                            widthRequest={28}
+                            widthRequest={22}
                             halign={Gtk.Align.CENTER}
                             label={`${isoWeek(new Date(v.y, v.m, r * 7 - start + 1))}`}
                         />
