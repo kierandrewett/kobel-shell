@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Inner session body — runs INSIDE dbus-run-session. Env comes from the parent.
 set -u
+export GNOME_SHELL_DISABLE_EXTENSIONS=1
 "$PREFIX/bin/gnome-shell" --headless --wayland --no-x11 --mode=gnoblin \
   --virtual-monitor 1280x800 --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
 SP=$!
