@@ -9,13 +9,12 @@ import { App } from "astal/gtk4"
 import { Variable, timeout } from "astal"
 import GLib from "gi://GLib"
 import Gtk from "gi://Gtk?version=4.0"
-import { MOTION, spring, springTo, type SpringSpec } from "./spring"
+import { MOTION, spring, springJump, springTo, type SpringSpec } from "./spring"
 
 export type TransitionType = Gtk.RevealerTransitionType
 
 const registry: Record<string, () => void> = {}
 const PROFILE_ANIM = GLib.getenv("KOBEL_PROFILE_ANIM") === "1"
-
 
 export function register(name: string, fn: () => void) {
     registry[name] = fn
@@ -42,6 +41,7 @@ export function makeReveal(openMs = 220, closeMs = 150, profileName = "surface")
     const progress = Variable(0)
     let revealerWidget: Gtk.Revealer | null = null
     let progressAnim: ReturnType<typeof spring> | null = null
+    let suppressProgressTrace = false
     let surfaceWidget: Gtk.Widget | null = null
     let closeTimer: ReturnType<typeof timeout> | null = null
     let surfaceInputEnabled: boolean | null = null
@@ -138,11 +138,11 @@ export function makeReveal(openMs = 220, closeMs = 150, profileName = "surface")
         emitProfile("revealer_input", [`enabled=${enabled ? 1 : 0}`])
     }
 
-    const setProgress = (value: number) => {
+    const setProgress = (value: number, trace = true) => {
         const clamped = Math.max(0, Math.min(1, value))
         progress.set(clamped)
         setSurfaceInput(revealed.get() && clamped > 0.001)
-        if (progressAnim) recordTrace(revealed.get() ? 1 : 0, clamped)
+        if (trace && !suppressProgressTrace && progressAnim) recordTrace(revealed.get() ? 1 : 0, clamped)
     }
 
     const setRevealer = (r: Gtk.Revealer) => {
@@ -173,6 +173,7 @@ export function makeReveal(openMs = 220, closeMs = 150, profileName = "surface")
         }
         openCount += 1
         const warmOpen = openCount > 1 ? 1 : 0
+        const isFirstOpen = openCount === 1
         beginTrace("open_start", [`warm=${warmOpen}`], "open", warmOpen)
         if (revealerWidget) revealerWidget.transitionDuration = openMs
         setRevealerInput(true)
@@ -181,6 +182,19 @@ export function makeReveal(openMs = 220, closeMs = 150, profileName = "surface")
         timeout(16, () => {
             emitProfile("open_delay")
             revealed.set(true)
+            // First mapped opens can starve the spring callback while GTK settles the
+            // layer surface; snap once, then keep warm opens animated.
+            if (isFirstOpen && progressAnim) {
+                emitProfile("cold_snap", ["target=1"])
+                try {
+                    suppressProgressTrace = true
+                    springJump(progressAnim, 1)
+                } finally {
+                    suppressProgressTrace = false
+                }
+                setProgress(1, false)
+                return
+            }
             animateProgress(1, MOTION.panelOpacity)
         })
     }

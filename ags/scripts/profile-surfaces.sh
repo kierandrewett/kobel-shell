@@ -47,6 +47,13 @@ text = log_path.read_text(errors="replace") if log_path.exists() else ""
 lines = text.splitlines()
 pixman_bug = "yes" if "*** BUG ***" in text else "no"
 motion_lines = [line for line in lines if line.startswith("KOBEL_MOTION ")]
+snap_lines = [
+    line
+    for line in lines
+    if line.startswith("KOBEL_TRACE ")
+    and f"surface={surface}" in line
+    and "event=cold_snap" in line
+]
 
 close_blocks = []
 current = None
@@ -77,11 +84,25 @@ if close_blocks:
             input_closed = "no"
             break
 
-if not motion_lines:
+if not motion_lines and not snap_lines:
     row = f"{surface:<14} {'none':<6} {'-':<4} {'-':>8} {'-':>7} {'-':>9}"
     row += f" {'-':>10} {input_closed:>12} {pixman_bug:>10}"
     print(row)
     raise SystemExit
+
+for line in snap_lines:
+    fields = dict(part.split("=", 1) for part in line.split()[1:] if "=" in part)
+    print(
+        f"{surface:<14} "
+        f"{'snap':<6} "
+        f"{'0':<4} "
+        f"{fields.get('elapsed_ms', '-'):>8} "
+        f"{'-':>7} "
+        f"{'-':>9} "
+        f"{'-':>10} "
+        f"{input_closed:>12} "
+        f"{pixman_bug:>10}"
+    )
 
 for line in motion_lines:
     fields = dict(part.split("=", 1) for part in line.split()[1:] if "=" in part)

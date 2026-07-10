@@ -3,7 +3,7 @@
 //   k (stiffness), d (damping) -> Adw.SpringParams.new_full(damping, mass, stiffness)
 //   set(t)  -> value_to = t; play()
 //   kick(v) -> initial_velocity += v
-//   jump(t) -> skip animation (honors gtk-enable-animations for reduced motion)
+//   jump(t) -> reset the stored position without measuring a frame
 
 import Adw from "gi://Adw?version=1"
 import Gtk from "gi://Gtk?version=4.0"
@@ -55,6 +55,14 @@ export function springTo(anim: Adw.SpringAnimation, to: number, spec?: SpringSpe
     anim.initial_velocity = anim.velocity
     anim.value_to = to
     anim.play()
+}
+
+export function springJump(anim: Adw.SpringAnimation, to: number) {
+    anim.value_from = anim.value
+    anim.initial_velocity = 0
+    anim.value_to = to
+    anim.play()
+    anim.skip()
 }
 
 export function kick(anim: Adw.SpringAnimation, velocity: number) {
