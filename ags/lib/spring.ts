@@ -16,6 +16,7 @@ export interface SpringSpec {
 // The motion table — every surface uses one of these. Do not invent new ones casually.
 export const MOTION = {
     panelOpen: { k: 420, d: 26 }, // slight overshoot
+    panelOpacity: { k: 360, d: 32 },
     panelClose: { k: 640, d: 48 }, // fast, no bounce
     drill: { k: 400, d: 27 },
     drillBack: { k: 440, d: 29 },

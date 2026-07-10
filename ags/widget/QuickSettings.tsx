@@ -21,6 +21,9 @@ type Drill = null | "wifi" | "bt" | "mix"
 const drill = Variable<Drill>((GLib.getenv("KOBEL_DRILL") as Drill) || null)
 
 
+const chipClass = (active: boolean, right?: boolean) =>
+    ["chip", "pill", active ? "on" : "", right ? "right" : ""].filter(Boolean).join(" ")
+
 function Chip(props: {
     id: string
     label: string
@@ -29,9 +32,10 @@ function Chip(props: {
     sub?: string | Binding<string>
     onToggled: () => void
     onDrill?: () => void
+    right?: boolean
 }) {
     return (
-        <box class={props.active.as((a) => (a ? "chip pill on" : "chip pill"))}>
+        <box class={props.active.as((a) => chipClass(a, props.right))}>
             <button class="chipb" hexpand={true} onClicked={props.onToggled}>
                 <box spacing={9}>
                     <image iconName={props.icon} />
@@ -190,6 +194,7 @@ function ToggleChip(props: {
     icon: string
     v: Variable<boolean>
     onToggled?: () => void
+    right?: boolean
 }) {
     return (
         <Chip
@@ -198,6 +203,7 @@ function ToggleChip(props: {
             icon={props.icon}
             active={bind(props.v)}
             onToggled={props.onToggled ?? (() => props.v.set(!props.v.get()))}
+            right={props.right}
         />
     )
 }
@@ -277,6 +283,7 @@ function Root({ name }: { name?: string }) {
                             if (!DEMO) bt.toggle()
                         }}
                         onDrill={() => drill.set("bt")}
+                        right
                     />
                 </box>
                 <box class="chips" homogeneous spacing={8}>
@@ -302,6 +309,7 @@ function Root({ name }: { name?: string }) {
                                 next ? "prefer-dark" : "default"
                             )
                         }}
+                        right
                     />
                 </box>
                 <box class="chips" homogeneous spacing={8}>
@@ -321,6 +329,7 @@ function Root({ name }: { name?: string }) {
                             if (colorSettings)
                                 colorSettings.set_boolean("night-light-enabled", !tNight.get())
                         }}
+                        right
                     />
                 </box>
             </box>
@@ -511,7 +520,7 @@ function DrillView({ name }: { name?: string }) {
 }
 
 export default function QuickSettings() {
-    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(180, 130)
+    const { winVisible, progress, setSurface, close, toggle: toggleFn } = makeReveal(180, 130)
     register("quicksettings", toggleFn)
     return (
         <window
@@ -532,12 +541,7 @@ export default function QuickSettings() {
                 return true
             }}
         >
-            <revealer
-                transitionType={Gtk.RevealerTransitionType.CROSSFADE}
-                transitionDuration={180}
-                revealChild={bind(revealed)}
-                setup={(r: Gtk.Revealer) => setRevealer(r)}
-            >
+            <box opacity={bind(progress)} setup={(box: Gtk.Box) => setSurface(box)}>
                 <box class="sheet qs">
                     {/* Gtk.Stack with slide-left/right = the multiview drilldown. */}
                     <stack
@@ -549,7 +553,7 @@ export default function QuickSettings() {
                         <DrillView name="drill" />
                     </stack>
                 </box>
-            </revealer>
+            </box>
         </window>
     )
 }

@@ -295,8 +295,8 @@ export default function Launcher() {
 
     const {
         winVisible,
-        revealed: launchRevealed,
-        setRevealer: setLaunchRevealer,
+        progress: launchProgress,
+        setSurface: setLaunchSurface,
         close: launchClose,
         toggle: toggleFn,
     } = makeReveal(180, 130)
@@ -364,19 +364,14 @@ export default function Launcher() {
                 return false
             }}
         >
-            <revealer
-                transitionType={Gtk.RevealerTransitionType.CROSSFADE}
-                transitionDuration={180}
-                revealChild={bind(launchRevealed)}
-                setup={(r: Gtk.Revealer) => setLaunchRevealer(r)}
-            >
+            <box opacity={bind(launchProgress)} setup={(box: Gtk.Box) => setLaunchSurface(box)}>
                 <box class="sheet launcher" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
                     <box class="field" spacing={11}>
                         <image iconName="kobel-magnifying-glass-symbolic" />
                         <overlay hexpand>
                             <entry
                                 hexpand
-                                setup={(self: any) => {
+                                setup={(self: Gtk.Entry) => {
                                     self.set_max_width_chars(1)
                                     self.set_width_chars(1)
                                 }}
@@ -630,7 +625,7 @@ export default function Launcher() {
                         <label label="↑↓ select · ↵ run" halign={Gtk.Align.END} />
                     </box>
                 </box>
-            </revealer>
+            </box>
         </window>
     )
 }

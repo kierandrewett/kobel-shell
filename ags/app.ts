@@ -43,6 +43,8 @@ const ICON_DIR =
     GLibIcons.getenv("KOBEL_ICONS") ??
     GLibIcons.build_filenamev([GLibIcons.get_current_dir(), "icons"])
 
+const shellCss = () => (style + tokenCss(tokens)).replace(/^@charset "UTF-8";\n?/, "")
+
 App.start({
     instanceName: "kobel",
     icons: ICON_DIR,
@@ -54,7 +56,7 @@ App.start({
         // `scale > trough` (fat sliders). This provider is authoritative.
         try {
             const prov = new Gtk.CssProvider()
-            prov.load_from_string(style + tokenCss(tokens))
+            prov.load_from_string(shellCss())
             Gtk.StyleContext.add_provider_for_display(
                 Gdk.Display.get_default()!,
                 prov,
@@ -100,7 +102,7 @@ App.start({
             return res("ok")
         }
         if (cmd === "reload-css") {
-            App.apply_css(style + tokenCss(tokens), true)
+            App.apply_css(shellCss(), true)
             return res("ok")
         }
         res("unknown")

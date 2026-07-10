@@ -95,6 +95,7 @@ function Grid() {
                                 s.getFullYear() === v.y
                             )
                                 cls.push("sel")
+                            if (cls.includes("sel") && !cls.includes("today")) cls.push("plain-sel")
                         }
                         const hasEv = !out && !!EVENTS[key(v.y, v.m, d)]
                         // day sits at its natural 24×24 centred in the grid column
@@ -174,8 +175,8 @@ function EventsCard() {
                     ]
                 return [
                     head,
-                    ...evs.map((e) => (
-                        <box class="evrow" spacing={10}>
+                    ...evs.map((e, index) => (
+                        <box class={index === evs.length - 1 ? "evrow last" : "evrow"} spacing={10}>
                             {/* 26×26 r8 colored icon tile (prototype .evic), white glyph */}
                             <box class="evic" valign={Gtk.Align.CENTER}>
                                 <image iconName={e.icon} />
@@ -197,7 +198,7 @@ function EventsCard() {
 }
 
 export default function Calendar() {
-    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(180, 130)
+    const { winVisible, progress, setSurface, close, toggle: toggleFn } = makeReveal(180, 130)
     register("calendar", toggleFn)
     return (
         <window
@@ -210,12 +211,7 @@ export default function Calendar() {
             keymode={Astal.Keymode.ON_DEMAND}
             onKeyPressed={(_self, key) => (key === Gdk.KEY_Escape ? (close(), true) : false)}
         >
-            <revealer
-                transitionType={Gtk.RevealerTransitionType.CROSSFADE}
-                transitionDuration={180}
-                revealChild={bind(revealed)}
-                setup={(r: Gtk.Revealer) => setRevealer(r)}
-            >
+            <box opacity={bind(progress)} setup={(box: Gtk.Box) => setSurface(box)}>
                 <box class="sheet cal" orientation={Gtk.Orientation.VERTICAL} spacing={0}>
                     <box class="calhero" orientation={Gtk.Orientation.VERTICAL}>
                         <label
@@ -272,7 +268,7 @@ export default function Calendar() {
                     <Grid />
                     <EventsCard />
                 </box>
-            </revealer>
+            </box>
         </window>
     )
 }

@@ -420,7 +420,7 @@ image {
 // margin-right:1px on the right chip narrows the drawable by 1px, bringing the last
 // pure-$leaf pixel from chip_right-1 to chip_right-2, matching proto exactly.
 // OFF chips: $panel2→$panel delta (~14) is too small to fail after blur; no new fails.
-.chips > box:last-child {
+.chip.right {
     margin-right: 1px;
 }
 // exact QS section rhythm (Root spacing 0): chips grid → sliders gap = 10px
@@ -433,17 +433,13 @@ image {
 // thin trough via negative margin.
 // TinySlider (KobelTinyScale) overrides vfunc_measure to return natural=1px; the CSS
 // min-width:0 here suppresses the trough's own CSS minimum so it too doesn't inflate.
-scale,
-scale:horizontal,
-scale:vertical {
+scale {
     min-height: 0;
     min-width: 0;
     padding: 0;
     margin: 6px 0;
 }
-scale > trough,
-scale:horizontal > trough,
-scale:vertical > trough {
+scale > trough {
     min-height: 6px;
     min-width: 0;
     margin: 0;
@@ -884,7 +880,7 @@ switch {
             }
         }
         // selection ring: mut on a plain selected day, ink on today (proto .day.today.sel)
-        &.sel:not(.today) {
+        &.plain-sel {
             box-shadow: inset 0 0 0 1.5px $mut;
         }
         &.today.sel {
@@ -930,7 +926,7 @@ switch {
         border-radius: 10px;
         padding: 8px 10px;
         margin-bottom: 4px;
-        &:last-child {
+        &.last {
             margin-bottom: 0;
         } // CDP .evrow (inset on panel)
         .evic {
