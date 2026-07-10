@@ -520,7 +520,7 @@ function DrillView({ name }: { name?: string }) {
 }
 
 export default function QuickSettings() {
-    const { winVisible, progress, setSurface, close, toggle: toggleFn } = makeReveal(180, 130)
+    const { winVisible, progress, setSurface, close, toggle: toggleFn } = makeReveal(180, 130, "quicksettings")
     register("quicksettings", toggleFn)
     return (
         <window

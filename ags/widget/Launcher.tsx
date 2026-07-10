@@ -299,7 +299,7 @@ export default function Launcher() {
         setSurface: setLaunchSurface,
         close: launchClose,
         toggle: toggleFn,
-    } = makeReveal(180, 130)
+    } = makeReveal(180, 130, "launcher")
     register("launcher", toggleFn)
     return (
         <window

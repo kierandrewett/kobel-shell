@@ -198,7 +198,7 @@ function EventsCard() {
 }
 
 export default function Calendar() {
-    const { winVisible, progress, setSurface, close, toggle: toggleFn } = makeReveal(180, 130)
+    const { winVisible, progress, setSurface, close, toggle: toggleFn } = makeReveal(180, 130, "calendar")
     register("calendar", toggleFn)
     return (
         <window

@@ -299,7 +299,7 @@ function MediaCard() {
 }
 
 export function Drawer() {
-    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(200, 150)
+    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(200, 150, "drawer")
     register("drawer", toggleFn)
     // Keep drawerOpen in sync with the revealed state (toasts adopt into drawer when open)
     revealed.subscribe((r) => drawerOpen.set(r))

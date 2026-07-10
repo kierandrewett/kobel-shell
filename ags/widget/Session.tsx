@@ -45,7 +45,7 @@ export default function Session() {
     let revert: Time | null = null
     const buttons: Gtk.Button[] = []
 
-    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(180, 130)
+    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(180, 130, "session")
     register("session", toggleFn)
 
     const focusButton = (index: number) => {
