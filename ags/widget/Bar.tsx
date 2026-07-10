@@ -61,12 +61,12 @@ function StatusPill() {
             onClicked={() => surfaceToggle("quicksettings")}
         >
             <box spacing={10}>
-                <image class="net-icon" iconName={wifiIcon} />
-                <image iconName={volIcon} />
+                <image class="net-icon" iconName={wifiIcon} pixelSize={16} />
+                <image iconName={volIcon} pixelSize={16} />
                 {/* Battery: only rendered when a battery is present */}
                 {(DEMO || bat) && (
                     <box class="pct" spacing={6}>
-                        <image iconName="kobel-battery-symbolic" />
+                        <image iconName="kobel-battery-symbolic" pixelSize={16} />
                         <label
                             class="tn"
                             label={
@@ -95,7 +95,7 @@ function Bell() {
             onClicked={() => surfaceToggle("drawer")}
         >
             <overlay>
-                <image iconName="kobel-bell-symbolic" />
+                <image iconName="kobel-bell-symbolic" pixelSize={15} />
                 <label
                     type="overlay"
                     halign={Gtk.Align.END}
@@ -132,7 +132,7 @@ export default function Bar(monitor: Gdk.Monitor) {
                         valign={Gtk.Align.CENTER}
                         onClicked={() => surfaceToggle("launcher")}
                     >
-                        <image iconName="kobel-magnifying-glass-symbolic" />
+                        <image iconName="kobel-magnifying-glass-symbolic" pixelSize={15} />
                     </button>
                     <FocusedTitle />
                 </box>
@@ -141,15 +141,15 @@ export default function Bar(monitor: Gdk.Monitor) {
                     valign={Gtk.Align.CENTER}
                     onClicked={() => surfaceToggle("calendar")}
                 >
-                    <box spacing={8}>
+                    <box class="clock-row" spacing={8} valign={Gtk.Align.BASELINE}>
                         <label
                             class="clock tn"
-                            valign={Gtk.Align.CENTER}
+                            valign={Gtk.Align.BASELINE}
                             label={DEMO ? D.clock : bind(time).as((t) => t.format("%H:%M")!)}
                         />
                         <label
                             class="date"
-                            valign={Gtk.Align.CENTER}
+                            valign={Gtk.Align.BASELINE}
                             label={DEMO ? D.date : bind(time).as((t) => t.format("%a %-d %b")!)}
                         />
                     </box>
@@ -162,21 +162,21 @@ export default function Bar(monitor: Gdk.Monitor) {
                                 valign={Gtk.Align.CENTER}
                                 tooltipText="Discord"
                             >
-                                <image iconName="kobel-chat-symbolic" />
+                                <image iconName="kobel-chat-symbolic" pixelSize={14} />
                             </button>
                             <button
                                 class="ibtn tray-icon"
                                 valign={Gtk.Align.CENTER}
                                 tooltipText="Steam"
                             >
-                                <image iconName="kobel-game-symbolic" />
+                                <image iconName="kobel-game-symbolic" pixelSize={14} />
                             </button>
                             <button
                                 class="ibtn tray-icon"
                                 valign={Gtk.Align.CENTER}
                                 tooltipText="Telegram"
                             >
-                                <image iconName="kobel-paper-plane-symbolic" />
+                                <image iconName="kobel-paper-plane-symbolic" pixelSize={14} />
                             </button>
                             <button class="ibtn tray-lang tn" valign={Gtk.Align.CENTER}>
                                 <label label="en" />
@@ -191,7 +191,7 @@ export default function Bar(monitor: Gdk.Monitor) {
                                     tooltipText={item.tooltip_markup}
                                     menuModel={item.menu_model}
                                 >
-                                    <image gicon={bind(item, "gicon")} />
+                                    <image gicon={bind(item, "gicon")} pixelSize={14} />
                                 </menubutton>
                             ))
                         )
@@ -203,7 +203,7 @@ export default function Bar(monitor: Gdk.Monitor) {
                         valign={Gtk.Align.CENTER}
                         onClicked={() => surfaceToggle("session")}
                     >
-                        <image iconName="kobel-power-symbolic" />
+                        <image iconName="kobel-power-symbolic" pixelSize={15} />
                     </button>
                 </box>
             </centerbox>

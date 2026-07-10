@@ -11,6 +11,7 @@ import Apps from "gi://AstalApps"
 import Gio from "gi://Gio"
 import Mpris from "gi://AstalMpris"
 import { MOTION, spring, springTo } from "../lib/spring"
+import { closeOpenSurfaces } from "../lib/surface"
 import * as gnoblin from "../services/gnoblin"
 import { DEMO } from "../lib/demo"
 
@@ -69,6 +70,7 @@ function buildContextMenu(app: Apps.Application, appId: string): Gtk.Popover {
         hbox.append(lbl)
         row.set_child(hbox)
         row.connect("clicked", () => {
+            closeOpenSurfaces()
             gnoblin.activate(w.id)
             vbox.get_root()?.hide()
         })
@@ -93,6 +95,7 @@ function buildContextMenu(app: Apps.Application, appId: string): Gtk.Popover {
     qbox.append(qlbl)
     quit.set_child(qbox)
     quit.connect("clicked", () => {
+        closeOpenSurfaces()
         execAsync(`pkill -f "${appId}"`)
         vbox.get_root()?.hide()
     })
@@ -108,6 +111,7 @@ function DockButton({ app }: { app: Apps.Application }) {
     let popover: Gtk.Popover | null = null
 
     const onClick = () => {
+        closeOpenSurfaces()
         const ws = gnoblin.appWindows(appId)
         if (!ws.length) return void app.launch() // + ghost zoom (revealer scale anim)
         const focused = ws.find((w) => w.focused)
@@ -130,8 +134,12 @@ function DockButton({ app }: { app: Apps.Application }) {
                 popover.set_parent(self)
             }}
             onButtonPressed={(_w, e) => {
-                if (e.get_button() === Gdk.BUTTON_MIDDLE) app.launch()
+                if (e.get_button() === Gdk.BUTTON_MIDDLE) {
+                    closeOpenSurfaces()
+                    app.launch()
+                }
                 if (e.get_button() === Gdk.BUTTON_SECONDARY) {
+                    closeOpenSurfaces()
                     // Rebuild to get fresh window list then show
                     if (popover) {
                         popover.unparent()
@@ -143,6 +151,7 @@ function DockButton({ app }: { app: Apps.Application }) {
                 }
             }}
             onScroll={(_w, _dx, dy) => {
+                closeOpenSurfaces()
                 const ws = gnoblin.appWindows(appId)
                 if (!ws.length) return
                 if (ws.length > 1) gnoblin.cycle(appId, dy > 0 ? 1 : -1)

@@ -32,6 +32,17 @@ window {
     background: transparent;
 }
 
+.dismiss-window,
+.dismiss-backdrop {
+    background: transparent;
+    background-color: transparent;
+    border: 0;
+    box-shadow: none;
+    outline: none;
+    padding: 0;
+    margin: 0;
+}
+
 // ---- global chrome reset: GTK buttons ship a background/border/shadow/min-size.
 // Strip it everywhere; each component re-adds only what it wants.
 button {
@@ -94,16 +105,15 @@ image {
     }
 
     .title,
-    .clock,
-    .date,
     .status label,
     .tray-lang label,
     .badge {
         min-height: 16px;
     }
 
-    .clock {
-        min-height: 17px;
+    .clock,
+    .date {
+        min-height: 0;
     }
 
     .badge {
@@ -126,8 +136,8 @@ image {
 
     // centered clock button — padding 6/12, gap 8 (baseline-aligned clk + date)
     .bcenter {
-        min-height: 0;
-        padding: 6px 12px;
+        min-height: 31px;
+        padding: 0 12px;
         border-radius: 9px;
         &:hover {
             background-color: $panel2;
@@ -147,8 +157,8 @@ image {
             -gtk-icon-size: 16px;
         }
         .pct image {
-            -gtk-icon-size: 15px;
-        } // CDP .status .pct i { font-size: 15px }
+            -gtk-icon-size: 16px;
+        } // explicit pixelSize in Bar.tsx is authoritative; CSS is fallback only.
         label {
             color: $tx;
             font-weight: 600;
@@ -861,6 +871,7 @@ switch {
         min-width: 24px;
         min-height: 24px;
         border-radius: 99px;
+        border: 1px solid transparent;
         &:hover {
             background-color: $panel2;
         }
@@ -879,12 +890,10 @@ switch {
                 background-color: $leaf;
             }
         }
-        // selection ring: mut on a plain selected day, ink on today (proto .day.today.sel)
+        // selection ring: reserve a transparent border so selection never shifts layout.
+        // Today keeps the solid leaf fill; the ink ring was visually too crisp.
         &.plain-sel {
-            box-shadow: inset 0 0 0 1.5px $mut;
-        }
-        &.today.sel {
-            box-shadow: inset 0 0 0 1.5px $ink;
+            border-color: $mut;
         }
         // event dot: 3px leaf circle at bottom-centre (ink on today's leaf fill) — CDP ::after
         .evdot {

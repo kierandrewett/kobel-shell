@@ -9,13 +9,15 @@ import { App } from "astal/gtk4"
 import { Variable, timeout } from "astal"
 import GLib from "gi://GLib"
 import Gtk from "gi://Gtk?version=4.0"
-import { MOTION, spring, springJump, springTo, type SpringSpec } from "./spring"
+import { MOTION, spring, springTo, type SpringSpec } from "./spring"
 
 export type TransitionType = Gtk.RevealerTransitionType
 
 const registry: Record<string, () => void> = {}
+const closeRegistry: Record<string, () => void> = {}
+const openSurfaces = new Set<string>()
+export const dismissVisible = Variable(false)
 const PROFILE_ANIM = GLib.getenv("KOBEL_PROFILE_ANIM") === "1"
-
 export function register(name: string, fn: () => void) {
     registry[name] = fn
 }
@@ -26,6 +28,21 @@ export function toggle(name: string) {
     } else {
         // Fallback for plain Astal windows that have not registered an animated toggle.
         App.toggle_window(name)
+    }
+}
+
+const setSurfaceOpen = (name: string, open: boolean) => {
+    if (open) {
+        openSurfaces.add(name)
+    } else {
+        openSurfaces.delete(name)
+    }
+    dismissVisible.set(openSurfaces.size > 0)
+}
+
+export function closeOpenSurfaces(except?: string) {
+    for (const [name, close] of Object.entries(closeRegistry)) {
+        if (name !== except) close()
     }
 }
 // makeReveal: creates the state variables and toggle function for an animated surface.
@@ -171,9 +188,10 @@ export function makeReveal(openMs = 220, closeMs = 150, profileName = "surface")
             closeTimer.cancel?.()
             closeTimer = null
         }
+        closeOpenSurfaces(profileName)
+        setSurfaceOpen(profileName, true)
         openCount += 1
         const warmOpen = openCount > 1 ? 1 : 0
-        const isFirstOpen = openCount === 1
         beginTrace("open_start", [`warm=${warmOpen}`], "open", warmOpen)
         if (revealerWidget) revealerWidget.transitionDuration = openMs
         setRevealerInput(true)
@@ -182,27 +200,19 @@ export function makeReveal(openMs = 220, closeMs = 150, profileName = "surface")
         timeout(16, () => {
             emitProfile("open_delay")
             revealed.set(true)
-            // First mapped opens can starve the spring callback while GTK settles the
-            // layer surface; snap once, then keep warm opens animated.
-            if (isFirstOpen && progressAnim) {
-                emitProfile("cold_snap", ["target=1"])
-                try {
-                    suppressProgressTrace = true
-                    springJump(progressAnim, 1)
-                } finally {
-                    suppressProgressTrace = false
-                }
-                setProgress(1, false)
-                return
-            }
             animateProgress(1, MOTION.panelOpacity)
         })
     }
 
     const close = () => {
+        if (!revealed.get() && progress.get() <= 0.001) {
+            setSurfaceOpen(profileName, false)
+            return
+        }
         if (revealerWidget) revealerWidget.transitionDuration = closeMs
         beginTrace("close_start", [], "close", 0)
         revealed.set(false)
+        setSurfaceOpen(profileName, false)
         setRevealerInput(false)
         setSurfaceInput(false)
         animateProgress(0, MOTION.panelClose)
@@ -214,6 +224,8 @@ export function makeReveal(openMs = 220, closeMs = 150, profileName = "surface")
     }
 
     const toggleFn = () => (revealed.get() ? close() : open())
+
+    closeRegistry[profileName] = close
 
     return { winVisible, revealed, progress, setRevealer, setSurface, open, close, toggle: toggleFn }
 }

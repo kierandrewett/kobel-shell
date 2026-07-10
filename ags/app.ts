@@ -24,6 +24,7 @@ import * as gnoblin from "./services/gnoblin"
 import * as notifdSvc from "./services/notifd"
 import { armDump } from "./lib/inspect"
 import { toggle as surfaceToggle } from "./lib/surface"
+import DismissLayer from "./widget/DismissLayer"
 import Bar from "./widget/Bar"
 import Dock from "./widget/Dock"
 import Launcher from "./widget/Launcher"
@@ -78,6 +79,7 @@ App.start({
                 printerr(`kobel: ${name} FAILED: ${e}\n${(e as any)?.stack ?? ""}`)
             }
         }
+        make("dismiss-layer", () => DismissLayer(), true)
         const monitors = App.get_monitors()
         const targets = monitors.length ? monitors : [undefined as any]
         for (const monitor of targets) {
