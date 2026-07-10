@@ -453,9 +453,8 @@ export default function Launcher() {
                                     </button>
                                 ))}
                             </box>
-                            {/* two cards split the row exactly in half — proto flex:1/flex:1 */}
+                            {/* inline context modules: date + media, not nested cards */}
                             <box class="lwidgets" spacing={7} homogeneous>
-                                {/* left card — date + today's first event */}
                                 <box
                                     class="widget lw"
                                     hexpand
@@ -474,19 +473,9 @@ export default function Launcher() {
                                         label={todayEventLabel()}
                                     />
                                 </box>
-                                {/* right card — media mini-card: art · title/artist · play */}
+                                {/* right module: media art, title/artist, play */}
                                 {(() => {
                                     const mpris = Mpris.get_default()
-                                    const activePlayer = bind(mpris, "players").as(
-                                        (ps) =>
-                                            ps.find(
-                                                (p) =>
-                                                    p.playback_status ===
-                                                    Mpris.PlaybackStatus.PLAYING
-                                            ) ??
-                                            ps[0] ??
-                                            null
-                                    )
                                     const mediaTitle = DEMO
                                         ? D.media.title
                                         : bind(mpris, "players").as((ps) => {

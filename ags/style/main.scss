@@ -706,12 +706,12 @@ switch {
     }
 }
 .lwidgets {
-    padding: 0 2px 6px;
-} // CDP: lwidgets pad 0/2/6, gap 7
+    padding: 0 8px 6px;
+} // inline modules live inside the launcher sheet; no cards inside cards
 .widget {
-    background-color: $panel2;
-    border-radius: 12px;
-    padding: 10px 12px;
+    background-color: transparent;
+    border-radius: 0;
+    padding: 6px 4px;
     label {
         color: $tx;
         font-size: 12.5px;
