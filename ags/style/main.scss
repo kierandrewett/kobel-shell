@@ -48,6 +48,15 @@ button {
         background-color 160ms,
         color 160ms;
 }
+
+.sheet button:focus,
+.sheet entry:focus,
+.drawer button:focus,
+.session .sbtn:focus {
+    outline: 2px solid $leaf;
+    outline-offset: 2px;
+}
+
 image {
     -gtk-icon-style: regular;
 }
@@ -1191,8 +1200,6 @@ switch {
     }
     .sbtn.sel {
         border-radius: 12px;
-        outline: 2px solid $leaf;
-        outline-offset: 2px;
     }
     .sbtn.sel .sic {
         background-color: $panel2;
