@@ -61,7 +61,7 @@ export function springJump(anim: Adw.SpringAnimation, to: number) {
     anim.value_from = anim.value
     anim.initial_velocity = 0
     anim.value_to = to
-    anim.play()
+    anim.reset()
     anim.skip()
 }
 
