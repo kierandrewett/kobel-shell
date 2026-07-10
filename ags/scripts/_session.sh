@@ -26,6 +26,14 @@ fi
 if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then SKIP=""; else SKIP="1"; fi
 KOBEL_ICONS="/home/kieran/dev/kobel-shell/ags/icons" KOBEL_DEMO="${KOBEL_DEMO:-}" KOBEL_SKIP_NOTIFD="$SKIP" KOBEL_DRILL="${KOBEL_DRILL:-}" KOBEL_QUERY="${KOBEL_QUERY:-}" KOBEL_DUMP="${KOBEL_DUMP:-}" KOBEL_DUMP_OUT="${KOBEL_DUMP_OUT:-}" KOBEL_PROFILE_ANIM="${KOBEL_PROFILE_ANIM:-}" stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
 AP=$!
+check_ags() {
+  kill -0 "$AP" 2>/dev/null && return 0
+  echo "== ags DIED =="
+  cp "$DK/ags.log" /tmp/kobel-ags-run.log 2>/dev/null || true
+  tail -8 "$DK/ags.log"
+  exit 1
+}
+
 sleep 8
 if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
   gdbus call --session --dest org.freedesktop.Notifications \
@@ -38,7 +46,22 @@ if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then
     "Calendar" 0 "" "Daily Standup" "Starting in 5 minutes" "[]" "{}" 0 >/dev/null 2>&1 || true
   sleep 2
 fi
-[ -n "${TOGGLE:-}" ] && { ags request -i kobel "toggle $TOGGLE" 2>/dev/null || astal -i kobel -t "$TOGGLE" 2>/dev/null || true; sleep 3; }
+if [ -n "${TOGGLE:-}" ]; then
+  repeats="${KOBEL_TOGGLE_REPEATS:-1}"
+  gap="${KOBEL_TOGGLE_GAP:-3}"
+  i=1
+  while [ "$i" -le "$repeats" ]; do
+    ags request -i kobel "toggle $TOGGLE" 2>/dev/null || astal -i kobel -t "$TOGGLE" 2>/dev/null || true
+    sleep "$gap"
+    check_ags
+    if [ "$i" -lt "$repeats" ]; then
+      ags request -i kobel "toggle $TOGGLE" 2>/dev/null || astal -i kobel -t "$TOGGLE" 2>/dev/null || true
+      sleep "$gap"
+      check_ags
+    fi
+    i=$((i + 1))
+  done
+fi
 [ -n "${KOBEL_TEST_NOTIFD:-}" ] && echo "WINDOWS: $(ags list -i kobel 2>&1 || astal -i kobel --list 2>&1 | tr '\n' ' ')"
 for _ in 1 2 3; do pkill -9 -f gnome-tour 2>/dev/null; sleep 0.3; done
 

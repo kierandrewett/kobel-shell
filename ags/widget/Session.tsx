@@ -86,7 +86,7 @@ export default function Session() {
                 Astal.WindowAnchor.LEFT |
                 Astal.WindowAnchor.RIGHT
             }
-            keymode={Astal.Keymode.EXCLUSIVE}
+            keymode={bind(revealed).as((r) => (r ? Astal.Keymode.EXCLUSIVE : Astal.Keymode.NONE))}
             exclusivity={Astal.Exclusivity.IGNORE}
             onKeyPressed={(_self, key) => {
                 if (key === Gdk.KEY_Escape) {

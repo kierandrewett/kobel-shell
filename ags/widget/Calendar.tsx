@@ -198,7 +198,11 @@ function EventsCard() {
 }
 
 export default function Calendar() {
-    const { winVisible, progress, setSurface, close, toggle: toggleFn } = makeReveal(180, 130, "calendar")
+    const { winVisible, revealed, progress, setSurface, close, toggle: toggleFn } = makeReveal(
+        180,
+        130,
+        "calendar"
+    )
     register("calendar", toggleFn)
     return (
         <window
@@ -208,7 +212,9 @@ export default function Calendar() {
             visible={bind(winVisible)}
             anchor={Astal.WindowAnchor.TOP}
             exclusivity={Astal.Exclusivity.NORMAL}
-            keymode={Astal.Keymode.ON_DEMAND}
+            keymode={bind(revealed).as((r) =>
+                r ? Astal.Keymode.ON_DEMAND : Astal.Keymode.NONE
+            )}
             onKeyPressed={(_self, key) => (key === Gdk.KEY_Escape ? (close(), true) : false)}
         >
             <box opacity={bind(progress)} setup={(box: Gtk.Box) => setSurface(box)}>

@@ -520,7 +520,11 @@ function DrillView({ name }: { name?: string }) {
 }
 
 export default function QuickSettings() {
-    const { winVisible, progress, setSurface, close, toggle: toggleFn } = makeReveal(180, 130, "quicksettings")
+    const { winVisible, revealed, progress, setSurface, close, toggle: toggleFn } = makeReveal(
+        180,
+        130,
+        "quicksettings"
+    )
     register("quicksettings", toggleFn)
     return (
         <window
@@ -530,7 +534,9 @@ export default function QuickSettings() {
             visible={bind(winVisible)}
             anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT}
             exclusivity={Astal.Exclusivity.NORMAL}
-            keymode={Astal.Keymode.ON_DEMAND}
+            keymode={bind(revealed).as((r) =>
+                r ? Astal.Keymode.ON_DEMAND : Astal.Keymode.NONE
+            )}
             onKeyPressed={(_self, key) => {
                 if (key !== Gdk.KEY_Escape) return false
                 if (drill.get()) {

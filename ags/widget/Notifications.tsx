@@ -299,7 +299,11 @@ function MediaCard() {
 }
 
 export function Drawer() {
-    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(200, 150, "drawer")
+    const { winVisible, revealed, progress, setSurface, close, toggle: toggleFn } = makeReveal(
+        200,
+        150,
+        "drawer"
+    )
     register("drawer", toggleFn)
     // Keep drawerOpen in sync with the revealed state (toasts adopt into drawer when open)
     revealed.subscribe((r) => drawerOpen.set(r))
@@ -321,15 +325,12 @@ export function Drawer() {
                 anchor={
                     Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM
                 }
-                keymode={Astal.Keymode.ON_DEMAND}
+                keymode={bind(revealed).as((r) =>
+                    r ? Astal.Keymode.ON_DEMAND : Astal.Keymode.NONE
+                )}
                 onKeyPressed={(_self, key) => (key === Gdk.KEY_Escape ? (close(), true) : false)}
             >
-                <revealer
-                    transitionType={Gtk.RevealerTransitionType.SLIDE_LEFT}
-                    transitionDuration={200}
-                    revealChild={bind(revealed)}
-                    setup={(r: Gtk.Revealer) => setRevealer(r)}
-                >
+                <box opacity={bind(progress)} setup={(box: Gtk.Box) => setSurface(box)}>
                     <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
                         <MediaCard />
                         <box class="nhead" spacing={8}>
@@ -349,7 +350,7 @@ export function Drawer() {
                             ))}
                         </box>
                     </box>
-                </revealer>
+                </box>
             </window>
         )
     }
@@ -370,15 +371,12 @@ export function Drawer() {
             visible={bind(winVisible)}
             marginRight={12}
             anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.BOTTOM}
-            keymode={Astal.Keymode.ON_DEMAND}
+            keymode={bind(revealed).as((r) =>
+                r ? Astal.Keymode.ON_DEMAND : Astal.Keymode.NONE
+            )}
             onKeyPressed={(_self, key) => (key === Gdk.KEY_Escape ? (close(), true) : false)}
         >
-            <revealer
-                transitionType={Gtk.RevealerTransitionType.SLIDE_LEFT}
-                transitionDuration={200}
-                revealChild={bind(revealed)}
-                setup={(r: Gtk.Revealer) => setRevealer(r)}
-            >
+            <box opacity={bind(progress)} setup={(box: Gtk.Box) => setSurface(box)}>
                 <box class="drawer" orientation={Gtk.Orientation.VERTICAL} spacing={8}>
                     <MediaCard />
                     <box class="nhead" spacing={8}>
@@ -416,7 +414,7 @@ export function Drawer() {
                         )}
                     </box>
                 </box>
-            </revealer>
+            </box>
         </window>
     )
 }

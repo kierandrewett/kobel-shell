@@ -295,6 +295,7 @@ export default function Launcher() {
 
     const {
         winVisible,
+        revealed,
         progress: launchProgress,
         setSurface: setLaunchSurface,
         close: launchClose,
@@ -309,7 +310,9 @@ export default function Launcher() {
             anchor={Astal.WindowAnchor.TOP}
             marginTop={56}
             exclusivity={Astal.Exclusivity.NORMAL}
-            keymode={Astal.Keymode.EXCLUSIVE}
+            keymode={bind(revealed).as((r) =>
+                r ? Astal.Keymode.EXCLUSIVE : Astal.Keymode.NONE
+            )}
             visible={bind(winVisible)}
             onKeyPressed={(_self, key, _code, mods) => {
                 const flat = results(query.get()).flatMap((s) => s.rows)
