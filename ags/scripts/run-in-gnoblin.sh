@@ -8,6 +8,7 @@
 #   TOGGLE=<window>      astal window to toggle open before the shot (launcher|quicksettings|calendar|drawer|session)
 #   GNOBLIN=/path        gnoblin repo (default /home/kieran/dev/gnoblin)
 #   BUNDLE=/path.js      prebuilt bundle to run (default: build ags/app.ts here)
+#   INTERACTIVE=1        visible nested gnoblin devkit; run kobel until Ctrl-C
 set -uo pipefail
 
 AGSDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,6 +25,23 @@ if [ -z "$BUNDLE" ]; then
   BUNDLE=/tmp/kobel-bundle.js
   ( cd "$AGSDIR" && ags bundle app.ts "$BUNDLE" ) >/dev/null 2>&1 \
     || { echo "bundle failed" >&2; exit 1; }
+fi
+
+if [ "${INTERACTIVE:-0}" = 1 ]; then
+  export KOBEL_ICONS="$AGSDIR/icons"
+  export KOBEL_DEMO="${KOBEL_DEMO:-}"
+  export KOBEL_SKIP_NOTIFD="${KOBEL_SKIP_NOTIFD:-1}"
+  export KOBEL_DRILL="${KOBEL_DRILL:-}"
+  export KOBEL_QUERY="${KOBEL_QUERY:-}"
+  export KOBEL_DUMP="${KOBEL_DUMP:-}"
+  export KOBEL_DUMP_OUT="${KOBEL_DUMP_OUT:-}"
+  export KOBEL_LAYER_PRELOAD="$LAYER_PRELOAD"
+  export KOBEL_BUNDLE="$BUNDLE"
+  GNOME_DEVKIT_EXEC="gnoblinctl disable osd 2>/dev/null || true; "
+  GNOME_DEVKIT_EXEC+="gnoblinctl disable notifications 2>/dev/null || true; "
+  GNOME_DEVKIT_EXEC+='LD_PRELOAD="$KOBEL_LAYER_PRELOAD" exec gjs -m "$KOBEL_BUNDLE"'
+  export GNOME_DEVKIT_EXEC
+  exec "$GNOBLIN/scripts/run-gnome-devkit.sh"
 fi
 
 # --- gnoblin runtime env ---

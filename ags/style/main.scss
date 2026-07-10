@@ -1189,6 +1189,15 @@ switch {
         padding: 6px;
         border-radius: 12px;
     }
+    .sbtn.sel {
+        border-radius: 12px;
+        outline: 2px solid $leaf;
+        outline-offset: 2px;
+    }
+    .sbtn.sel .sic {
+        background-color: $panel2;
+        color: $tx;
+    }
     .sic {
         background-color: $panel;
         border-radius: 24px;
@@ -1208,6 +1217,10 @@ switch {
         color: $tx;
     }
     .red:hover .sic {
+        background-color: $rose;
+        color: $roseink;
+    }
+    .red.sel .sic {
         background-color: $rose;
         color: $roseink;
     }

@@ -20,6 +20,16 @@ ags run .                 # run the shell
 ags quit                  # stop
 ```
 
+For an interactive nested gnoblin session from the repo root:
+
+```sh
+INTERACTIVE=1 ./ags/scripts/run-in-gnoblin.sh
+```
+
+This opens the visible gnoblin devkit window and runs kobel inside it until `Ctrl-C`.
+For the manual route, run `just gnome-devkit` in `~/dev/gnoblin`, then run
+`cd ~/dev/kobel-shell/ags && ags run .` in the devkit terminal.
+
 Astal libraries used: `AstalApps`, `AstalNetwork`, `AstalBluetooth`, `AstalWp`,
 `AstalMpris`, `AstalNotifd`, `AstalBattery`, `AstalTray`.
 

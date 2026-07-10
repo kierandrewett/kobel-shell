@@ -1,7 +1,7 @@
 // Session overlay — dimmed (0.8), 4 buttons, arrow-nav, PRESS-AGAIN confirm on
 // Restart/Shut down (auto-revert 4s), resting rose on Shut down.
 import { Astal, Gdk, Gtk } from "astal/gtk4"
-import { Variable, bind, execAsync, timeout } from "astal"
+import { Variable, bind, execAsync, timeout, type Time } from "astal"
 import { DEMO, D } from "../lib/demo"
 import { makeReveal, register } from "../lib/surface"
 void DEMO
@@ -41,10 +41,26 @@ const ACTIONS = [
 
 export default function Session() {
     const armed = Variable<string | null>(null)
-    let revert: ReturnType<typeof timeout> | null = null
+    const selected = Variable(0)
+    let revert: Time | null = null
+    const buttons: Gtk.Button[] = []
 
     const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(180, 130)
     register("session", toggleFn)
+
+    const focusButton = (index: number) => {
+        const button = buttons[index]
+        if (button) button.grab_focus()
+    }
+    selected.subscribe((index) => focusButton(index))
+    revealed.subscribe((open) => {
+        if (!open) {
+            armed.set(null)
+            return
+        }
+        selected.set(0)
+        timeout(16, () => focusButton(0))
+    })
 
     const press = (a: (typeof ACTIONS)[number]) => {
         if (a.confirm && armed.get() !== a.id) {
@@ -74,8 +90,19 @@ export default function Session() {
             exclusivity={Astal.Exclusivity.IGNORE}
             onKeyPressed={(_self, key) => {
                 if (key === Gdk.KEY_Escape) {
-                    armed.set(null)
+                    if (armed.get()) {
+                        armed.set(null)
+                        return true
+                    }
                     close()
+                    return true
+                }
+                if (key === Gdk.KEY_Right || key === Gdk.KEY_Down) {
+                    selected.set((selected.get() + 1) % ACTIONS.length)
+                    return true
+                }
+                if (key === Gdk.KEY_Left || key === Gdk.KEY_Up) {
+                    selected.set((selected.get() - 1 + ACTIONS.length) % ACTIONS.length)
                     return true
                 }
                 return false
@@ -90,8 +117,21 @@ export default function Session() {
                 {/* .session fills the whole window (the dim); buttons centered inside */}
                 <box class={DEMO ? "session session-demo" : "session"} hexpand vexpand>
                     <box halign={Gtk.Align.CENTER} valign={Gtk.Align.CENTER} spacing={20} hexpand>
-                        {ACTIONS.map((a) => (
-                            <button class={a.red ? "sbtn red" : "sbtn"} onClicked={() => press(a)}>
+                        {ACTIONS.map((a, i) => (
+                            <button
+                                class={bind(selected).as((x) => {
+                                    const classes = [a.red ? "sbtn red" : "sbtn"]
+                                    if (x === i) classes.push("sel")
+                                    return classes.join(" ")
+                                })}
+                                setup={(self: Gtk.Button) => {
+                                    buttons[i] = self
+                                }}
+                                onClicked={() => {
+                                    selected.set(i)
+                                    press(a)
+                                }}
+                            >
                                 <box
                                     orientation={Gtk.Orientation.VERTICAL}
                                     spacing={10}

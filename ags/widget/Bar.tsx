@@ -49,9 +49,9 @@ function StatusPill() {
           )
         : "kobel-wifi-off-symbolic"
     const volIcon = speaker
-        ? bind(speaker, "volume").as((v) =>
-              v <= 0 || speaker.mute ? "kobel-speaker-mute-symbolic" : "kobel-speaker-wave-symbolic"
-          )
+        ? Variable.derive([bind(speaker, "volume"), bind(speaker, "mute")], (volume, mute) =>
+              volume <= 0 || mute ? "kobel-speaker-mute-symbolic" : "kobel-speaker-wave-symbolic"
+          )()
         : "kobel-speaker-mute-symbolic"
     return (
         <button

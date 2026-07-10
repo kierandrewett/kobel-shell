@@ -3,7 +3,7 @@
 // (Wi-Fi networks / BT devices / per-app mixer with a Master row), compact top row
 // (battery · pencil/leaf/lock/power), gnoblin banner + reconnect while degraded.
 import { Astal, Gdk, Gtk } from "astal/gtk4"
-import { Variable, bind, execAsync, GLib } from "astal"
+import { Variable, bind, execAsync, GLib, type Binding } from "astal"
 import Network from "gi://AstalNetwork"
 import Bluetooth from "gi://AstalBluetooth"
 import Wp from "gi://AstalWp"
@@ -33,13 +33,13 @@ function Chip(props: {
     id: string
     label: string
     icon: string
-    active: any
-    sub?: any
+    active: Binding<boolean>
+    sub?: string | Binding<string>
     onToggled: () => void
     onDrill?: () => void
 }) {
     return (
-        <box class={bind(props.active).as((a: boolean) => (a ? "chip pill on" : "chip pill"))}>
+        <box class={props.active.as((a) => (a ? "chip pill on" : "chip pill"))}>
             <button class="chipb" hexpand={true} onClicked={props.onToggled}>
                 <box spacing={9}>
                     <image iconName={props.icon} />
@@ -72,9 +72,9 @@ function Sliders() {
     // prototype's mock values (volume 0.64, brightness 0.80) for a fair overlay.
     if (!speaker && !DEMO) return <box />
     const volIcon = speaker
-        ? bind(speaker, "volume").as((v) =>
-              v <= 0 || speaker.mute ? "kobel-speaker-mute-symbolic" : "kobel-speaker-wave-symbolic"
-          )
+        ? Variable.derive([bind(speaker, "volume"), bind(speaker, "mute")], (volume, mute) =>
+              volume <= 0 || mute ? "kobel-speaker-mute-symbolic" : "kobel-speaker-wave-symbolic"
+          )()
         : "kobel-speaker-wave-symbolic"
     // proto .sliders is a flex column with NO gap between the two srows (each min-h 42).
     // TinySlider overrides vfunc_measure to report natural=1px so the srow doesn't
@@ -173,13 +173,13 @@ if (!DEMO)
         /* schema absent on some systems */
     }
 
-// Silent: mute on the default WirePlumber speaker
+// Silent: mute on the default WirePlumber speaker. Keep this as a real Variable so
+// ToggleChip has one state contract; the speaker notify signal keeps it in sync.
 const _speaker = Wp.get_default()?.default_speaker ?? null
-const tSilent = DEMO
-    ? Variable(D.silent)
-    : _speaker
-      ? (bind(_speaker, "mute") as unknown as Variable<boolean>)
-      : Variable(false)
+const tSilent = Variable(DEMO ? D.silent : (_speaker?.mute ?? false))
+if (!DEMO && _speaker) {
+    bind(_speaker, "mute").subscribe((mute) => tSilent.set(mute))
+}
 
 // Power Saver: powerprofilesctl (falls back to false if unavailable)
 const tSave = Variable(DEMO ? D.save : false)
@@ -262,7 +262,7 @@ function Root({ name }: { name?: string }) {
                             id="wifi"
                             label="Wi-Fi"
                             icon="kobel-wifi-symbolic"
-                            active={DEMO ? Variable(true) : bind(net.wifi!, "enabled")}
+                            active={DEMO ? bind(Variable(true)) : bind(net.wifi!, "enabled")}
                             sub={DEMO ? D.wifiSsid : bind(net.wifi!, "ssid").as((s) => s ?? "Off")}
                             onToggled={() => {
                                 if (!DEMO && net.wifi) net.wifi.enabled = !net.wifi.enabled
@@ -276,7 +276,7 @@ function Root({ name }: { name?: string }) {
                         icon="kobel-bluetooth-symbolic"
                         active={
                             DEMO
-                                ? Variable(true)
+                                ? bind(Variable(true))
                                 : bind(bt, "devices").as((d) => d.some((x) => x.connected))
                         }
                         sub={
