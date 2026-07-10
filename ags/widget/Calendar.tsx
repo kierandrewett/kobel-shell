@@ -197,7 +197,7 @@ function EventsCard() {
 }
 
 export default function Calendar() {
-    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(220, 150)
+    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(180, 130)
     register("calendar", toggleFn)
     return (
         <window
@@ -211,8 +211,8 @@ export default function Calendar() {
             onKeyPressed={(_self, key) => (key === Gdk.KEY_Escape ? (close(), true) : false)}
         >
             <revealer
-                transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
-                transitionDuration={220}
+                transitionType={Gtk.RevealerTransitionType.CROSSFADE}
+                transitionDuration={180}
                 revealChild={bind(revealed)}
                 setup={(r: Gtk.Revealer) => setRevealer(r)}
             >

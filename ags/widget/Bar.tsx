@@ -20,8 +20,9 @@ function FocusedTitle() {
     return (
         <label
             class="title"
+            valign={Gtk.Align.CENTER}
             ellipsize={3 /* Pango.EllipsizeMode.END */}
-            maxWidthChars={28}
+            maxWidthChars={24}
             label={
                 DEMO
                     ? D.title
@@ -125,7 +126,7 @@ export default function Bar(monitor: Gdk.Monitor) {
             anchor={TOP | LEFT | RIGHT}
         >
             <centerbox class="bar">
-                <box spacing={4}>
+                <box class="bleft" spacing={4}>
                     <button
                         class="ibtn"
                         valign={Gtk.Align.CENTER}
@@ -143,12 +144,12 @@ export default function Bar(monitor: Gdk.Monitor) {
                     <box spacing={8}>
                         <label
                             class="clock tn"
-                            valign={Gtk.Align.BASELINE}
+                            valign={Gtk.Align.CENTER}
                             label={DEMO ? D.clock : bind(time).as((t) => t.format("%H:%M")!)}
                         />
                         <label
                             class="date"
-                            valign={Gtk.Align.BASELINE}
+                            valign={Gtk.Align.CENTER}
                             label={DEMO ? D.date : bind(time).as((t) => t.format("%a %-d %b")!)}
                         />
                     </box>
@@ -185,6 +186,8 @@ export default function Bar(monitor: Gdk.Monitor) {
                         bind(Tray.get_default(), "items").as((items) =>
                             items.map((item) => (
                                 <menubutton
+                                    class="ibtn tray-icon"
+                                    valign={Gtk.Align.CENTER}
                                     tooltipText={item.tooltip_markup}
                                     menuModel={item.menu_model}
                                 >

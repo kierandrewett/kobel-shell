@@ -299,7 +299,7 @@ export default function Launcher() {
         setRevealer: setLaunchRevealer,
         close: launchClose,
         toggle: toggleFn,
-    } = makeReveal(220, 150)
+    } = makeReveal(180, 130)
     register("launcher", toggleFn)
     return (
         <window
@@ -365,8 +365,8 @@ export default function Launcher() {
             }}
         >
             <revealer
-                transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
-                transitionDuration={220}
+                transitionType={Gtk.RevealerTransitionType.CROSSFADE}
+                transitionDuration={180}
                 revealChild={bind(launchRevealed)}
                 setup={(r: Gtk.Revealer) => setLaunchRevealer(r)}
             >

@@ -45,14 +45,18 @@ export const panelTop = () => tokens.gap + tokens.barH + 6
 // GTK CSS can't calc() from JS state; we regenerate a :root-ish block and
 // let App.apply_css re-skin live (the "bar 42 cycler" of the QML/AGS world).
 export function tokenCss(t: Tokens = tokens): string {
+    const control = t.barH - 11
+    const top = t.gap + t.barH + 6
+
     return `
   .bar { min-height: ${t.barH}px; border-radius: ${t.barR}px;
          margin: 0; }
-  .bar button { min-width: ${ctl()}px; min-height: ${ctl()}px; }
+  .bar button, .bar menubutton { min-width: ${control}px; min-height: ${control}px; }
+  .bar .status { min-height: ${control - 1}px; }
   .dock { padding: ${t.dockPad}px; border-radius: ${12 + t.dockPad - 1}px;
           margin-bottom: ${t.gap}px; }
   .icon-tile { min-width: ${t.icon}px; min-height: ${t.icon}px; }
-  .qs, .drawer, .calendar, .cal { margin-top: ${panelTop()}px; }
+  .qs, .drawer, .calendar, .cal { margin-top: ${top}px; }
   .qs { min-width: ${t.panelW - 24}px; }  /* panelW is outer; subtract .sheet padding 12px×2 */
   .launcher { min-width: ${t.launcherW}px; }
   .calendar, .cal { min-width: ${t.calendarW - 24}px; }  /* calendarW is outer; subtract .sheet padding 12×2 */

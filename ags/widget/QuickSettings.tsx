@@ -1,7 +1,6 @@
-// Quick settings. Prototype-final: uniform pill tiles from a CATALOG (customisable,
-// persisted), GNOME thin sliders, drilldowns as a spring-slid two-view stack
-// (Wi-Fi networks / BT devices / per-app mixer with a Master row), compact top row
-// (battery · pencil/leaf/lock/power), gnoblin banner + reconnect while degraded.
+// Quick settings. Prototype-final: uniform pill tiles, GNOME thin sliders,
+// drilldowns for Wi-Fi networks / BT devices / per-app mixer, compact top row
+// (battery · leaf reload · lock · power), gnoblin banner + reconnect while degraded.
 import { Astal, Gdk, Gtk } from "astal/gtk4"
 import { Variable, bind, execAsync, GLib, type Binding } from "astal"
 import Network from "gi://AstalNetwork"
@@ -11,7 +10,6 @@ import Mpris from "gi://AstalMpris"
 import Gio from "gi://Gio"
 import Battery from "gi://AstalBattery"
 import { connected, reload } from "../services/gnoblin"
-import { MOTION } from "../lib/spring"
 import { makeReveal, register, toggle as surfaceToggle } from "../lib/surface"
 import { DEMO, D } from "../lib/demo"
 import { TinySlider } from "../lib/tinyslider"
@@ -22,12 +20,6 @@ type Drill = null | "wifi" | "bt" | "mix"
 // chevron in headless); production default is null.
 const drill = Variable<Drill>((GLib.getenv("KOBEL_DRILL") as Drill) || null)
 
-// Tile catalog — mirrors prototype CATALOG; persisted layout in state dir.
-const STORE = `${GLib.get_user_state_dir()}/kobel/qs-tiles.json`
-let tiles: string[] = ["wifi", "bt", "save", "dark", "silent", "night", "volume", "brightness"]
-try {
-    tiles = JSON.parse(new TextDecoder().decode(GLib.file_get_contents(STORE)[1]))
-} catch {}
 
 function Chip(props: {
     id: string
@@ -190,8 +182,6 @@ if (!DEMO)
             /* powerprofilesctl absent */
         })
 
-// edit-mode for the tile catalog (pencil button) — hook for tile rearrange/customise.
-const editMode = Variable(false)
 
 // Prototype toggle chips are label-only, vertically centered — state is shown by the
 // leaf fill, not a sub-line (only Wi-Fi/Bluetooth carry a sub).
@@ -245,9 +235,6 @@ function Root({ name }: { name?: string }) {
                 </button>
                 <button class="rbtn" onClicked={() => execAsync("loginctl lock-session")}>
                     <image iconName="kobel-lock-symbolic" />
-                </button>
-                <button class="rbtn" onClicked={() => editMode.set(!editMode.get())}>
-                    <image iconName="kobel-pencil-symbolic" />
                 </button>
                 <button class="rbtn danger" onClicked={() => surfaceToggle("session")}>
                     <image iconName="kobel-power-symbolic" />
@@ -524,7 +511,7 @@ function DrillView({ name }: { name?: string }) {
 }
 
 export default function QuickSettings() {
-    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(220, 150)
+    const { winVisible, revealed, setRevealer, close, toggle: toggleFn } = makeReveal(180, 130)
     register("quicksettings", toggleFn)
     return (
         <window
@@ -546,14 +533,13 @@ export default function QuickSettings() {
             }}
         >
             <revealer
-                transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
-                transitionDuration={220}
+                transitionType={Gtk.RevealerTransitionType.CROSSFADE}
+                transitionDuration={180}
                 revealChild={bind(revealed)}
                 setup={(r: Gtk.Revealer) => setRevealer(r)}
             >
                 <box class="sheet qs">
-                    {/* Gtk.Stack with slide-left/right = the multiview; height animates
-            via Adw spring on a size-group wrapper (MOTION.drill / drillBack) */}
+                    {/* Gtk.Stack with slide-left/right = the multiview drilldown. */}
                     <stack
                         transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
                         transitionDuration={220}

@@ -93,6 +93,23 @@ image {
         font-size: 11.5px;
     }
 
+    .title,
+    .clock,
+    .date,
+    .status label,
+    .tray-lang label,
+    .badge {
+        min-height: 16px;
+    }
+
+    .clock {
+        min-height: 17px;
+    }
+
+    .badge {
+        min-height: 14px;
+    }
+
     // icon buttons (search / bell / power): fixed 31×31 (config min), no padding, 16px icon
     .ibtn {
         padding: 0;
@@ -117,9 +134,8 @@ image {
         }
     }
 
-    // status pill — fixed 30 tall (ctl-1), padding 0 13, gap 10; wifi/vol 16px, battery 15px
+    // status pill — token-sized from config (ctl-1), padding 0 13, gap 10; wifi/vol 16px, battery 15px
     .status {
-        min-height: 31px;
         padding: 0 13px;
         border-radius: 999px;
         background-color: $panel2; // CDP .status = panel2
