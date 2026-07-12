@@ -3,3 +3,4 @@
 *.jsc
 .qmlcache/
 /target
+__pycache__/

@@ -44,6 +44,19 @@ fn spike_ui() -> impl IntoElement {
         .main_align(Alignment::center())
         .cross_align(Alignment::center())
         .spacing(16.0)
+        // Whole-strip press target. The phase-0 input gate only cares that a
+        // wl_pointer press reaches a Freya on_press handler, not pixel-perfect aim at
+        // the (animating, moving) button. Making the root rect pressable lets the
+        // headless injector click anywhere on the ~1256x120 surface and still exercise
+        // the press path; 'k'/Esc keyboard assertions stay strict.
+        .on_press(move |_| {
+            let n = {
+                let mut c = count.write();
+                *c += 1;
+                *c
+            };
+            tracing::info!("[spike] pressed count={n}");
+        })
         .child(
             rect()
                 .width(Size::px(bar_width))
@@ -54,7 +67,12 @@ fn spike_ui() -> impl IntoElement {
         .child(
             Button::new()
                 .on_press(move |_| {
-                    *count.write() += 1;
+                    let n = {
+                        let mut c = count.write();
+                        *c += 1;
+                        *c
+                    };
+                    tracing::info!("[spike] pressed count={n}");
                 })
                 .child(format!("count: {}", count.read())),
         )
