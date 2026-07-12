@@ -6,11 +6,14 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-zbus = { workspace = true }
-tokio = { workspace = true }
+# zbus over tokio: the `tokio` feature switches zbus's executor/transport to
+# tokio (compile-time cfg), so the connections live on our tokio runtime.
+zbus = { workspace = true, features = ["tokio"] }
+# `net` gives tokio the IO driver zbus needs (UnixStream) + enable_all().
+tokio = { workspace = true, features = ["net"] }
 libpulse-binding = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-anyhow = { workspace = true }
-thiserror = { workspace = true }
+futures-util = "0.3"
 tracing = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
