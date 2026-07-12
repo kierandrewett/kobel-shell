@@ -1,0 +1,52 @@
+# kobel-shell Rust workspace. See docs/FREYA-PLAN.md for the architecture.
+# Freya is pinned to one main-branch rev; upgrade deliberately, never track live.
+
+[workspace]
+resolver = "3"
+members = [
+    "crates/kobel-wayland",
+    "crates/kobel-services",
+    "crates/kobel-shell",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+# Freya (pinned rev on main, 0.4.0-rc.24 line). No `freya` facade, no winit.
+freya-core = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+freya-engine = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+freya-components = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+freya-animation = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+torin = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+
+# Wayland host
+smithay-client-toolkit = { version = "0.20", features = ["calloop"] }
+wayland-client = "0.31"
+wayland-backend = "0.3"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-egl = "0.32"
+khronos-egl = { version = "6", features = ["dynamic"] }
+calloop = "0.14"
+calloop-wayland-source = "0.4"
+keyboard-types = "0.8"
+futures-channel = "0.3"
+
+# Services
+zbus = "5"
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "time", "sync"] }
+libpulse-binding = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Shared
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Internal
+kobel-wayland = { path = "crates/kobel-wayland" }
+kobel-services = { path = "crates/kobel-services" }

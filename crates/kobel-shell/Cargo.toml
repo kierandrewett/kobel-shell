@@ -1,0 +1,18 @@
+[package]
+name = "kobel-shell"
+description = "The kobel shell: chrome for gnoblin, rendered by Freya"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kobel-wayland = { workspace = true }
+kobel-services = { workspace = true }
+freya-core = { workspace = true }
+freya-engine = { workspace = true }
+freya-animation = { workspace = true }
+freya-components = { workspace = true }
+torin = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

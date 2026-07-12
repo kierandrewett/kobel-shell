@@ -2,3 +2,4 @@
 *.qmlc
 *.jsc
 .qmlcache/
+/target
