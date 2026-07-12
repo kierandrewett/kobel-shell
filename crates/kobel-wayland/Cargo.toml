@@ -1,0 +1,48 @@
+# kobel-wayland: the Wayland wlr-layer-shell host that embeds Freya without winit.
+# See docs/FREYA-PLAN.md sections 2, 3, 7. Freya git deps are pinned to one rev in
+# the workspace; freya-clipboard and ragnarok are not in the workspace table (they
+# are internal freya crates) so they are pinned here to the SAME rev to unify.
+
+[package]
+name = "kobel-wayland"
+description = "Wayland wlr-layer-shell host embedding Freya (no winit)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+freya-core = { workspace = true }
+freya-engine = { workspace = true }
+freya-components = { workspace = true }
+torin = { workspace = true }
+# Internal freya crates required for embedding (host-provided contexts + hit testing).
+# Not in the workspace table; pinned here to the SAME rev so they unify with freya-core.
+ragnarok = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+freya-clipboard = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+# The Platform root context requires building an accesskit node; match Freya's version.
+accesskit = "0.24"
+
+smithay-client-toolkit = { workspace = true }
+wayland-client = { workspace = true }
+# client_system selects the libwayland backend so wl_surface ObjectIds expose the
+# C wl_proxy pointer that wayland-egl (WlEglSurface) requires.
+wayland-backend = { workspace = true, features = ["client_system"] }
+wayland-protocols = { workspace = true }
+wayland-egl = { workspace = true }
+khronos-egl = { workspace = true }
+calloop = { workspace = true }
+calloop-wayland-source = { workspace = true }
+keyboard-types = { workspace = true }
+futures-channel = { workspace = true }
+futures-util = "0.3"
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+freya-animation = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "spike"
+path = "examples/spike.rs"
