@@ -16,7 +16,10 @@ OUT2="${OUT2:-/tmp/kobel-spike-2.png}"
 SPIKE_BIN="$ROOT/target/debug/examples/spike"
 
 [ -x "$PREFIX/bin/gnome-shell" ] || { echo "no gnome-shell in $PREFIX -- build gnoblin first" >&2; exit 1; }
-[ -x "$SPIKE_BIN" ] || { echo "no spike binary -- run: cargo build -p kobel-wayland --example spike" >&2; exit 1; }
+# Always rebuild so the gate provably runs the current source (fast when clean).
+( cd "$ROOT" && cargo build -p kobel-wayland --example spike ) \
+  || { echo "spike build failed" >&2; exit 1; }
+[ -x "$SPIKE_BIN" ] || { echo "no spike binary after build" >&2; exit 1; }
 
 # --- gnoblin runtime env (mirrors ags/scripts/run-in-gnoblin.sh) ---
 export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17"
