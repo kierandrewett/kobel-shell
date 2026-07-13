@@ -30,6 +30,7 @@ use freya_core::integration::*;
 use freya_core::prelude::Color;
 use freya_engine::prelude::{Canvas, FontCollection, FontMgr, TypefaceFontProvider};
 use ragnarok::{EventsExecutorRunner, EventsMeasurerRunner, NodesState};
+use smithay_client_toolkit::compositor::Surface as SctkSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use torin::prelude::Size2D;
@@ -37,6 +38,11 @@ use wayland_client::protocol::wl_output::WlOutput;
 use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
+use wayland_protocols::xdg::shell::client::xdg_popup::XdgPopup;
+use wayland_protocols::xdg::shell::client::xdg_positioner::{
+    Anchor as XdgAnchor, ConstraintAdjustment, Gravity as XdgGravity,
+};
+use wayland_protocols::xdg::shell::client::xdg_surface::XdgSurface;
 
 use crate::egl::LayerEglSurface;
 use crate::frame::FrameClock;
@@ -87,7 +93,7 @@ pub(crate) struct FreyaLayerSurface {
     clock: FrameClock,
     frames_since_log: u32,
 
-    // --- Wayland / EGL (egl_surface MUST drop before `layer`) ---
+    // --- Wayland / EGL (egl_surface MUST drop before `role`) ---
     pub(crate) egl_surface: Option<LayerEglSurface>,
     /// wp_viewport driving the logical<-physical mapping. `Some` => fractional
     /// mode: wl buffer_scale stays 1 and the viewport destination carries the
@@ -97,7 +103,12 @@ pub(crate) struct FreyaLayerSurface {
     viewport: Option<WpViewport>,
     /// wp_fractional_scale_v1 add-on; kept alive so preferred_scale keeps arriving.
     fractional: Option<WpFractionalScaleV1>,
-    pub(crate) layer: LayerSurface,
+    /// The wl role backing this surface: a wlr layer surface, or an xdg popup
+    /// parented to another surface. Both share every other field (the Freya runtime,
+    /// EGL, scale/frame machinery); only the wl protocol object and its
+    /// configure/resize semantics differ. Owns the role objects, which the Drop impl
+    /// tears down (xdg role objects + wl_surface) while `wl_surface` is still alive.
+    role: SurfaceRole,
     wl_surface: WlSurface,
     /// The output this surface is bound to, if any. Recorded so the host can find
     /// and tear down every surface for a destroyed output (see conn.rs
@@ -115,6 +126,60 @@ struct ContentSized {
     width: u32,
     max_height: u32,
     last_requested_h: u32,
+}
+
+/// The wl role object(s) backing a [`FreyaLayerSurface`]. A wlr layer surface is a
+/// top-level shell surface; a popup is an `xdg_surface` + `xdg_popup` parented to
+/// another surface (a layer surface via `zwlr_layer_surface_v1.get_popup`, or another
+/// popup via `xdg_surface.get_popup`). Everything else about the embedded Freya
+/// instance is identical, so both share the same struct.
+pub(crate) enum SurfaceRole {
+    Layer(LayerSurface),
+    Popup(PopupRole),
+}
+
+impl SurfaceRole {
+    /// The wl_surface carrying this role's buffers.
+    fn wl_surface(&self) -> &WlSurface {
+        match self {
+            SurfaceRole::Layer(layer) => layer.wl_surface(),
+            SurfaceRole::Popup(popup) => popup.surface.wl_surface(),
+        }
+    }
+}
+
+/// An xdg popup role: the `xdg_surface`/`xdg_popup` pair plus the sctk `Surface` that
+/// owns the underlying `wl_surface` (it sends `wl_surface.destroy` on drop, after the
+/// xdg role objects are destroyed in [`FreyaLayerSurface`]'s Drop). Kept `pub(crate)`
+/// so the host (conn.rs) drives the protocol requests (grab/reposition/ack) while the
+/// surface owns the objects' lifetime.
+pub(crate) struct PopupRole {
+    /// Owns the popup wl_surface; destroys it on drop (ordered after the xdg objects).
+    pub(crate) surface: SctkSurface,
+    pub(crate) xdg_surface: XdgSurface,
+    pub(crate) xdg_popup: XdgPopup,
+    /// The surface this popup is anchored to (a layer surface or another popup). A
+    /// parent's teardown recursively retires its popups (see conn.rs).
+    pub(crate) parent: SurfaceId,
+    /// Positioner inputs, retained so a content-size change can rebuild the positioner
+    /// and drive `xdg_popup.reposition` -- the popup analogue of a layer `set_size`.
+    pub(crate) geometry: PopupGeometry,
+    /// Monotonic reposition token (echoed back in `xdg_popup.repositioned`).
+    pub(crate) reposition_token: u32,
+    /// Size (logical) from the most recent `xdg_popup.configure`, applied on the
+    /// paired `xdg_surface.configure` (which carries the serial to ack).
+    pub(crate) pending: (u32, u32),
+}
+
+/// Positioner inputs for an xdg popup: the anchor rectangle (parent-local logical
+/// coords) plus the anchor/gravity/constraint-adjustment. Retained so a content-size
+/// change can rebuild an equivalent positioner for `xdg_popup.reposition`.
+#[derive(Clone, Copy)]
+pub(crate) struct PopupGeometry {
+    pub(crate) anchor_rect: (i32, i32, i32, i32),
+    pub(crate) anchor: XdgAnchor,
+    pub(crate) gravity: XdgGravity,
+    pub(crate) constraint: ConstraintAdjustment,
 }
 
 /// Handle for registering app-level root contexts before a surface mounts.
@@ -139,14 +204,14 @@ impl FreyaLayerSurface {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<C>(
         id: SurfaceId,
-        layer: LayerSurface,
+        role: SurfaceRole,
         initial_logical: (u32, u32),
         waker: Waker,
         app: impl Fn() -> Element + 'static,
         setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
         content: Option<(u32, u32)>,
     ) -> (Self, C) {
-        let wl_surface = layer.wl_surface().clone();
+        let wl_surface = role.wl_surface().clone();
         // Start at scale 1.0 (num=120); the compositor updates it via
         // wp_fractional_scale_v1::preferred_scale (fractional mode) or the integer
         // wl_output buffer scale (integer fallback).
@@ -258,7 +323,7 @@ impl FreyaLayerSurface {
             egl_surface: None,
             viewport: None,
             fractional: None,
-            layer,
+            role,
             wl_surface,
             // Set by the host after construction (create_surface_impl) once the
             // bound output is known; new() is output-agnostic.
@@ -271,6 +336,41 @@ impl FreyaLayerSurface {
 
     pub(crate) fn wl_surface(&self) -> &WlSurface {
         &self.wl_surface
+    }
+
+    /// Commit pending double-buffered surface state (equivalent for either role).
+    pub(crate) fn commit(&self) {
+        self.wl_surface.commit();
+    }
+
+    /// The wlr layer role, if this surface is a layer surface (`None` for a popup).
+    /// Layer-only requests (set_size/anchor/keyboard-interactivity) go through here.
+    pub(crate) fn layer_surface(&self) -> Option<&LayerSurface> {
+        match &self.role {
+            SurfaceRole::Layer(layer) => Some(layer),
+            SurfaceRole::Popup(_) => None,
+        }
+    }
+
+    /// Whether this surface is an xdg popup.
+    pub(crate) fn is_popup(&self) -> bool {
+        matches!(self.role, SurfaceRole::Popup(_))
+    }
+
+    /// The popup role, if this surface is a popup (`None` for a layer surface).
+    pub(crate) fn popup(&self) -> Option<&PopupRole> {
+        match &self.role {
+            SurfaceRole::Popup(popup) => Some(popup),
+            SurfaceRole::Layer(_) => None,
+        }
+    }
+
+    /// The popup role for mutation (pending size, reposition token).
+    pub(crate) fn popup_mut(&mut self) -> Option<&mut PopupRole> {
+        match &mut self.role {
+            SurfaceRole::Popup(popup) => Some(popup),
+            SurfaceRole::Layer(_) => None,
+        }
     }
 
     pub(crate) fn physical_size(&self) -> (i32, i32) {
@@ -584,6 +684,14 @@ impl Drop for FreyaLayerSurface {
         }
         if let Some(fs) = &self.fractional {
             fs.destroy();
+        }
+        // A popup's xdg role objects also have explicit destructors. Destroy them
+        // child-first (xdg_popup before its xdg_surface) while the wl_surface is
+        // still alive; the owning sctk Surface (in the PopupRole) then sends
+        // wl_surface.destroy when the `role` field drops, after egl_surface.
+        if let SurfaceRole::Popup(popup) = &self.role {
+            popup.xdg_popup.destroy();
+            popup.xdg_surface.destroy();
         }
     }
 }

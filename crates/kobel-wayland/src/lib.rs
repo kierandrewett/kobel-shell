@@ -224,6 +224,89 @@ impl SurfaceConfig {
     }
 }
 
+/// Where a popup attaches on its parent's anchor rectangle, and which way it grows.
+/// A menu below a bar/dock button is the common case: anchor the popup's edge to the
+/// BOTTOM of the anchor rect and grow with BOTTOM gravity (downward). The host maps
+/// these to `xdg_positioner` anchor/gravity; the compositor keeps the popup on-screen
+/// via slide+flip constraint adjustment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PopupAnchor {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+    Center,
+}
+
+/// The direction a popup expands away from its anchor point (its `xdg_positioner`
+/// gravity).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PopupGravity {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+/// Configuration for one xdg popup surface (a tray/context menu, tooltip, ...).
+///
+/// A popup is parented to another surface (a layer surface, or another popup for a
+/// submenu) and positioned by an `xdg_positioner`: the `anchor_rect` is a rectangle
+/// in the PARENT's surface-local logical coordinates (e.g. the button that opened the
+/// menu), and `anchor`/`gravity` say how the popup hangs off it. The compositor is
+/// free to slide/flip the popup to keep it on-screen. Its own size is chosen exactly
+/// like a layer surface (`SurfaceSize::Exact` or `ContentSized`).
+#[derive(Clone, Debug)]
+pub struct PopupConfig {
+    /// A diagnostic namespace (`kobel-*`), mirrored into tracing logs.
+    pub namespace: String,
+    /// Anchor rectangle in the parent's surface-local logical pixels (x, y, w, h).
+    pub anchor_rect: (i32, i32, i32, i32),
+    /// Popup size behaviour.
+    pub size: SurfaceSize,
+    /// Which point of the anchor rectangle the popup attaches to.
+    pub anchor: PopupAnchor,
+    /// Which direction the popup grows from that point.
+    pub gravity: PopupGravity,
+}
+
+impl PopupConfig {
+    /// A menu-below-a-button default: anchored to the bottom edge of `anchor_rect`,
+    /// growing downward (bottom gravity). Override with [`PopupConfig::anchor`] /
+    /// [`PopupConfig::gravity`].
+    pub fn new(
+        namespace: impl Into<String>,
+        anchor_rect: (i32, i32, i32, i32),
+        size: SurfaceSize,
+    ) -> Self {
+        Self {
+            namespace: namespace.into(),
+            anchor_rect,
+            size,
+            anchor: PopupAnchor::Bottom,
+            gravity: PopupGravity::Bottom,
+        }
+    }
+
+    pub fn anchor(mut self, anchor: PopupAnchor) -> Self {
+        self.anchor = anchor;
+        self
+    }
+
+    pub fn gravity(mut self, gravity: PopupGravity) -> Self {
+        self.gravity = gravity;
+        self
+    }
+}
+
 /// A frame-timing / scale snapshot, provided to every surface as a Freya root
 /// context (`State<FrameStats>`). Apps that consume it (e.g. an fps readout) will
 /// naturally redraw as it changes; surfaces that do not consume it stay idle.

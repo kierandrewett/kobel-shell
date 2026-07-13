@@ -29,10 +29,13 @@ use smithay_client_toolkit::seat::keyboard::{
 };
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 use smithay_client_toolkit::seat::{Capability, SeatHandler, SeatState};
+use smithay_client_toolkit::compositor::Surface as SctkSurface;
+use smithay_client_toolkit::globals::GlobalData;
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::{
     KeyboardInteractivity, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
 };
+use smithay_client_toolkit::shell::xdg::{XdgPositioner, XdgShell};
 use smithay_client_toolkit::{
     delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
     delegate_registry, delegate_seat, registry_handlers,
@@ -49,12 +52,22 @@ use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1:
 };
 use wayland_protocols::wp::viewporter::client::wp_viewport::{self, WpViewport};
 use wayland_protocols::wp::viewporter::client::wp_viewporter::{self, WpViewporter};
+use wayland_protocols::xdg::decoration::zv1::client::zxdg_decoration_manager_v1::{
+    self, ZxdgDecorationManagerV1,
+};
+use wayland_protocols::xdg::shell::client::xdg_popup::{self, XdgPopup};
+use wayland_protocols::xdg::shell::client::xdg_positioner::{
+    Anchor as XdgAnchor, ConstraintAdjustment, Gravity as XdgGravity,
+};
+use wayland_protocols::xdg::shell::client::xdg_surface::{self, XdgSurface};
+use wayland_protocols::xdg::shell::client::xdg_wm_base::{self, XdgWmBase};
 
 use crate::egl::Egl;
 use crate::frame::runner_waker;
-use crate::surface::{FreyaLayerSurface, SurfaceContexts};
+use crate::surface::{FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole};
 use crate::{
-    KeyPress, LoopWaker, OutputEvent, OutputId, Result, SurfaceConfig, SurfaceId, SurfaceSize, input,
+    KeyPress, LoopWaker, OutputEvent, OutputId, PopupAnchor, PopupConfig, PopupGravity, Result,
+    SurfaceConfig, SurfaceId, SurfaceSize, input,
 };
 
 /// The shell host. Create it, add surfaces, then `run()` the event loop.
@@ -107,6 +120,16 @@ impl Shell {
         let layer_shell =
             LayerShell::bind(&globals, &qh).map_err(|e| anyhow!("bind wlr-layer-shell: {e}"))?;
 
+        // xdg shell (xdg_wm_base): the popup primitive. Bound via sctk's XdgShell (it
+        // also binds the optional decoration manager, unused here), but popups are
+        // driven semi-raw -- our own xdg_surface/xdg_popup + Dispatch -- because a
+        // layer surface, not a window, is the popup parent. Absent -> popups disabled.
+        let xdg_shell = XdgShell::bind(&globals, &qh).ok();
+        tracing::info!(
+            "[host] xdg shell {}",
+            if xdg_shell.is_some() { "bound (xdg popups enabled)" } else { "absent (popups unavailable)" }
+        );
+
         // Fractional scaling: bind wp_viewporter (stable) + staging
         // wp_fractional_scale_manager_v1 when advertised. sctk 0.20 wraps neither,
         // so Host implements their Dispatch directly. Either absent -> integer
@@ -131,13 +154,16 @@ impl Shell {
             layer_shell,
             viewporter,
             fractional_manager,
+            xdg_shell,
             egl,
             surfaces: Vec::new(),
             next_id: 0,
             keyboard: None,
             pointer: None,
+            seat: None,
             modifiers: SctkModifiers::default(),
             kb_focus: None,
+            last_serial: None,
             qh,
             loop_handle,
             runner_ping,
@@ -250,23 +276,47 @@ impl Shell {
 
 /// Handle passed to the app-level key handler for driving the shell.
 pub struct Control<'a> {
-    exit: &'a mut bool,
-    surfaces: &'a mut Vec<FreyaLayerSurface>,
-    compositor: &'a CompositorState,
+    host: &'a mut Host,
 }
 
 impl Control<'_> {
     /// Request a clean shutdown of the event loop.
     pub fn exit(&mut self) {
-        *self.exit = true;
+        self.host.exit = true;
     }
 
-    /// Change a surface's keyboard-interactivity mode at runtime.
+    /// Change a surface's keyboard-interactivity mode at runtime. No-op for a popup
+    /// (popups take input via their grab, not layer-shell keyboard-interactivity).
     pub fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
-        if let Some(s) = self.surfaces.iter().find(|s| s.id == id) {
-            s.layer.set_keyboard_interactivity(mode);
-            s.layer.commit();
+        if let Some(s) = self.host.surfaces.iter().find(|s| s.id == id) {
+            if let Some(layer) = s.layer_surface() {
+                layer.set_keyboard_interactivity(mode);
+                s.commit();
+            }
         }
+    }
+
+    /// Open an xdg popup anchored to `parent` (a layer surface, or another popup for a
+    /// submenu), rendering `app` with the same embedded-Freya machinery as a layer
+    /// surface. `setup` registers the popup's app-level root contexts (ShellBus,
+    /// theme tokens, ...) just like the other surface constructors. The grab uses the
+    /// last input serial, so an outside click dismisses the popup (`popup_done`, routed
+    /// back through [`OutputEvent::SurfaceClosed`]). Returns the popup's id + `setup`'s
+    /// value. Errors if the parent is unknown or xdg_wm_base is unavailable.
+    pub fn open_popup<C>(
+        &mut self,
+        parent: SurfaceId,
+        config: PopupConfig,
+        setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
+        app: impl Fn() -> Element + 'static,
+    ) -> Result<(SurfaceId, C)> {
+        self.host.create_popup(parent, config, setup, app)
+    }
+
+    /// Programmatically dismiss a popup (and any submenus parented to it). No-op if
+    /// `id` is not a live popup. The app is notified via [`OutputEvent::SurfaceClosed`].
+    pub fn close_popup(&mut self, id: SurfaceId) {
+        self.host.close_popup(id);
     }
 
     /// Swap a surface's wl input region between empty (click-through) and full
@@ -280,12 +330,12 @@ impl Control<'_> {
             self.set_input_region_rects(id, &[]);
             return;
         }
-        let Some(s) = self.surfaces.iter().find(|s| s.id == id) else {
+        let Some(s) = self.host.surfaces.iter().find(|s| s.id == id) else {
             return;
         };
         // None restores the default whole-surface input region.
-        s.layer.wl_surface().set_input_region(None);
-        s.layer.commit();
+        s.wl_surface().set_input_region(None);
+        s.commit();
     }
 
     /// Set a surface's wl input region to the union of the given surface-local
@@ -295,22 +345,22 @@ impl Control<'_> {
     /// only its visible card rects here, never the whole surface). Input region is
     /// sticky surface state, so later frame commits keep it.
     pub fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]) {
-        let Some(s) = self.surfaces.iter().find(|s| s.id == id) else {
+        let Some(s) = self.host.surfaces.iter().find(|s| s.id == id) else {
             return;
         };
-        match Region::new(self.compositor) {
+        match Region::new(&self.host.compositor_state) {
             Ok(region) => {
                 for &(x, y, w, h) in rects {
                     region.add(x, y, w, h);
                 }
-                s.layer.wl_surface().set_input_region(Some(region.wl_region()));
+                s.wl_surface().set_input_region(Some(region.wl_region()));
             }
             Err(e) => {
                 tracing::warn!("[host] input region unavailable: {e}");
                 return;
             }
         }
-        s.layer.commit();
+        s.commit();
     }
 }
 
@@ -368,15 +418,24 @@ struct Host {
     /// wp_fractional_scale_manager_v1 global. `None` => not advertised. Both this
     /// and `viewporter` are required to drive a surface fractionally.
     fractional_manager: Option<WpFractionalScaleManagerV1>,
-
+    /// xdg shell (`xdg_wm_base`) binding, used to create xdg popups on non-window
+    /// (layer) parents. `None` when the compositor does not advertise xdg_wm_base ->
+    /// popups are unavailable (layer surfaces still work). See [`Host::create_popup`].
+    xdg_shell: Option<XdgShell>,
     egl: Egl,
     surfaces: Vec<FreyaLayerSurface>,
     next_id: u32,
 
     keyboard: Option<wl_keyboard::WlKeyboard>,
     pointer: Option<wl_pointer::WlPointer>,
+    /// The seat carrying pointer/keyboard, retained so a popup grab can name it.
+    seat: Option<wl_seat::WlSeat>,
     modifiers: SctkModifiers,
     kb_focus: Option<usize>,
+    /// The serial of the most recent pointer button / key press, used as the popup
+    /// grab serial (`xdg_popup.grab(seat, serial)`) so the compositor accepts the
+    /// grab and dismisses the popup on outside-click (`popup_done`).
+    last_serial: Option<u32>,
 
     qh: QueueHandle<Host>,
     loop_handle: calloop::LoopHandle<'static, Host>,
@@ -447,8 +506,15 @@ impl Host {
         // so a content-sized surface can measure its content and request the right
         // height before the initial (buffer-less) commit that triggers the first
         // configure. The EGL buffer is created later, on that configure.
-        let (mut surface, extra) =
-            FreyaLayerSurface::new(id, layer, (init_w, init_h), self.waker.clone(), app, setup, content);
+        let (mut surface, extra) = FreyaLayerSurface::new(
+            id,
+            SurfaceRole::Layer(layer),
+            (init_w, init_h),
+            self.waker.clone(),
+            app,
+            setup,
+            content,
+        );
         // Record the bound output so output_destroyed can find every surface to tear
         // down when this output goes away (None for a compositor-placed surface).
         surface.output = output.cloned();
@@ -469,12 +535,14 @@ impl Host {
         }
         if surface.is_content_sized() {
             if let Some((w, h)) = surface.measure_if_dirty() {
-                surface.layer.set_size(w, h);
+                if let Some(layer) = surface.layer_surface() {
+                    layer.set_size(w, h);
+                }
             }
         }
 
         // Initial commit with no buffer -> compositor replies with a configure.
-        surface.layer.commit();
+        surface.commit();
 
         self.surfaces.push(surface);
         tracing::info!(
@@ -484,6 +552,227 @@ impl Host {
             output.is_some(),
         );
         Ok((id, extra))
+    }
+
+    /// Create an xdg popup anchored to `parent` (a layer surface, or another popup for
+    /// a submenu), rendering `app` with the same embedded-Freya machinery as a layer
+    /// surface. Returns the popup's [`SurfaceId`]. The popup is positioned by an
+    /// `xdg_positioner` (anchor rect in parent-local logical coords + anchor/gravity +
+    /// slide/flip so the compositor keeps it on-screen), given an explicit grab on the
+    /// last input serial (so the compositor dismisses it on outside-click ->
+    /// `popup_done`) and, when available, fractional scaling like the main surfaces.
+    fn create_popup<C>(
+        &mut self,
+        parent: SurfaceId,
+        config: PopupConfig,
+        setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
+        app: impl Fn() -> Element + 'static,
+    ) -> Result<(SurfaceId, C)> {
+        if self.xdg_shell.is_none() {
+            return Err(anyhow!("create_popup: xdg_wm_base not advertised (popups unavailable)"));
+        }
+        let Some(parent_idx) = self.surfaces.iter().position(|s| s.id == parent) else {
+            return Err(anyhow!("create_popup: parent {parent:?} not found"));
+        };
+
+        // Exact uses the size directly; ContentSized maps at (width, max_height) and
+        // hugs its content later via xdg_popup.reposition (the popup analogue of a
+        // layer set_size). A zero axis is invalid for a positioner, so floor at 1.
+        let (init_w, init_h, content) = match config.size {
+            SurfaceSize::Exact { width, height } => (width.max(1), height.max(1), None),
+            SurfaceSize::ContentSized { width, max_height } => {
+                (width.max(1), max_height.max(1), Some((width, max_height)))
+            }
+        };
+
+        let id = SurfaceId(self.next_id);
+        self.next_id += 1;
+
+        // A plain wl_surface owned by an sctk Surface (sends wl_surface.destroy on
+        // drop, after the xdg role objects are destroyed in FreyaLayerSurface::drop).
+        let wl = self.compositor_state.create_surface(&self.qh);
+        let sctk_surface = SctkSurface::from(wl);
+        let wl_clone = sctk_surface.wl_surface().clone();
+
+        let anchor = map_popup_anchor(config.anchor);
+        let gravity = map_popup_gravity(config.gravity);
+        // Slide then flip on both axes: keep the menu fully on-screen, flipping to the
+        // opposite side of the anchor when it would overflow (standard menu behaviour).
+        let constraint = ConstraintAdjustment::SlideX
+            | ConstraintAdjustment::SlideY
+            | ConstraintAdjustment::FlipX
+            | ConstraintAdjustment::FlipY;
+        let (ax, ay, aw, ah) = config.anchor_rect;
+        let (aw, ah) = (aw.max(1), ah.max(1));
+        let geometry = PopupGeometry { anchor_rect: (ax, ay, aw, ah), anchor, gravity, constraint };
+
+        // xdg objects. The parent xdg_surface is passed directly for a popup-parented
+        // popup (submenu); for a layer-parented popup it is None and the layer surface
+        // adopts the popup via zwlr_layer_surface_v1.get_popup below.
+        let parent_popup_xdg = self.surfaces[parent_idx].popup().map(|p| p.xdg_surface.clone());
+        let xdg_shell = self.xdg_shell.as_ref().expect("xdg_shell present (checked above)");
+        let positioner =
+            XdgPositioner::new(xdg_shell).map_err(|e| anyhow!("create xdg_positioner: {e}"))?;
+        positioner.set_size(init_w as i32, init_h as i32);
+        positioner.set_anchor_rect(ax, ay, aw, ah);
+        positioner.set_anchor(anchor);
+        positioner.set_gravity(gravity);
+        positioner.set_constraint_adjustment(constraint);
+        let xdg_surface = xdg_shell.xdg_wm_base().get_xdg_surface(&wl_clone, &self.qh, id);
+        let xdg_popup = xdg_surface.get_popup(parent_popup_xdg.as_ref(), &positioner, &self.qh, id);
+        // The positioner is a one-shot; drop it now (its Drop sends destroy). A later
+        // content-size change rebuilds an equivalent one for reposition.
+        drop(positioner);
+
+        // Parent link for a layer-parented popup.
+        if let Some(layer) = self.surfaces[parent_idx].layer_surface() {
+            layer.get_popup(&xdg_popup);
+        }
+
+        // Explicit grab on the last input serial: the compositor then routes input to
+        // the popup and dismisses it (popup_done) when the user clicks outside it.
+        match (&self.seat, self.last_serial) {
+            (Some(seat), Some(serial)) => {
+                xdg_popup.grab(seat, serial);
+                tracing::info!("[host] popup {id:?} grab(serial={serial})");
+            }
+            _ => tracing::warn!("[host] popup {id:?} opened without a grab (no seat/serial yet)"),
+        }
+
+        let role = SurfaceRole::Popup(PopupRole {
+            surface: sctk_surface,
+            xdg_surface,
+            xdg_popup,
+            parent,
+            geometry,
+            reposition_token: 0,
+            pending: (init_w, init_h),
+        });
+
+        let (mut surface, extra) = FreyaLayerSurface::new(
+            id,
+            role,
+            (init_w, init_h),
+            self.waker.clone(),
+            app,
+            setup,
+            content,
+        );
+
+        // Fractional scaling + viewport, exactly like a layer surface.
+        if let (Some(viewporter), Some(manager)) = (&self.viewporter, &self.fractional_manager) {
+            let wl = surface.wl_surface().clone();
+            let viewport = viewporter.get_viewport(&wl, &self.qh, ());
+            let fractional = manager.get_fractional_scale(&wl, &self.qh, id);
+            surface.enable_fractional(viewport, fractional);
+        }
+
+        // Initial commit with no buffer -> xdg_popup.configure + xdg_surface.configure.
+        surface.commit();
+        self.surfaces.push(surface);
+        tracing::info!(
+            "[host] created popup {id:?} ns={} parent={parent:?} anchor_rect=({ax},{ay},{aw}x{ah}) size={init_w}x{init_h} content_sized={}",
+            config.namespace,
+            content.is_some(),
+        );
+        Ok((id, extra))
+    }
+
+    /// Programmatically dismiss a popup (and its submenus). No-op if `id` is not a
+    /// live popup. Notifies the app via [`OutputEvent::SurfaceClosed`] per popup.
+    fn close_popup(&mut self, id: SurfaceId) {
+        let is_popup = self.surfaces.iter().any(|s| s.id == id && s.is_popup());
+        if !is_popup {
+            tracing::debug!("[host] close_popup {id:?}: not a live popup");
+            return;
+        }
+        tracing::info!("[host] close_popup {id:?} (programmatic dismissal)");
+        self.retire_popup(id);
+    }
+
+    /// Retire a popup `id` plus every popup transitively parented to it (submenus
+    /// first), dropping each surface (its Drop tears down the xdg + wl objects) and
+    /// firing [`OutputEvent::SurfaceClosed`] so the app drops its bookkeeping. Shared
+    /// by `popup_done` and [`Host::close_popup`].
+    fn retire_popup(&mut self, id: SurfaceId) {
+        self.retire_descendant_popups(&[id]);
+        if let Some(pos) = self.surfaces.iter().position(|s| s.id == id) {
+            let ids: Vec<SurfaceId> = self.surfaces.iter().map(|s| s.id).collect();
+            self.kb_focus = focus_after_single_close(&ids, self.kb_focus, pos);
+            self.surfaces.remove(pos);
+            self.dispatch_output(OutputEvent::SurfaceClosed { output: None, surface: id }, None);
+        }
+        if self.surfaces.is_empty() {
+            self.exit = true;
+        }
+    }
+
+    /// Retire every popup transitively parented to any id in `roots` (the roots
+    /// themselves are NOT removed). Used when a parent surface (layer or popup) is
+    /// torn down so its open menus go with it. Fires [`OutputEvent::SurfaceClosed`]
+    /// for each retired popup.
+    fn retire_descendant_popups(&mut self, roots: &[SurfaceId]) {
+        let links: Vec<(SurfaceId, Option<SurfaceId>)> =
+            self.surfaces.iter().map(|s| (s.id, s.popup().map(|p| p.parent))).collect();
+        let doomed = popup_descendants(&links, roots);
+        // Remove child-first (reverse of the breadth-first discovery order) so a nested
+        // popup is destroyed before its parent popup -- xdg requires popups be torn
+        // down topmost-first. Focus is fixed BY ID after each removal (never a shifted
+        // index), matching the single-close path.
+        for &id in doomed.iter().rev() {
+            if let Some(pos) = self.surfaces.iter().position(|s| s.id == id) {
+                let ids: Vec<SurfaceId> = self.surfaces.iter().map(|s| s.id).collect();
+                self.kb_focus = focus_after_single_close(&ids, self.kb_focus, pos);
+                self.surfaces.remove(pos);
+                tracing::info!("[host] popup {id:?} retired (parent torn down)");
+            }
+        }
+        for id in doomed {
+            self.dispatch_output(OutputEvent::SurfaceClosed { output: None, surface: id }, None);
+        }
+    }
+
+    /// Apply a role-appropriate surface resize request for a content-sized surface: a
+    /// layer surface uses `set_size`; a popup rebuilds its positioner and repositions.
+    /// Both then commit so the request rides the next frame.
+    fn request_surface_size(&mut self, idx: usize, w: u32, h: u32) {
+        if self.surfaces[idx].is_popup() {
+            self.reposition_popup(idx, w, h);
+        } else if let Some(layer) = self.surfaces[idx].layer_surface() {
+            layer.set_size(w, h);
+        }
+        self.surfaces[idx].commit();
+    }
+
+    /// Rebuild an equivalent positioner at the new size and drive `xdg_popup.reposition`
+    /// (+ set_window_geometry) so a content-sized popup hugs its measured content.
+    fn reposition_popup(&mut self, idx: usize, w: u32, h: u32) {
+        let Some(geom) = self.surfaces[idx].popup().map(|p| p.geometry) else {
+            return;
+        };
+        let Some(xdg_shell) = self.xdg_shell.as_ref() else {
+            return;
+        };
+        let positioner = match XdgPositioner::new(xdg_shell) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("[host] popup reposition positioner unavailable: {e}");
+                return;
+            }
+        };
+        let (ax, ay, aw, ah) = geom.anchor_rect;
+        positioner.set_size(w as i32, h as i32);
+        positioner.set_anchor_rect(ax, ay, aw, ah);
+        positioner.set_anchor(geom.anchor);
+        positioner.set_gravity(geom.gravity);
+        positioner.set_constraint_adjustment(geom.constraint);
+        if let Some(p) = self.surfaces[idx].popup_mut() {
+            p.reposition_token = p.reposition_token.wrapping_add(1);
+            let token = p.reposition_token;
+            p.xdg_surface.set_window_geometry(0, 0, w as i32, h as i32);
+            p.xdg_popup.reposition(&positioner, token);
+        }
+        drop(positioner);
     }
 
     fn create_surface_on_outputs<C>(
@@ -575,6 +864,9 @@ impl Host {
             return;
         }
         let retired = self.retire_output_surfaces(id);
+        // Any popups parented to a retired surface are torn down with it (they are
+        // output-less, so retire_output_surfaces did not catch them).
+        self.retire_descendant_popups(&retired);
         tracing::info!(
             "[host] output {id:?} removed; retired {} surface(s), {} output(s) remain",
             retired.len(),
@@ -633,11 +925,7 @@ impl Host {
         // drive itself (exit, kb interactivity). Running before the surface pump means
         // any root-context writes it makes are picked up by process() this same sweep.
         if let Some(mut tick) = self.shell_tick.take() {
-            let mut control = Control {
-                exit: &mut self.exit,
-                surfaces: &mut self.surfaces,
-                compositor: &self.compositor_state,
-            };
+            let mut control = Control { host: self };
             tick(&mut control);
             self.shell_tick = Some(tick);
         }
@@ -657,6 +945,16 @@ impl Host {
     /// Present one surface: measure if needed, paint into the wrapped fbo, request the
     /// next frame callback, swap, and notify the ticker.
     fn render_surface(&mut self, idx: usize) {
+        // Measure at the fixed content viewport (content-sized) or the configured
+        // buffer (exact), and, when content-sizing asks for a new surface size, make
+        // the role-appropriate resize request (layer set_size / popup reposition)
+        // before binding GL. We keep rendering into the currently configured EGL
+        // buffer until the compositor's next configure resizes it. Guarded against
+        // loops by measure_if_dirty only requesting when the measured height changed.
+        if let Some((w, h)) = self.surfaces[idx].measure_if_dirty() {
+            self.request_surface_size(idx, w, h);
+        }
+
         let Self { egl, surfaces, qh, .. } = self;
         let qh: &QueueHandle<Host> = qh;
         let s = &mut surfaces[idx];
@@ -675,16 +973,8 @@ impl Host {
             }
         }
 
-        // Measure at the fixed content viewport (content-sized) or the configured
-        // buffer (exact). If content-sizing asks for a new surface size, honour the
-        // layer-shell rule: set_size + commit now, but keep rendering into the
-        // currently configured EGL buffer (pw x ph, unchanged) until the compositor's
-        // next configure resizes it. Guarded against loops by measure_if_dirty only
-        // requesting when the measured height actually changed.
-        if let Some((w, h)) = s.measure_if_dirty() {
-            s.layer.set_size(w, h);
-            s.layer.commit();
-        }
+        // Content-size measurement + resize request already happened at the top of
+        // this function (it must run before the role borrow below).
 
         let mut sk_surface = match egl.wrap_frame(pw, ph) {
             Ok(surface) => surface,
@@ -778,11 +1068,7 @@ impl Host {
 
         if let Some(mut handler) = self.key_handler.take() {
             let press = KeyPress { key, code, modifiers, repeat, surface: sid };
-            let mut control = Control {
-                exit: &mut self.exit,
-                surfaces: &mut self.surfaces,
-                compositor: &self.compositor_state,
-            };
+            let mut control = Control { host: self };
             handler(press, &mut control);
             self.key_handler = Some(handler);
         }
@@ -913,6 +1199,11 @@ impl LayerShellHandler for Host {
         // solely in output_destroyed -> destroy_output -> OutputEvent::Removed.
         // Re-resolve keyboard focus BY ID (never by a shifted index) so the removal
         // never mis-points it -- the same id-based fixup a bulk retire uses.
+        // Any popups parented to this surface (open menus) are torn down with it.
+        self.retire_descendant_popups(&[id]);
+        let Some(idx) = self.surfaces.iter().position(|s| s.id == id) else {
+            return;
+        };
         let ids: Vec<SurfaceId> = self.surfaces.iter().map(|s| s.id).collect();
         self.kb_focus = focus_after_single_close(&ids, self.kb_focus, idx);
         self.surfaces.remove(idx);
@@ -957,6 +1248,8 @@ impl SeatHandler for Host {
         seat: wl_seat::WlSeat,
         capability: Capability,
     ) {
+        // Retain the seat so a popup grab can name it (xdg_popup.grab(seat, serial)).
+        self.seat = Some(seat.clone());
         if capability == Capability::Keyboard && self.keyboard.is_none() {
             match self.seat_state.get_keyboard_with_repeat(
                 qh,
@@ -1034,9 +1327,11 @@ impl KeyboardHandler for Host {
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
         _keyboard: &wl_keyboard::WlKeyboard,
-        _serial: u32,
+        serial: u32,
         event: KeyEvent,
     ) {
+        // Track the press serial so a popup opened from this key can grab the seat.
+        self.last_serial = Some(serial);
         self.on_key_press(event, false);
     }
 
@@ -1107,7 +1402,10 @@ impl PointerHandler for Host {
                 PointerEventKind::Leave { .. } => {
                     // Hover state clears on the next enter (Phase 0/1).
                 }
-                PointerEventKind::Press { button, .. } => {
+                PointerEventKind::Press { button, serial, .. } => {
+                    // Track the press serial so a popup opened from this click can grab
+                    // the seat (xdg requires a recent input serial for the grab).
+                    self.last_serial = Some(serial);
                     self.surfaces[idx].feed_event(input::mouse_button(cursor, button, true));
                 }
                 PointerEventKind::Release { button, .. } => {
@@ -1210,6 +1508,135 @@ impl Dispatch<WpFractionalScaleV1, SurfaceId> for Host {
     }
 }
 
+// --- xdg shell raw Dispatch (semi-raw popups on layer parents) ---
+// XdgShell::bind requires Host to dispatch xdg_wm_base + the (optional) decoration
+// manager; the wm_base ping/pong keeps the connection live, the decoration manager
+// carries no events. The xdg_surface/xdg_popup objects are created with a SurfaceId
+// udata so their configure/popup_done route straight back to the owning surface.
+
+impl Dispatch<XdgWmBase, GlobalData> for Host {
+    fn event(
+        _state: &mut Self,
+        wm_base: &XdgWmBase,
+        event: xdg_wm_base::Event,
+        _data: &GlobalData,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        if let xdg_wm_base::Event::Ping { serial } = event {
+            wm_base.pong(serial);
+        }
+    }
+}
+
+impl Dispatch<ZxdgDecorationManagerV1, GlobalData> for Host {
+    fn event(
+        _state: &mut Self,
+        _mgr: &ZxdgDecorationManagerV1,
+        _event: zxdg_decoration_manager_v1::Event,
+        _data: &GlobalData,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // zxdg_decoration_manager_v1 carries no events.
+    }
+}
+
+impl Dispatch<XdgSurface, SurfaceId> for Host {
+    fn event(
+        state: &mut Self,
+        xdg_surface: &XdgSurface,
+        event: xdg_surface::Event,
+        id: &SurfaceId,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // The xdg_surface configure carries the serial to ack. Its size came from the
+        // paired xdg_popup.configure just before (stored as `pending`). Set the window
+        // geometry to that size, ack, then wire the size into the measure/EGL path.
+        if let xdg_surface::Event::Configure { serial } = event {
+            let Some(idx) = state.surfaces.iter().position(|s| s.id == *id) else {
+                return;
+            };
+            let Some(size) = state.surfaces[idx].popup().map(|p| {
+                p.xdg_surface.set_window_geometry(0, 0, p.pending.0 as i32, p.pending.1 as i32);
+                p.pending
+            }) else {
+                return;
+            };
+            xdg_surface.ack_configure(serial);
+            state.configure_surface(idx, size);
+            tracing::info!(
+                "[host] popup {id:?} xdg_surface configure serial={serial} acked; size {}x{}",
+                size.0,
+                size.1,
+            );
+        }
+    }
+}
+
+impl Dispatch<XdgPopup, SurfaceId> for Host {
+    fn event(
+        state: &mut Self,
+        _popup: &XdgPopup,
+        event: xdg_popup::Event,
+        id: &SurfaceId,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        match event {
+            xdg_popup::Event::Configure { x, y, width, height } => {
+                let (w, h) = (width.max(1) as u32, height.max(1) as u32);
+                if let Some(idx) = state.surfaces.iter().position(|s| s.id == *id) {
+                    if let Some(p) = state.surfaces[idx].popup_mut() {
+                        p.pending = (w, h);
+                    }
+                    tracing::info!("[host] popup {id:?} configured {w}x{h} at ({x},{y})");
+                }
+            }
+            xdg_popup::Event::PopupDone => {
+                // The compositor dismissed the popup (outside-click on the grab, or a
+                // parent going away). Retire it + its submenus and notify the app.
+                tracing::info!("[host] popup {id:?} popup_done (dismissed by compositor)");
+                state.retire_popup(*id);
+            }
+            xdg_popup::Event::Repositioned { token } => {
+                tracing::debug!("[host] popup {id:?} repositioned (token={token})");
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Map a public [`PopupAnchor`] to the xdg_positioner anchor enum.
+fn map_popup_anchor(anchor: PopupAnchor) -> XdgAnchor {
+    match anchor {
+        PopupAnchor::Top => XdgAnchor::Top,
+        PopupAnchor::Bottom => XdgAnchor::Bottom,
+        PopupAnchor::Left => XdgAnchor::Left,
+        PopupAnchor::Right => XdgAnchor::Right,
+        PopupAnchor::TopLeft => XdgAnchor::TopLeft,
+        PopupAnchor::TopRight => XdgAnchor::TopRight,
+        PopupAnchor::BottomLeft => XdgAnchor::BottomLeft,
+        PopupAnchor::BottomRight => XdgAnchor::BottomRight,
+        PopupAnchor::Center => XdgAnchor::None,
+    }
+}
+
+/// Map a public [`PopupGravity`] to the xdg_positioner gravity enum.
+fn map_popup_gravity(gravity: PopupGravity) -> XdgGravity {
+    match gravity {
+        PopupGravity::Top => XdgGravity::Top,
+        PopupGravity::Bottom => XdgGravity::Bottom,
+        PopupGravity::Left => XdgGravity::Left,
+        PopupGravity::Right => XdgGravity::Right,
+        PopupGravity::TopLeft => XdgGravity::TopLeft,
+        PopupGravity::TopRight => XdgGravity::TopRight,
+        PopupGravity::BottomLeft => XdgGravity::BottomLeft,
+        PopupGravity::BottomRight => XdgGravity::BottomRight,
+    }
+}
+
 /// Stable [`OutputId`] for a `wl_output`: its protocol object id. Two proxy clones of
 /// the same output share the id, and it is stable for the output's lifetime.
 fn output_id_of(output: &wl_output::WlOutput) -> OutputId {
@@ -1263,9 +1690,32 @@ fn focus_after_single_close(
     })
 }
 
+/// Transitive popup descendants of `roots`, given each live surface's
+/// `(id, popup_parent)` (a layer surface's parent is `None`; a popup's parent is its
+/// anchor surface). Returns the descendant ids in breadth-first discovery order
+/// (roots EXCLUDED); the caller removes them in reverse so nested popups are torn
+/// down before their parents. Extracted from [`Host::retire_descendant_popups`] so
+/// the parent-teardown fan-out is unit-testable without a live compositor.
+fn popup_descendants(
+    links: &[(SurfaceId, Option<SurfaceId>)],
+    roots: &[SurfaceId],
+) -> Vec<SurfaceId> {
+    let mut frontier: Vec<SurfaceId> = roots.to_vec();
+    let mut out: Vec<SurfaceId> = Vec::new();
+    while let Some(parent) = frontier.pop() {
+        for &(id, link) in links {
+            if link == Some(parent) && id != parent && !roots.contains(&id) && !out.contains(&id) {
+                out.push(id);
+                frontier.push(id);
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{focus_after_single_close, retire_plan};
+    use super::{focus_after_single_close, popup_descendants, retire_plan};
     use crate::{OutputId, SurfaceId};
 
     fn sid(n: u32) -> SurfaceId {
@@ -1366,5 +1816,54 @@ mod tests {
         // the fixup yields None rather than panicking or mis-pointing.
         let ids = [sid(0), sid(1)];
         assert_eq!(focus_after_single_close(&ids, Some(5), 0), None);
+    }
+
+    #[test]
+    fn popup_descendants_collects_direct_children() {
+        // Surface 0 is a layer surface (parent None); 1 and 2 are popups on it; 3 is a
+        // popup on a different layer surface (4).
+        let links = [
+            (sid(0), None),
+            (sid(1), Some(sid(0))),
+            (sid(2), Some(sid(0))),
+            (sid(4), None),
+            (sid(3), Some(sid(4))),
+        ];
+        let mut got = popup_descendants(&links, &[sid(0)]);
+        got.sort_by_key(|s| s.0);
+        assert_eq!(got, vec![sid(1), sid(2)]);
+    }
+
+    #[test]
+    fn popup_descendants_is_transitive_for_submenus() {
+        // A submenu chain: layer 0 -> popup 1 -> popup 2 -> popup 3. Tearing down 0
+        // takes the whole chain (roots excluded).
+        let links = [
+            (sid(0), None),
+            (sid(1), Some(sid(0))),
+            (sid(2), Some(sid(1))),
+            (sid(3), Some(sid(2))),
+        ];
+        let mut got = popup_descendants(&links, &[sid(0)]);
+        got.sort_by_key(|s| s.0);
+        assert_eq!(got, vec![sid(1), sid(2), sid(3)]);
+    }
+
+    #[test]
+    fn popup_descendants_excludes_the_roots_and_unrelated() {
+        // Retiring popup 1 takes its child 2 but not its parent 0 or sibling-tree 3.
+        let links = [
+            (sid(0), None),
+            (sid(1), Some(sid(0))),
+            (sid(2), Some(sid(1))),
+            (sid(3), Some(sid(0))),
+        ];
+        assert_eq!(popup_descendants(&links, &[sid(1)]), vec![sid(2)]);
+    }
+
+    #[test]
+    fn popup_descendants_empty_when_no_children() {
+        let links = [(sid(0), None), (sid(1), Some(sid(0)))];
+        assert!(popup_descendants(&links, &[sid(1)]).is_empty());
     }
 }
