@@ -17,10 +17,11 @@
 //! ticker and animation clock so springs never panic if they run) is provided.
 //!
 //!   cargo run -p kobel-shell --example render-panel -- <panel> <out.png> <WxH>
-//! where <panel> is `bar`, `quicksettings`, or `calendar`, e.g.
+//! where <panel> is `bar`, `quicksettings`, `calendar`, or `launcher`, e.g.
 //!   cargo run -p kobel-shell --example render-panel -- bar /tmp/bar.png 1000x42
 //!   cargo run -p kobel-shell --example render-panel -- quicksettings /tmp/qs.png 365x520
 //!   cargo run -p kobel-shell --example render-panel -- calendar /tmp/cal.png 336x432
+//!   cargo run -p kobel-shell --example render-panel -- launcher /tmp/l.png 584x460
 //!
 //! This is a dev tool, not part of the shell binary. It path-includes the shell's
 //! source modules (kobel-shell is a bin crate with no lib target) so `crate::theme`
@@ -46,9 +47,9 @@ use futures_channel::mpsc::unbounded;
 use torin::prelude::Size2D;
 
 use kobel_services::{
-    AccessPointInfo, AudioSnapshot, AudioStream, BatterySnapshot, BluetoothSnapshot, BtDevice,
-    BrightnessSnapshot, GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot, PowerProfile,
-    PowerSnapshot, SettingsSnapshot, TraySnapshot,
+    AccessPointInfo, AppEntry, AppsSnapshot, AudioSnapshot, AudioStream, BatterySnapshot,
+    BluetoothSnapshot, BtDevice, BrightnessSnapshot, GnoblinSnapshot, NetworkSnapshot,
+    NotifdSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot, TraySnapshot,
 };
 
 use crate::manager::ShellBus;
@@ -59,6 +60,7 @@ enum Panel {
     Bar,
     QuickSettings,
     Calendar,
+    Launcher,
 }
 
 fn fake_gnoblin() -> GnoblinSnapshot {
@@ -134,11 +136,36 @@ fn fake_settings() -> SettingsSnapshot {
     SettingsSnapshot { dark_style: true, night_light: false }
 }
 
+/// A handful of fake resolved apps so the launcher's curated tile row and
+/// results list have real content to render (icons stay unresolved -- `None`
+/// -- since this is a headless render with no real desktop-entry/icon-theme
+/// lookup; the placeholder glyph path is exercised on purpose).
+fn fake_apps() -> AppsSnapshot {
+    let app = |id: &str, name: &str| AppEntry {
+        id: id.to_string(),
+        name: name.to_string(),
+        icon: None,
+        keywords: vec![name.to_lowercase()],
+    };
+    AppsSnapshot {
+        apps: vec![
+            app("org.gnome.Ptyxis", "Terminal"),
+            app("org.gnome.Nautilus", "Files"),
+            app("firefox", "Firefox"),
+            app("dev.zed.Zed", "Zed"),
+            app("com.spotify.Client", "Spotify"),
+            app("org.gnome.Settings", "Settings"),
+            app("dev.zed.Zed2", "Discord"),
+            app("org.gnome.Calculator", "Calculator"),
+        ],
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 4 {
         eprintln!(
-            "usage: render-panel <bar|quicksettings|calendar> <out.png> <WxH>\n\
+            "usage: render-panel <bar|quicksettings|calendar|launcher> <out.png> <WxH>\n\
              e.g.   render-panel bar /tmp/bar.png 1000x42"
         );
         std::process::exit(2);
@@ -148,8 +175,9 @@ fn main() {
         "bar" => Panel::Bar,
         "quicksettings" | "qs" => Panel::QuickSettings,
         "calendar" | "cal" => Panel::Calendar,
+        "launcher" => Panel::Launcher,
         other => {
-            eprintln!("unknown panel {other:?}; expected bar|quicksettings|calendar");
+            eprintln!("unknown panel {other:?}; expected bar|quicksettings|calendar|launcher");
             std::process::exit(2);
         }
     };
@@ -174,6 +202,7 @@ fn main() {
         Panel::Bar => ui::bar::bar().into_element(),
         Panel::QuickSettings => ui::quick_settings::quick_settings().into_element(),
         Panel::Calendar => ui::calendar::calendar().into_element(),
+        Panel::Launcher => ui::launcher::launcher().into_element(),
     });
 
     // --- Render-critical contexts (SvgViewer needs Platform + AssetCacher). ---
@@ -205,6 +234,7 @@ fn main() {
     runner.provide_root_context(|| State::create(fake_settings()));
     runner.provide_root_context(|| State::create(NotifdSnapshot::default()));
     runner.provide_root_context(|| State::create(TraySnapshot::default()));
+    runner.provide_root_context(|| State::create(fake_apps()));
     runner.provide_root_context(|| bus.clone());
     runner.provide_root_context(|| OpenProgress(State::create(1.0)));
     runner.provide_root_context(|| KeyFeed(State::create(None::<crate::ui::panels::KeyEvent>)));

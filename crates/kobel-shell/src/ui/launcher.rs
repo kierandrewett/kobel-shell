@@ -66,16 +66,28 @@ const PLACEHOLDER: &str = "Search apps, actions...";
 pub(crate) enum Stroke {
     /// A typed character (no ctrl/alt/super chord; shift is fine).
     Text(String),
-    /// Backspace; `word` = ctrl held (delete the trailing word).
+    /// Backspace; `word` = ctrl held (delete the trailing word/selection).
     Backspace { word: bool },
+    /// Delete (forward); `word` = ctrl held (delete the leading word/selection).
+    Delete { word: bool },
     /// Escape.
     Escape,
     /// Tab; `back` = shift held (cycle backwards / never accept ghost).
     Tab { back: bool },
-    /// Selection up (ArrowUp or Ctrl+p).
+    /// Selection up (ArrowUp or Ctrl+p) -- result-ROW selection, not the text
+    /// cursor (a single-line field has no vertical text motion).
     Up,
-    /// Selection down (ArrowDown or Ctrl+n).
+    /// Selection down (ArrowDown or Ctrl+n) -- result-ROW selection.
     Down,
+    /// Move the text cursor left. `shift` extends/starts a selection instead of
+    /// collapsing it; `word` (ctrl) jumps by word instead of by character.
+    Left { shift: bool, word: bool },
+    /// Move the text cursor right. See [`Stroke::Left`].
+    Right { shift: bool, word: bool },
+    /// Jump the text cursor to the start of the query. `shift` extends selection.
+    Home { shift: bool },
+    /// Jump the text cursor to the end of the query. `shift` extends selection.
+    End { shift: bool },
     /// Enter (run the selected row).
     Enter,
     /// A key the launcher ignores.
@@ -93,8 +105,17 @@ pub(crate) fn classify_key(key: &Key, code: &Code, mods: Modifiers) -> Stroke {
             NamedKey::Tab => return Stroke::Tab { back: mods.shift() },
             NamedKey::Enter => return Stroke::Enter,
             NamedKey::Backspace => return Stroke::Backspace { word: mods.ctrl() },
+            NamedKey::Delete => return Stroke::Delete { word: mods.ctrl() },
             NamedKey::ArrowUp => return Stroke::Up,
             NamedKey::ArrowDown => return Stroke::Down,
+            NamedKey::ArrowLeft => {
+                return Stroke::Left { shift: mods.shift(), word: mods.ctrl() };
+            }
+            NamedKey::ArrowRight => {
+                return Stroke::Right { shift: mods.shift(), word: mods.ctrl() };
+            }
+            NamedKey::Home => return Stroke::Home { shift: mods.shift() },
+            NamedKey::End => return Stroke::End { shift: mods.shift() },
             _ => {}
         }
     }
@@ -119,12 +140,27 @@ pub(crate) fn classify_key(key: &Key, code: &Code, mods: Modifiers) -> Stroke {
 // Pure editor (query text + selection index)
 // ---------------------------------------------------------------------------
 
-/// The editable launcher state: query text plus the selected flat-row index.
-/// Kept free of Freya types so the whole edit path is unit-testable.
+/// The editable launcher state: query text, the selected flat-row index, and
+/// a real text cursor (`cursor`, a byte offset always on a char boundary) plus
+/// an optional selection anchor (`anchor` -- `None` is a plain blinking-caret
+/// cursor, `Some` is a range selection between `anchor` and `cursor`). Kept
+/// free of Freya types so the whole edit path is unit-testable.
+///
+/// KNOWN LIMITATION: click-to-position and drag-to-select are not implemented
+/// -- only keyboard navigation moves the cursor/selection (arrows, Home/End,
+/// word-jump, shift-select). Freya's `freya-edit` crate (rope_editor.rs /
+/// use_editable.rs / event.rs in the pinned Freya rev) has the primitives for
+/// pointer-driven positioning via `EditableEvent::Down`/`Move` and a
+/// `ParagraphHolder` attached to a `paragraph()` element via `.holder(...)`
+/// (see `freya-core::elements::paragraph`), but no component anywhere in this
+/// Freya revision uses it yet, so wiring it is greenfield work left for a
+/// follow-up rather than risked in this pass.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Editor {
     pub query: String,
     pub selected: usize,
+    pub cursor: usize,
+    pub anchor: Option<usize>,
 }
 
 /// What the component must do after a stroke is applied to the [`Editor`].
@@ -144,17 +180,63 @@ impl Editor {
     pub(crate) fn apply(&mut self, stroke: &Stroke, ghost: Option<&str>, rows: usize) -> Outcome {
         match stroke {
             Stroke::Text(s) => {
-                self.query.push_str(s);
+                self.insert(s);
                 self.selected = 0;
                 Outcome::Redraw
             }
             Stroke::Backspace { word } => {
-                if *word {
-                    clear_last_word(&mut self.query);
-                } else {
-                    self.query.pop();
+                if self.selection_range().is_some() {
+                    self.delete_selection();
+                } else if *word {
+                    let start = prev_word_boundary(&self.query, self.cursor);
+                    self.query.replace_range(start..self.cursor, "");
+                    self.cursor = start;
+                } else if let Some(prev) = prev_char_boundary(&self.query, self.cursor) {
+                    self.query.replace_range(prev..self.cursor, "");
+                    self.cursor = prev;
                 }
+                self.anchor = None;
                 self.selected = 0;
+                Outcome::Redraw
+            }
+            Stroke::Delete { word } => {
+                if self.selection_range().is_some() {
+                    self.delete_selection();
+                } else if *word {
+                    let end = next_word_boundary(&self.query, self.cursor);
+                    self.query.replace_range(self.cursor..end, "");
+                } else if let Some(next) = next_char_boundary(&self.query, self.cursor) {
+                    self.query.replace_range(self.cursor..next, "");
+                }
+                self.anchor = None;
+                self.selected = 0;
+                Outcome::Redraw
+            }
+            Stroke::Left { shift, word } => {
+                let target = if *word {
+                    prev_word_boundary(&self.query, self.cursor)
+                } else {
+                    prev_char_boundary(&self.query, self.cursor).unwrap_or(0)
+                };
+                self.move_cursor(target, *shift);
+                Outcome::Redraw
+            }
+            Stroke::Right { shift, word } => {
+                let target = if *word {
+                    next_word_boundary(&self.query, self.cursor)
+                } else {
+                    next_char_boundary(&self.query, self.cursor).unwrap_or(self.query.len())
+                };
+                self.move_cursor(target, *shift);
+                Outcome::Redraw
+            }
+            Stroke::Home { shift } => {
+                self.move_cursor(0, *shift);
+                Outcome::Redraw
+            }
+            Stroke::End { shift } => {
+                let end = self.query.len();
+                self.move_cursor(end, *shift);
                 Outcome::Redraw
             }
             Stroke::Escape => {
@@ -162,6 +244,8 @@ impl Editor {
                     Outcome::Close
                 } else {
                     self.query.clear();
+                    self.cursor = 0;
+                    self.anchor = None;
                     self.selected = 0;
                     Outcome::Redraw
                 }
@@ -170,6 +254,8 @@ impl Editor {
                 if !*back {
                     if let Some(g) = ghost {
                         self.query = g.to_string();
+                        self.cursor = self.query.len();
+                        self.anchor = None;
                         self.selected = 0;
                         return Outcome::Redraw;
                     }
@@ -199,16 +285,104 @@ impl Editor {
         let n = rows as i64;
         self.selected = (((self.selected as i64 + dir) % n + n) % n) as usize;
     }
+
+    /// Move the cursor to `target`. `extend` (shift held) starts or grows a
+    /// selection from the pre-move cursor position instead of collapsing one.
+    fn move_cursor(&mut self, target: usize, extend: bool) {
+        if extend {
+            if self.anchor.is_none() {
+                self.anchor = Some(self.cursor);
+            }
+        } else {
+            self.anchor = None;
+        }
+        self.cursor = target;
+    }
+
+    /// The active selection as an order-normalized `(start, end)` byte range,
+    /// or `None` when there is no selection (anchor absent, or collapsed to a
+    /// zero-width range at the cursor).
+    pub(crate) fn selection_range(&self) -> Option<(usize, usize)> {
+        self.anchor.and_then(|a| {
+            let (start, end) = (a.min(self.cursor), a.max(self.cursor));
+            (start != end).then_some((start, end))
+        })
+    }
+
+    /// Delete the active selection (no-op if there is none) and collapse the
+    /// cursor to its start.
+    fn delete_selection(&mut self) {
+        if let Some((start, end)) = self.selection_range() {
+            self.query.replace_range(start..end, "");
+            self.cursor = start;
+            self.anchor = None;
+        }
+    }
+
+    /// Replace the active selection (if any) with `s`, else insert `s` at the
+    /// cursor; the cursor lands just after the inserted text either way.
+    fn insert(&mut self, s: &str) {
+        if self.selection_range().is_some() {
+            self.delete_selection();
+        }
+        self.query.insert_str(self.cursor, s);
+        self.cursor += s.len();
+    }
 }
 
-/// Delete the trailing whitespace then the trailing word (Ctrl+Backspace).
-fn clear_last_word(q: &mut String) {
-    while q.chars().next_back().is_some_and(char::is_whitespace) {
-        q.pop();
+/// The previous char boundary strictly before `pos`, or `None` at the string
+/// start. `pos` must already be on a char boundary (Editor invariant).
+fn prev_char_boundary(s: &str, pos: usize) -> Option<usize> {
+    if pos == 0 {
+        return None;
     }
-    while q.chars().next_back().is_some_and(|c| !c.is_whitespace()) {
-        q.pop();
+    let mut i = pos - 1;
+    while !s.is_char_boundary(i) {
+        i -= 1;
     }
+    Some(i)
+}
+
+/// The next char boundary strictly after `pos`, or `None` at the string end.
+fn next_char_boundary(s: &str, pos: usize) -> Option<usize> {
+    if pos >= s.len() {
+        return None;
+    }
+    let mut i = pos + 1;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    Some(i)
+}
+
+/// The Ctrl+Left/Ctrl+Backspace word-jump target before `pos`: skip trailing
+/// whitespace, then skip the trailing run of non-whitespace chars. Pure
+/// boundary query (replaces the old mutating `clear_last_word`, which is now
+/// just `query.replace_range(prev_word_boundary(&query, cursor)..cursor, "")`).
+fn prev_word_boundary(s: &str, pos: usize) -> usize {
+    let chars: Vec<(usize, char)> = s[..pos].char_indices().collect();
+    let mut i = chars.len();
+    while i > 0 && chars[i - 1].1.is_whitespace() {
+        i -= 1;
+    }
+    while i > 0 && !chars[i - 1].1.is_whitespace() {
+        i -= 1;
+    }
+    if i == 0 { 0 } else { chars[i].0 }
+}
+
+/// The Ctrl+Right/Ctrl+Delete word-jump target after `pos`: skip leading
+/// whitespace, then skip the leading run of non-whitespace chars.
+fn next_word_boundary(s: &str, pos: usize) -> usize {
+    let chars: Vec<(usize, char)> = s[pos..].char_indices().collect();
+    let mut i = 0;
+    while i < chars.len() && chars[i].1.is_whitespace() {
+        i += 1;
+    }
+    while i < chars.len() && !chars[i].1.is_whitespace() {
+        i += 1;
+    }
+    if i >= chars.len() { s.len() } else { pos + chars[i].0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -850,6 +1024,8 @@ impl Component for Launcher {
 
         let mut query = use_state(String::new);
         let mut selected = use_state(|| 0usize);
+        let mut cursor = use_state(|| 0usize);
+        let mut anchor = use_state(|| None::<usize>);
         let frecency = use_state(Frecency::load);
 
         // Reveal opacity + open-state (subscribes this scope to the spring).
@@ -857,11 +1033,13 @@ impl Component for Launcher {
         let opacity = p.clamp(0.0, 1.0);
         let open_now = p > 0.01;
 
-        // Reset the query/selection on the closed -> open transition.
+        // Reset the query/selection/cursor on the closed -> open transition.
         use_side_effect_with_deps(&open_now, move |&now| {
             if now {
                 query.set(String::new());
                 selected.set(0);
+                cursor.set(0);
+                anchor.set(None);
             }
         });
 
@@ -885,11 +1063,18 @@ impl Component for Launcher {
                 };
                 let rows: usize = sections.iter().map(|s| s.rows.len()).sum();
                 let ghost = ghost_for(&q, &sections);
-                let mut editor = Editor { query: q, selected: *selected.peek() };
+                let mut editor = Editor {
+                    query: q,
+                    selected: *selected.peek(),
+                    cursor: *cursor.peek(),
+                    anchor: *anchor.peek(),
+                };
                 match editor.apply(&stroke, ghost.as_deref(), rows) {
                     Outcome::Redraw => {
                         query.set(editor.query);
                         selected.set(editor.selected);
+                        cursor.set(editor.cursor);
+                        anchor.set(editor.anchor);
                     }
                     Outcome::Close => bus.send(ShellMsg::CloseAll),
                     Outcome::Run => match flat_get(&sections, editor.selected) {
@@ -909,7 +1094,7 @@ impl Component for Launcher {
         let sections = results(&q, &snap, &frecency.peek());
         let ghost = ghost_for(&q, &sections);
 
-        let field = field_row(&q, ghost.as_deref());
+        let field = field_row(&q, ghost.as_deref(), *cursor.read(), *anchor.read());
 
         let body: Element = if q.trim().is_empty() {
             empty_state(&snap, frecency)
@@ -939,14 +1124,26 @@ impl Component for Launcher {
 // Field row
 // ---------------------------------------------------------------------------
 
-/// The search field: magnifier, the query text with a block caret, the faux
-/// placeholder (empty) or the DIM ghost suffix, and a `super` kbd chip.
-fn field_row(query: &str, ghost: Option<&str>) -> Element {
+/// The search field: magnifier, the query text with a real byte-offset cursor
+/// (not always trailing -- see [`Editor`]) and an optional selection
+/// highlight, the faux placeholder (empty) or the DIM ghost suffix (only
+/// shown when the cursor sits at the very end -- mid-string it would read as
+/// text inserted ahead of the cursor), and a `super` kbd chip.
+fn field_row(query: &str, ghost: Option<&str>, cursor: usize, anchor: Option<usize>) -> Element {
+    let selection = anchor.and_then(|a| {
+        let (start, end) = (a.min(cursor), a.max(cursor));
+        (start != end).then_some((start, end))
+    });
+
     let caret = rect()
         .width(Size::px(CARET_W))
         .height(Size::px(CARET_H))
         .corner_radius(2.0)
         .background(theme::LEAF.rgb());
+
+    let plain = |s: &str| {
+        label().text(s.to_string()).color(theme::TX.rgb()).font_size(FIELD_FONT).max_lines(1usize)
+    };
 
     let mut text = rect()
         .horizontal()
@@ -962,17 +1159,38 @@ fn field_row(query: &str, ghost: Option<&str>) -> Element {
                 .color(theme::DIM.rgb())
                 .font_size(FIELD_FONT),
         );
-    } else {
-        text = text
-            .child(
+    } else if let Some((start, end)) = selection {
+        // A range is selected: before / highlighted-selection / after, no
+        // blinking caret (matches ordinary text-field convention).
+        let (before, selected_text, after) = (&query[..start], &query[start..end], &query[end..]);
+        if !before.is_empty() {
+            text = text.child(plain(before));
+        }
+        text = text.child(
+            rect().background(theme::LEAF.rgb()).corner_radius(2.0).child(
                 label()
-                    .text(query.to_string())
-                    .color(theme::TX.rgb())
+                    .text(selected_text.to_string())
+                    .color(theme::INK.rgb())
                     .font_size(FIELD_FONT)
                     .max_lines(1usize),
-            )
-            .child(caret);
-        if let Some(g) = ghost {
+            ),
+        );
+        if !after.is_empty() {
+            text = text.child(plain(after));
+        }
+    } else {
+        // A plain cursor: before-cursor text, the caret, after-cursor text.
+        let (before, after) = (&query[..cursor], &query[cursor..]);
+        if !before.is_empty() {
+            text = text.child(plain(before));
+        }
+        text = text.child(caret);
+        if !after.is_empty() {
+            text = text.child(plain(after));
+        }
+        if cursor == query.len()
+            && let Some(g) = ghost
+        {
             let suffix: String = g.chars().skip(query.chars().count()).collect();
             if !suffix.is_empty() {
                 text = text.child(
@@ -1576,7 +1794,7 @@ mod tests {
 
     #[test]
     fn editor_ctrl_backspace_clears_word() {
-        let mut e = Editor { query: "hello world  ".into(), selected: 0 };
+        let mut e = Editor { query: "hello world  ".into(), selected: 0, cursor: 13, anchor: None };
         e.apply(&Stroke::Backspace { word: true }, None, 0);
         assert_eq!(e.query, "hello ");
         e.apply(&Stroke::Backspace { word: true }, None, 0);
@@ -1585,7 +1803,7 @@ mod tests {
 
     #[test]
     fn editor_escape_clears_then_closes() {
-        let mut e = Editor { query: "abc".into(), selected: 2 };
+        let mut e = Editor { query: "abc".into(), selected: 2, cursor: 3, anchor: None };
         assert_eq!(e.apply(&Stroke::Escape, None, 5), Outcome::Redraw);
         assert_eq!(e.query, "");
         assert_eq!(e.selected, 0);
@@ -1594,12 +1812,12 @@ mod tests {
 
     #[test]
     fn editor_tab_accepts_ghost_then_cycles() {
-        let mut e = Editor { query: "fir".into(), selected: 0 };
+        let mut e = Editor { query: "fir".into(), selected: 0, cursor: 3, anchor: None };
         // Plain Tab with a ghost accepts the completion.
         e.apply(&Stroke::Tab { back: false }, Some("Firefox"), 3);
         assert_eq!(e.query, "Firefox");
         // Shift+Tab never accepts the ghost; it cycles backwards (wraps).
-        let mut e = Editor { query: "fir".into(), selected: 0 };
+        let mut e = Editor { query: "fir".into(), selected: 0, cursor: 3, anchor: None };
         e.apply(&Stroke::Tab { back: true }, Some("Firefox"), 3);
         assert_eq!(e.query, "fir");
         assert_eq!(e.selected, 2);
@@ -1610,7 +1828,7 @@ mod tests {
 
     #[test]
     fn editor_arrows_wrap_selection() {
-        let mut e = Editor { query: "x".into(), selected: 0 };
+        let mut e = Editor { query: "x".into(), selected: 0, cursor: 1, anchor: None };
         e.apply(&Stroke::Up, None, 3);
         assert_eq!(e.selected, 2);
         e.apply(&Stroke::Down, None, 3);
@@ -1622,7 +1840,110 @@ mod tests {
 
     #[test]
     fn editor_enter_requests_run() {
-        let mut e = Editor { query: "fire".into(), selected: 0 };
+        let mut e = Editor { query: "fire".into(), selected: 0, cursor: 4, anchor: None };
         assert_eq!(e.apply(&Stroke::Enter, None, 3), Outcome::Run);
+    }
+
+    #[test]
+    fn editor_left_right_move_the_cursor_without_selecting() {
+        let mut e = Editor { query: "abc".into(), selected: 0, cursor: 3, anchor: None };
+        e.apply(&Stroke::Left { shift: false, word: false }, None, 0);
+        assert_eq!(e.cursor, 2);
+        assert_eq!(e.anchor, None);
+        e.apply(&Stroke::Right { shift: false, word: false }, None, 0);
+        assert_eq!(e.cursor, 3);
+        // Left/Right at the string edges are no-ops, never panic.
+        e.apply(&Stroke::Right { shift: false, word: false }, None, 0);
+        assert_eq!(e.cursor, 3);
+    }
+
+    #[test]
+    fn editor_insert_and_backspace_operate_at_the_cursor_not_the_end() {
+        // Cursor placed between "ab" and "cd" -- typing/backspacing must act
+        // there, not append/trim at the string end (the old hand-rolled bug).
+        let mut e = Editor { query: "abcd".into(), selected: 0, cursor: 2, anchor: None };
+        e.apply(&Stroke::Text("X".into()), None, 0);
+        assert_eq!(e.query, "abXcd");
+        assert_eq!(e.cursor, 3);
+        e.apply(&Stroke::Backspace { word: false }, None, 0);
+        assert_eq!(e.query, "abcd");
+        assert_eq!(e.cursor, 2);
+    }
+
+    #[test]
+    fn editor_ctrl_left_right_jump_by_word() {
+        let mut e = Editor { query: "foo bar baz".into(), selected: 0, cursor: 11, anchor: None };
+        e.apply(&Stroke::Left { shift: false, word: true }, None, 0);
+        assert_eq!(e.cursor, 8); // start of "baz"
+        e.apply(&Stroke::Left { shift: false, word: true }, None, 0);
+        assert_eq!(e.cursor, 4); // start of "bar"
+        e.apply(&Stroke::Right { shift: false, word: true }, None, 0);
+        assert_eq!(e.cursor, 7); // end of "bar"
+    }
+
+    #[test]
+    fn editor_home_end_jump_to_string_edges() {
+        let mut e = Editor { query: "hello".into(), selected: 0, cursor: 2, anchor: None };
+        e.apply(&Stroke::Home { shift: false }, None, 0);
+        assert_eq!(e.cursor, 0);
+        e.apply(&Stroke::End { shift: false }, None, 0);
+        assert_eq!(e.cursor, 5);
+    }
+
+    #[test]
+    fn editor_shift_left_starts_and_grows_a_selection() {
+        let mut e = Editor { query: "hello".into(), selected: 0, cursor: 5, anchor: None };
+        e.apply(&Stroke::Left { shift: true, word: false }, None, 0);
+        assert_eq!(e.selection_range(), Some((4, 5)));
+        e.apply(&Stroke::Left { shift: true, word: false }, None, 0);
+        assert_eq!(e.selection_range(), Some((3, 5)));
+        // A non-shift move collapses the selection to the cursor.
+        e.apply(&Stroke::Right { shift: false, word: false }, None, 0);
+        assert_eq!(e.selection_range(), None);
+    }
+
+    #[test]
+    fn editor_typing_replaces_the_selection() {
+        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        e.apply(&Stroke::Text("Goodbye".into()), None, 0);
+        assert_eq!(e.query, "Goodbye world");
+        assert_eq!(e.cursor, 7);
+        assert_eq!(e.anchor, None);
+    }
+
+    #[test]
+    fn editor_backspace_deletes_the_selection_instead_of_one_char() {
+        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        e.apply(&Stroke::Backspace { word: false }, None, 0);
+        assert_eq!(e.query, " world");
+        assert_eq!(e.cursor, 0);
+        assert_eq!(e.anchor, None);
+    }
+
+    #[test]
+    fn editor_delete_key_removes_forward() {
+        let mut e = Editor { query: "abcd".into(), selected: 0, cursor: 1, anchor: None };
+        e.apply(&Stroke::Delete { word: false }, None, 0);
+        assert_eq!(e.query, "acd");
+        assert_eq!(e.cursor, 1);
+    }
+
+    #[test]
+    fn editor_cursor_stays_on_char_boundaries_with_multibyte_text() {
+        // "cafe\u{301}" (e + combining acute) has a multi-byte tail; left/right
+        // must never land inside a UTF-8 sequence.
+        let s = "caf\u{e9}"; // "caf" + latin small e with acute (2-byte UTF-8)
+        let mut e = Editor { query: s.into(), selected: 0, cursor: s.len(), anchor: None };
+        e.apply(&Stroke::Left { shift: false, word: false }, None, 0);
+        assert!(s.is_char_boundary(e.cursor));
+        assert_eq!(&s[e.cursor..], "\u{e9}");
+    }
+
+    #[test]
+    fn prev_next_word_boundary_skip_whitespace_runs() {
+        assert_eq!(prev_word_boundary("foo   bar", 9), 6);
+        assert_eq!(next_word_boundary("foo   bar", 0), 3);
+        assert_eq!(prev_word_boundary("word", 4), 0);
+        assert_eq!(next_word_boundary("word", 0), 4);
     }
 }
