@@ -127,6 +127,7 @@ was drawn, not a replacement for them.
 
 ## Follow-ups (known, deliberate)
 
-- DBusMenu rendering for tray items (needs popup-surface design).
 - IME (`zwp_text_input_v3`) for CJK input in the launcher.
-- Calendar events remain sample data pending an EDS/ICS decision.
+- Dock context menu's Quit minimizes every window instead of closing them --
+  `org.gnoblin.Shell` has no close/quit verb yet; a real close needs a new
+  gnoblin method.
