@@ -23,6 +23,55 @@ use crate::theme;
 #[derive(Clone, Copy, PartialEq)]
 pub struct OpenProgress(pub State<f32>);
 
+/// Rest scale for [`use_open_scale`] -- a panel starts at 96% size and springs
+/// up to 100% on open. Small enough to read as a subtle "grow in", not a
+/// jarring pop.
+const OPEN_SCALE_REST: f32 = 0.96;
+
+/// Rising-edge threshold on the reveal opacity, shared by every caller of
+/// [`use_open_scale`]. Mirrors the per-surface `OPEN_EPS` constants already
+/// defined in calendar.rs/session.rs for their own "did the surface just
+/// start opening" checks -- kept local here rather than importing theirs so
+/// this module has no dependency on them.
+const OPEN_SCALE_EPS: f32 = 1e-4;
+
+/// A local, per-panel "grow in" scale spring, layered on top of the manager's
+/// opacity fade rather than replacing it. The manager (manager.rs) only ever
+/// drove opacity -- `PANEL_OPACITY` (k=360, d=32) on open, `PANEL_CLOSE`
+/// (k=640, d=48) on close -- ported verbatim from the original AGS reveal
+/// (archive/ags/lib/surface.ts `animateProgress`). `motion::PANEL_OPEN`
+/// (k=420, d=26, "slight overshoot") was defined from day one in both the AGS
+/// spring table and this port but never actually wired to anything visible:
+/// dead code with clear "the panel should grow in with a slight bounce"
+/// intent that nothing consumed. This is that wiring.
+///
+/// Deliberately implemented as a LOCAL per-panel effect (not a manager.rs
+/// change): manager.rs currently carries substantial unrelated in-progress
+/// work this pass must not disturb, and the manager's opacity-only contract
+/// is exactly right anyway -- visual flourish belongs in the UI layer, the
+/// manager stays a pure reveal state machine.
+///
+/// Call once per panel body with that panel's live [`OpenProgress`] value.
+/// Returns a scale factor: apply it via `.scale(value)` on the panel's root
+/// `rect()` (the `.scale()` default `transform_origin` is the element's
+/// center, which reads well for every current panel -- no per-surface anchor
+/// special-casing needed). Rests at [`OPEN_SCALE_REST`], springs to `1.0` the
+/// instant `opacity` rises off zero (the same closed->open edge every panel
+/// already keys its own today/query/events-refresh effects on), and
+/// deliberately never reverses on close: the overshoot is an entrance-only
+/// flourish -- AGS's close is a plain fast fade with no bounce, and this port
+/// keeps that closing behaviour unchanged.
+pub(crate) fn use_open_scale(opacity: f32) -> f32 {
+    let mut spring = crate::motion::use_spring(OPEN_SCALE_REST);
+    let open = opacity > OPEN_SCALE_EPS;
+    use_side_effect_with_deps(&open, move |&open| {
+        if open {
+            spring.to(1.0, crate::motion::PANEL_OPEN);
+        }
+    });
+    spring.value()
+}
+
 /// Additive root context for keyboard-Exclusive surfaces (launcher, session):
 /// the host's key stream, routed by main.rs to whichever exclusive surface is
 /// open. `seq` increments per event so consumers can detect delivery of

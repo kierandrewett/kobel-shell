@@ -36,7 +36,7 @@ use torin::prelude::{Alignment, Content, Position, Size};
 use zbus::proxy;
 
 use super::icon;
-use super::panels::OpenProgress;
+use super::panels::{OpenProgress, use_open_scale};
 use crate::theme;
 
 // Icons embedded at build time (currentColor SVGs recolored per state by
@@ -374,11 +374,13 @@ pub fn calendar() -> impl IntoElement {
     let sel = *selected.read();
     let events = events.read();
 
+    let scale = use_open_scale(opacity);
     let sheet = rect()
         .width(Size::px(tokens.calendar_w))
         .background(theme::PANEL.rgb())
         .corner_radius(theme::RADIUS_SHEET)
         .padding(SHEET_PAD)
+        .scale(scale)
         .child(hero(today))
         .child(nav_row(vy, vm, today, view, selected))
         .child(grid(vy, vm, today, sel, &events, selected))

@@ -28,7 +28,7 @@ use kobel_services::{Command, SessionVerb};
 use kobel_wayland::KeyPress;
 
 use super::icon;
-use super::panels::{KeyFeed, OpenProgress};
+use super::panels::{KeyFeed, OpenProgress, use_open_scale};
 use crate::manager::{ShellBus, ShellMsg};
 use crate::theme;
 
@@ -116,10 +116,12 @@ pub fn session() -> impl IntoElement {
     let sel = *selected.read();
     let armed_now = *armed.read();
 
+    let scale = use_open_scale(opacity);
     let row = rect()
         .horizontal()
         .cross_align(Alignment::Center)
         .spacing(20.0)
+        .scale(scale)
         .children(ACTIONS.iter().copied().enumerate().map(|(i, action)| {
             action_button(
                 i,
@@ -136,7 +138,8 @@ pub fn session() -> impl IntoElement {
 
     // Full-screen dim scrim (rgba(9,3,14,0.8)); the whole overlay -- scrim and
     // tiles -- fades together with the reveal opacity, so a closed surface is fully
-    // transparent.
+    // transparent. The tile row additionally grows in from 96% (use_open_scale) --
+    // the scrim itself stays a plain fade, only the actual content "pops".
     rect()
         .expanded()
         .center()

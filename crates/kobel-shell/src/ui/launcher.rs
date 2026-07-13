@@ -27,7 +27,7 @@ use torin::prelude::{Alignment, Content, Size};
 use kobel_services::{AppEntry, AppsSnapshot, Command, SessionVerb};
 
 use super::fuzzy::{Frecency, fuzzy};
-use super::panels::{KeyFeed, OpenProgress};
+use super::panels::{KeyFeed, OpenProgress, use_open_scale};
 use super::{
     AppIcon, ICON_CALCULATOR, ICON_GLOBE, ICON_LOCK, ICON_LOGOUT, ICON_MAGNIFIER,
     ICON_MOON, ICON_POWER, ICON_RESTART, ICON_TERMINAL, dock, icon,
@@ -1102,6 +1102,7 @@ impl Component for Launcher {
             results_list(&sections, sel, &bus, frecency, query, selected)
         };
 
+        let scale = use_open_scale(opacity);
         let sheet = rect()
             .width(Size::fill())
             .background(theme::PANEL.rgb())
@@ -1109,6 +1110,7 @@ impl Component for Launcher {
             .padding(8.0)
             .vertical()
             .spacing(6.0)
+            .scale(scale)
             .child(field)
             .child(body)
             .child(footer());

@@ -28,7 +28,7 @@ use kobel_services::{
 };
 
 use super::chip::{Chip, HoverExt, IconAction, KSlider, KSwitch, use_hover};
-use super::panels::{KeyFeed, OpenProgress};
+use super::panels::{KeyFeed, OpenProgress, use_open_scale};
 use super::{
     ICON_BATTERY, ICON_BELL_SLASH, ICON_BLUETOOTH, ICON_BOLT, ICON_BRIGHTNESS, ICON_CHECK,
     ICON_CHEVRON_LEFT, ICON_LEAF, ICON_LOCK, ICON_MOON, ICON_MUSIC, ICON_POWER, ICON_SPEAKER_MUTE,
@@ -314,6 +314,7 @@ impl Component for QuickSettings {
             .child(root_layer)
             .child(drill_layer);
 
+        let scale = use_open_scale(opacity);
         let sheet = rect()
             .width(Size::fill())
             // Auto height: hugs the viewport (its explicit spring height) + padding.
@@ -321,6 +322,7 @@ impl Component for QuickSettings {
             .corner_radius(theme::RADIUS_SHEET)
             .padding(SHEET_PAD)
             .overflow(Overflow::Clip)
+            .scale(scale)
             .child(viewport);
 
         // Fill the (content-sized) surface width; AUTO height so the surface hugs the
