@@ -14,6 +14,7 @@ pub mod motion;
 pub mod theme;
 pub mod ui;
 
+use std::collections::HashMap;
 use std::sync::mpsc;
 
 use freya_core::prelude::{IntoElement, State, WritableUtils};
@@ -68,10 +69,15 @@ fn provide_panel_contexts(
     cx: &mut SurfaceContexts<'_>,
     bus: &ShellBus,
     tokens: theme::Tokens,
-) -> (SurfaceStates, State<f32>) {
+    key: SurfaceKey,
+) -> (SurfaceStates, State<f32>, Option<State<Option<ui::panels::KeyEvent>>>) {
     let states = provide_contexts(cx, bus, tokens);
     let progress = cx.provide(|| ui::panels::OpenProgress(State::create(0.0)));
-    (states, progress.0)
+    // KeyFeed only on keyboard-Exclusive surfaces (launcher, session): main.rs
+    // routes the focused surface's key stream into it (the KeyFeed contract).
+    let keyfeed = matches!(kb_open(key), KeyboardInteractivity::Exclusive)
+        .then(|| cx.provide(|| ui::panels::KeyFeed(State::create(None))).0);
+    (states, progress.0, keyfeed)
 }
 
 /// Keyboard mode a surface takes while open: Exclusive grabs every key (launcher and
@@ -258,15 +264,25 @@ fn main() -> anyhow::Result<()> {
     // reveal registry once the manager exists.
     let mut reveal_regs: Vec<(SurfaceKey, SurfaceId, KeyboardInteractivity, State<f32>)> =
         Vec::new();
+    // The focused Exclusive surface's KeyFeed, keyed by surface id, so the app-level
+    // key handler can route every press into whichever surface holds the keyboard.
+    let mut keyfeeds: HashMap<SurfaceId, State<Option<ui::panels::KeyEvent>>> = HashMap::new();
     for key in SurfaceKey::ALL {
         let cfg = panel_config(key, &tokens);
-        let (id, (surface_states, progress)) = shell.create_singleton_surface(
+        let (id, (surface_states, progress, keyfeed)) = shell.create_singleton_surface(
             cfg,
-            |cx| provide_panel_contexts(cx, &bus, tokens),
-            move || ui::panels::panel(key).into_element(),
+            |cx| provide_panel_contexts(cx, &bus, tokens, key),
+            move || match key {
+                SurfaceKey::Launcher => ui::launcher::launcher().into_element(),
+                SurfaceKey::Session => ui::session::session().into_element(),
+                _ => ui::panels::panel(key).into_element(),
+            },
         )?;
         states.push(surface_states);
         reveal_regs.push((key, id, kb_open(key), progress));
+        if let Some(feed) = keyfeed {
+            keyfeeds.insert(id, feed);
+        }
     }
 
     tracing::info!("[shell] mounted {} surface(s)", states.len());
@@ -298,14 +314,20 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Esc closes any open on-demand surface. The host key handler only fires while one
-    // of our surfaces holds keyboard focus (i.e. something is open with
-    // Exclusive/OnDemand), so routing every Escape to CloseAll is naturally gated to
-    // "a surface is open".
+    // Route keyboard input by focus. While a keyboard-Exclusive surface (launcher /
+    // session) holds focus, EVERY press -- including Escape -- goes into that surface's
+    // KeyFeed and the surface decides (launcher Esc clears the query first, session Esc
+    // disarms). While any other (OnDemand) surface holds focus, plain Escape means
+    // CloseAll. The host only calls this while one of our surfaces has keyboard focus,
+    // so a press whose surface has no KeyFeed mapping is an OnDemand surface.
     shell.on_key({
         let bus = bus.clone();
+        let mut seq: u64 = 0;
         move |press, _control| {
-            if press.is_escape() {
+            if let Some(mut feed) = keyfeeds.get(&press.surface).copied() {
+                seq += 1;
+                feed.set(Some(ui::panels::KeyEvent { seq, press }));
+            } else if press.is_escape() {
                 bus.send(ShellMsg::CloseAll);
             }
         }

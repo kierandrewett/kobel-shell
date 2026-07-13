@@ -12,9 +12,14 @@
 pub mod bar;
 pub mod dock;
 pub mod fuzzy;
+pub mod launcher;
 pub mod osd;
 pub mod panels;
+pub mod session;
 
+use std::path::PathBuf;
+
+use freya_components::image_viewer::ImageViewer;
 use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use torin::prelude::Size;
@@ -53,6 +58,15 @@ pub const ICON_BATTERY: &[u8] = shell_icon!("kobel-battery-symbolic.svg");
 pub const ICON_APP: &[u8] = shell_icon!("kobel-app-symbolic.svg");
 /// Media tile glyph when no player art is available (dock `kobel-music-symbolic`).
 pub const ICON_MUSIC: &[u8] = shell_icon!("kobel-music-symbolic.svg");
+/// Symbolic icons used by launcher result rows (`:` commands, calculator, web,
+/// session actions). All ship under ags/icons and tint via `currentColor`.
+pub const ICON_TERMINAL: &[u8] = shell_icon!("kobel-terminal-symbolic.svg");
+pub const ICON_CALCULATOR: &[u8] = shell_icon!("kobel-calculator-symbolic.svg");
+pub const ICON_GLOBE: &[u8] = shell_icon!("kobel-globe-symbolic.svg");
+pub const ICON_LOCK: &[u8] = shell_icon!("kobel-lock-symbolic.svg");
+pub const ICON_MOON: &[u8] = shell_icon!("kobel-moon-symbolic.svg");
+pub const ICON_LOGOUT: &[u8] = shell_icon!("kobel-logout-symbolic.svg");
+pub const ICON_RESTART: &[u8] = shell_icon!("kobel-restart-symbolic.svg");
 
 /// Render a `currentColor` SVG icon, tinted to `tint` and laid out `size` square.
 /// The one place SVG tinting is expressed for the whole shell.
@@ -109,5 +123,85 @@ impl Component for IconButton {
             .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| bus.send(ShellMsg::Toggle(target)))
             .child(icon(self.icon, self.icon_size, tint))
+    }
+}
+
+// -------------------------------------------------------------------------
+// App icons (shared: dock tiles + launcher tiles/rows)
+// -------------------------------------------------------------------------
+
+/// A loaded icon: parsed once from its file. The cache key (its path string)
+/// travels with the bytes so a Some(old)->Some(new) path change can never cache
+/// stale bytes under the new key.
+#[derive(Debug, Clone, PartialEq)]
+enum IconData {
+    Svg(String, Bytes),
+    Raster(String, Bytes),
+    /// No path, or the file could not be read -> caller draws a glyph fallback.
+    Missing,
+}
+
+/// Read an icon file into bytes and classify it svg vs raster by extension
+/// (the contract resolves each entry to a concrete `.svg`/`.png` path).
+fn load_icon(path: &Option<PathBuf>) -> IconData {
+    let Some(path) = path else {
+        return IconData::Missing;
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return IconData::Missing;
+    };
+    let key = path.to_string_lossy().into_owned();
+    let is_svg = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
+    let bytes = Bytes::from(bytes);
+    if is_svg {
+        IconData::Svg(key, bytes)
+    } else {
+        IconData::Raster(key, bytes)
+    }
+}
+
+/// One app icon rendered from a resolved icon path (dock tile, launcher tile or
+/// row). Its own component so the memoized (blocking) byte-load survives
+/// frequent re-renders, re-running only when the path itself changes.
+#[derive(PartialEq)]
+pub(crate) struct AppIcon {
+    pub path: Option<PathBuf>,
+    pub size: f32,
+}
+
+impl Component for AppIcon {
+    fn render(&self) -> impl IntoElement {
+        // React to path changes, and memoize the (blocking) read so churn never
+        // re-reads the file.
+        let path = use_reactive(&self.path);
+        let data = use_memo(move || load_icon(&path.read()));
+        let size = self.size;
+
+        let data = data.read();
+        match &*data {
+            IconData::Svg(key, bytes) => SvgViewer::new((key.clone(), bytes.clone()))
+                .width(Size::px(size))
+                .height(Size::px(size))
+                .into_element(),
+            IconData::Raster(key, bytes) => ImageViewer::new((key.clone(), bytes.clone()))
+                .width(Size::px(size))
+                .height(Size::px(size))
+                .into_element(),
+            IconData::Missing => icon(ICON_APP, size, theme::MUT).into_element(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn icon_missing_when_no_path() {
+        assert_eq!(load_icon(&None), IconData::Missing);
+        assert_eq!(load_icon(&Some(PathBuf::from("/no/such/icon.svg"))), IconData::Missing);
     }
 }

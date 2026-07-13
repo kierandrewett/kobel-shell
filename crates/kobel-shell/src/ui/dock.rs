@@ -21,13 +21,12 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 
 use freya_components::image_viewer::ImageViewer;
-use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use torin::prelude::{Alignment, Position, Size};
 
 use kobel_services::{AppsSnapshot, Command, GnoblinSnapshot, GnoblinWindow, MediaSnapshot};
 
-use super::{ICON_APP, ICON_MUSIC, icon};
+use super::{AppIcon, ICON_APP, ICON_MUSIC, icon};
 use crate::manager::{ShellBus, ShellMsg};
 use crate::motion::{self, use_spring};
 use crate::theme::{self, Tokens};
@@ -187,75 +186,6 @@ fn wheel_command(win_ids: &[String], focused: Option<usize>, forward: bool) -> O
         Some(Command::ActivateWindow(win_ids[0].clone()))
     } else {
         None
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Icon loading (memoized, svg or raster from raw bytes)
-// ---------------------------------------------------------------------------
-
-/// A loaded icon: parsed once from its file. The cache key (its path string)
-/// travels with the bytes so a Some(old)->Some(new) path change can never cache
-/// stale bytes under the new key.
-#[derive(Debug, Clone, PartialEq)]
-enum IconData {
-    Svg(String, Bytes),
-    Raster(String, Bytes),
-    /// No path, or the file could not be read -> caller draws a glyph fallback.
-    Missing,
-}
-
-/// Read an icon file into bytes and classify it svg vs raster by extension
-/// (the contract resolves each entry to a concrete `.svg`/`.png` path).
-fn load_icon(path: &Option<PathBuf>) -> IconData {
-    let Some(path) = path else {
-        return IconData::Missing;
-    };
-    let Ok(bytes) = std::fs::read(path) else {
-        return IconData::Missing;
-    };
-    let key = path.to_string_lossy().into_owned();
-    let is_svg = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
-    let bytes = Bytes::from(bytes);
-    if is_svg {
-        IconData::Svg(key, bytes)
-    } else {
-        IconData::Raster(key, bytes)
-    }
-}
-
-/// One app icon rendered from the resolved icon path. Its own component so the
-/// memoized byte-load survives the tile's frequent re-renders (window churn),
-/// re-running only when the path itself changes.
-#[derive(PartialEq)]
-struct AppIcon {
-    path: Option<PathBuf>,
-    size: f32,
-}
-
-impl Component for AppIcon {
-    fn render(&self) -> impl IntoElement {
-        // React to path changes, and memoize the (blocking) read so window churn
-        // never re-reads the file.
-        let path = use_reactive(&self.path);
-        let data = use_memo(move || load_icon(&path.read()));
-        let size = self.size;
-
-        let data = data.read();
-        match &*data {
-            IconData::Svg(key, bytes) => SvgViewer::new((key.clone(), bytes.clone()))
-                .width(Size::px(size))
-                .height(Size::px(size))
-                .into_element(),
-            IconData::Raster(key, bytes) => ImageViewer::new((key.clone(), bytes.clone()))
-                .width(Size::px(size))
-                .height(Size::px(size))
-                .into_element(),
-            IconData::Missing => icon(ICON_APP, size, theme::MUT).into_element(),
-        }
     }
 }
 
@@ -722,9 +652,4 @@ mod tests {
         assert!(wheel_command(&[], None, true).is_none());
     }
 
-    #[test]
-    fn icon_missing_when_no_path() {
-        assert_eq!(load_icon(&None), IconData::Missing);
-        assert_eq!(load_icon(&Some(PathBuf::from("/no/such/icon.svg"))), IconData::Missing);
-    }
 }
