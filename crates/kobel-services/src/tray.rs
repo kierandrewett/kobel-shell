@@ -8,6 +8,7 @@
 //! design and is an explicit follow-up (docs/FREYA-PLAN.md section 6 note);
 //! menu events are ignored here without disturbing item tracking.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use system_tray::client::{ActivateRequest, Client, Event};
@@ -93,11 +94,15 @@ pub(crate) async fn run(
     // The user's icon theme is read once (matches apps.rs). A live theme switch
     // is not tracked; icons re-resolve whenever an item next changes.
     let theme = current_icon_theme();
+    // Memoize name -> path resolution: a storm of update events must not repeat
+    // the synchronous freedesktop theme walk. Valid for the task's lifetime
+    // since the theme is read once and never live-tracked.
+    let mut icon_cache: HashMap<IconKey, Option<PathBuf>> = HashMap::new();
     tracing::info!("[tray] SNI host started");
 
     // Baseline emit so the UI has an initial (possibly empty) snapshot; real
     // content follows as items register and fire Add events.
-    emit_snapshot(&events, &client, theme.as_deref());
+    emit_snapshot(&events, &client, theme.as_deref(), &mut icon_cache).await;
 
     loop {
         tokio::select! {
@@ -111,11 +116,11 @@ pub(crate) async fn run(
                     // Every add/remove/update re-emits a fresh sorted snapshot.
                     // Menu-only updates leave the item fields untouched, so the
                     // rebuilt snapshot is identical and harmless.
-                    emit_snapshot(&events, &client, theme.as_deref());
+                    emit_snapshot(&events, &client, theme.as_deref(), &mut icon_cache).await;
                 }
                 Err(RecvError::Lagged(n)) => {
                     tracing::warn!("[tray] event stream lagged, dropped {n}; resyncing");
-                    emit_snapshot(&events, &client, theme.as_deref());
+                    emit_snapshot(&events, &client, theme.as_deref(), &mut icon_cache).await;
                 }
                 Err(RecvError::Closed) => {
                     tracing::warn!("[tray] event stream closed");
@@ -130,10 +135,24 @@ pub(crate) async fn run(
     }
 }
 
+/// Icon-cache key: `(name, theme, theme_path)`. The finding requires memoizing
+/// on name+theme; the item's app-shipped `IconThemePath` is part of the theme
+/// context, so all three participate. The global theme is fixed for the task's
+/// lifetime, but keying on it keeps the cache contract explicit and correct even
+/// if the resolver is ever reused across themes.
+type IconKey = (String, Option<String>, Option<String>);
+
 /// Snapshot the crate's item cache into a `TraySnapshot`, sorted by address.
-/// Icons resolve OUTSIDE the mutex so filesystem lookups never stall the
-/// client's writer tasks.
-fn emit_snapshot(events: &UnboundedSender<ServiceEvent>, client: &Client, theme: Option<&str>) {
+/// Named-icon resolution is memoized and cache misses run on a `spawn_blocking`
+/// thread, so the runtime worker never does synchronous theme walks. Items are
+/// cloned OUTSIDE the mutex so filesystem lookups never stall the client's
+/// writer tasks.
+async fn emit_snapshot(
+    events: &UnboundedSender<ServiceEvent>,
+    client: &Client,
+    theme: Option<&str>,
+    icon_cache: &mut HashMap<IconKey, Option<PathBuf>>,
+) {
     let map = client.items();
     let raw: Vec<(String, StatusNotifierItem)> = {
         let guard = map.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -143,19 +162,79 @@ fn emit_snapshot(events: &UnboundedSender<ServiceEvent>, client: &Client, theme:
             .collect()
     };
 
-    let mut items: Vec<TrayItem> = raw
-        .iter()
-        .map(|(address, item)| TrayItem {
+    let mut items: Vec<TrayItem> = Vec::with_capacity(raw.len());
+    for (address, item) in &raw {
+        let icon = resolve_icon_cached(item, theme, icon_cache).await;
+        items.push(TrayItem {
             address: address.clone(),
             title: item.title.clone().unwrap_or_else(|| item.id.clone()),
             tooltip: tooltip_text(item),
-            icon: resolve_tray_icon(item, theme),
-        })
-        .collect();
+            icon,
+        });
+    }
     // HashMap iteration is unordered; sort by address for determinism.
     items.sort_by(|a, b| a.address.cmp(&b.address));
 
     let _ = events.send(ServiceEvent::Tray(TraySnapshot { items }));
+}
+
+/// Resolve an item's icon, memoizing named-icon lookups. Prefer the freedesktop
+/// icon NAME (resolved off-worker via [`cached_or_resolve`], honoring the item's
+/// `IconThemePath`); fall back to the largest provided ARGB pixmap (in-memory);
+/// else `None`.
+async fn resolve_icon_cached(
+    item: &StatusNotifierItem,
+    theme: Option<&str>,
+    icon_cache: &mut HashMap<IconKey, Option<PathBuf>>,
+) -> TrayIcon {
+    if let Some(name) = item
+        .icon_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let theme_path = item.icon_theme_path.clone();
+        let key = (name.to_owned(), theme.map(str::to_owned), theme_path.clone());
+        let name_owned = name.to_owned();
+        let theme_owned = theme.map(str::to_owned);
+        let resolved = cached_or_resolve(icon_cache, key, move || {
+            resolve_named_icon(&name_owned, theme_path.as_deref(), theme_owned.as_deref())
+        })
+        .await;
+        if let Some(path) = resolved {
+            return TrayIcon::Path(path);
+        }
+    }
+
+    if let Some(pixmap) = item.icon_pixmap.as_deref().and_then(largest_pixmap) {
+        return TrayIcon::Pixmap {
+            width: pixmap.width as u32,
+            height: pixmap.height as u32,
+            argb: pixmap.pixels.clone(),
+        };
+    }
+
+    TrayIcon::None
+}
+
+/// Return `key`'s cached path if present; on a miss, run the synchronous
+/// `resolve` closure on a `spawn_blocking` thread, cache the result (hit OR
+/// miss), and return it. Caching misses too means repeated unresolved names
+/// never re-walk the theme.
+async fn cached_or_resolve<F>(
+    cache: &mut HashMap<IconKey, Option<PathBuf>>,
+    key: IconKey,
+    resolve: F,
+) -> Option<PathBuf>
+where
+    F: FnOnce() -> Option<PathBuf> + Send + 'static,
+{
+    if let Some(hit) = cache.get(&key) {
+        return hit.clone();
+    }
+    let found = tokio::task::spawn_blocking(resolve).await.unwrap_or(None);
+    cache.insert(key, found.clone());
+    found
 }
 
 /// Route an activate command to the SNI item. x=y=0 (we have no screen-position
@@ -183,31 +262,6 @@ fn tooltip_text(item: &StatusNotifierItem) -> Option<String> {
         (true, false) => Some(description.to_owned()),
         (true, true) => None,
     }
-}
-
-/// Resolve an item's icon. Prefer the freedesktop icon NAME (resolved through
-/// the theme, honoring the item's `IconThemePath`); fall back to the largest
-/// provided ARGB pixmap; else `None`.
-fn resolve_tray_icon(item: &StatusNotifierItem, theme: Option<&str>) -> TrayIcon {
-    if let Some(name) = item
-        .icon_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        && let Some(path) = resolve_named_icon(name, item.icon_theme_path.as_deref(), theme)
-    {
-        return TrayIcon::Path(path);
-    }
-
-    if let Some(pixmap) = item.icon_pixmap.as_deref().and_then(largest_pixmap) {
-        return TrayIcon::Pixmap {
-            width: pixmap.width as u32,
-            height: pixmap.height as u32,
-            argb: pixmap.pixels.clone(),
-        };
-    }
-
-    TrayIcon::None
 }
 
 /// Resolve an icon name to a concrete file. Absolute paths pass through; the
@@ -341,4 +395,53 @@ fn current_icon_theme() -> Option<String> {
     let raw = String::from_utf8(output.stdout).ok()?;
     let theme = raw.trim().trim_matches(|c| c == '\'' || c == '"').trim();
     (!theme.is_empty()).then(|| theme.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn icon_cache_resolves_each_key_once() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut cache: HashMap<IconKey, Option<PathBuf>> = HashMap::new();
+        let key = ("firefox".to_owned(), Some("Adwaita".to_owned()), None);
+
+        // Five lookups of one icon (a storm of update events) resolve exactly once.
+        for _ in 0..5 {
+            let c = Arc::clone(&calls);
+            let out = cached_or_resolve(&mut cache, key.clone(), move || {
+                c.fetch_add(1, Ordering::SeqCst);
+                Some(PathBuf::from("/icons/firefox.svg"))
+            })
+            .await;
+            assert_eq!(out, Some(PathBuf::from("/icons/firefox.svg")));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "one icon resolves exactly once");
+
+        // A different key resolves once more; a cached MISS is not re-resolved.
+        let c = Arc::clone(&calls);
+        let miss = cached_or_resolve(&mut cache, ("nope".to_owned(), None, None), move || {
+            c.fetch_add(1, Ordering::SeqCst);
+            None
+        })
+        .await;
+        assert_eq!(miss, None);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        let c = Arc::clone(&calls);
+        let _ = cached_or_resolve(&mut cache, ("nope".to_owned(), None, None), move || {
+            c.fetch_add(1, Ordering::SeqCst);
+            Some(PathBuf::from("/should/not/happen"))
+        })
+        .await;
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "a cached miss is not re-resolved"
+        );
+    }
 }

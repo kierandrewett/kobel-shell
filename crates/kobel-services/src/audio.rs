@@ -7,6 +7,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 
 use libpulse_binding::callbacks::ListResult;
@@ -92,6 +94,14 @@ impl AudioState {
     }
 }
 
+/// Coalescing gate for pulse subscribe events. Returns true only on the clean
+/// -> pending transition, so a burst of events between owner-loop drains
+/// enqueues exactly ONE `Refresh`. The owner loop clears the flag before it
+/// introspects, re-arming exactly one follow-up for events during the pass.
+fn should_enqueue_refresh(pending: &AtomicBool) -> bool {
+    !pending.swap(true, Ordering::AcqRel)
+}
+
 pub(crate) fn run(
     events: UnboundedSender<ServiceEvent>,
     self_tx: Sender<AudioMsg>,
@@ -157,13 +167,20 @@ pub(crate) fn run(
     }
     context.borrow_mut().set_state_callback(None);
 
-    // Subscribe: any sink/sink-input/server event just asks for a refresh.
+    // Subscribe: any sink/sink-input/server event asks for a refresh, but a
+    // burst collapses into ONE queued pass. `refresh_pending` is set on the
+    // mainloop thread and cleared by the owner loop before it introspects, so
+    // events arriving during a pass re-arm exactly one follow-up refresh.
+    let refresh_pending = Arc::new(AtomicBool::new(false));
     {
         let tx = self_tx.clone();
+        let pending = Arc::clone(&refresh_pending);
         context
             .borrow_mut()
             .set_subscribe_callback(Some(Box::new(move |_facility, _op, _index| {
-                let _ = tx.send(AudioMsg::Refresh);
+                if should_enqueue_refresh(&pending) {
+                    let _ = tx.send(AudioMsg::Refresh);
+                }
             })));
     }
     context.borrow_mut().subscribe(
@@ -181,7 +198,12 @@ pub(crate) fn run(
     // Owner loop: drain refreshes/commands until shutdown.
     loop {
         match rx.recv() {
-            Ok(AudioMsg::Refresh) => refresh(&mainloop, &context, &state, &events),
+            Ok(AudioMsg::Refresh) => {
+                // Clear before introspecting so any event during the pass
+                // re-arms exactly one follow-up, never losing an update.
+                refresh_pending.store(false, Ordering::Release);
+                refresh(&mainloop, &context, &state, &events);
+            }
             Ok(AudioMsg::Command(cmd)) => apply_command(&mainloop, &context, &state, cmd),
             Ok(AudioMsg::Shutdown) | Err(_) => break,
         }
@@ -380,5 +402,21 @@ mod tests {
     #[test]
     fn clamps_above_max() {
         assert!(denormalize(1000.0).0 <= Volume::MAX.0);
+    }
+
+    #[test]
+    fn subscribe_events_coalesce_into_one_refresh() {
+        let pending = AtomicBool::new(false);
+        // A burst of five events between drains enqueues exactly one Refresh.
+        let enqueued = (0..5).filter(|_| should_enqueue_refresh(&pending)).count();
+        assert_eq!(enqueued, 1, "a burst coalesces into a single queued refresh");
+        // The owner loop clears the flag before introspecting; the next event
+        // then re-arms exactly one follow-up, and no more until cleared again.
+        pending.store(false, Ordering::Release);
+        assert!(should_enqueue_refresh(&pending), "first event after a drain re-arms");
+        assert!(
+            !should_enqueue_refresh(&pending),
+            "further events in the same window are coalesced"
+        );
     }
 }

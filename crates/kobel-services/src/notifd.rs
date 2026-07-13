@@ -15,7 +15,7 @@
 //! Every mutation pushes a fresh `ServiceEvent::Notifd` snapshot.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,6 +23,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
+use tokio::sync::Notify;
 use zbus::fdo::RequestNameFlags;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedValue;
@@ -45,6 +46,8 @@ const REASON_CLOSED: u32 = 3;
 /// Name-acquisition retry budget after asking gnoblin to release the name.
 const ACQUIRE_RETRIES: u32 = 10;
 const ACQUIRE_INTERVAL: Duration = Duration::from_millis(500);
+/// Debounce window: a burst of store mutations coalesces into one disk write.
+const PERSIST_DEBOUNCE: Duration = Duration::from_millis(500);
 
 /// One notification, mirroring the org.freedesktop.Notifications Notify args the
 /// shell renders.
@@ -124,6 +127,12 @@ struct Store {
     dnd: bool,
     /// Newest first.
     items: Vec<StoredNotif>,
+    /// Set on any mutation; cleared when the debounce writer takes a snapshot.
+    /// Coalesces a burst of mutations into a single disk write.
+    dirty: bool,
+    /// Wakes the debounce writer when the store becomes dirty. `notify_one` is
+    /// non-blocking, so signaling it while holding the store lock is safe.
+    wake: Arc<Notify>,
 }
 
 impl Store {
@@ -153,6 +162,8 @@ impl Store {
             serving: false,
             dnd: persisted.dnd,
             items: persisted.notifications,
+            dirty: false,
+            wake: Arc::new(Notify::new()),
         }
     }
 
@@ -172,7 +183,7 @@ impl Store {
         self.items.retain(|it| it.notif.id != id);
         self.items.insert(0, StoredNotif { notif, resident });
         self.items.truncate(CAP);
-        self.save();
+        self.mark_dirty();
         id
     }
 
@@ -182,7 +193,7 @@ impl Store {
         self.items.retain(|it| it.notif.id != id);
         let removed = self.items.len() != before;
         if removed {
-            self.save();
+            self.mark_dirty();
         }
         removed
     }
@@ -193,7 +204,7 @@ impl Store {
         let ids: Vec<u32> = self.items.iter().map(|it| it.notif.id).collect();
         if !ids.is_empty() {
             self.items.clear();
-            self.save();
+            self.mark_dirty();
         }
         ids
     }
@@ -204,7 +215,7 @@ impl Store {
             return false;
         }
         self.dnd = on;
-        self.save();
+        self.mark_dirty();
         true
     }
 
@@ -229,27 +240,103 @@ impl Store {
         }
     }
 
-    /// Best-effort persist. Failures are logged, never fatal.
-    fn save(&self) {
-        if let Some(parent) = self.path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                tracing::warn!("[notifd] cannot create state dir {}: {e}", parent.display());
-                return;
-            }
+    /// Mark the store dirty and wake the debounce writer. The writer coalesces
+    /// a burst of these into one disk write (~500ms). `notify_one` is a cheap,
+    /// non-blocking signal, safe to call while the store lock is held.
+    fn mark_dirty(&mut self) {
+        self.dirty = true;
+        self.wake.notify_one();
+    }
+
+    /// If a write is pending, clear the dirty flag and return the path plus a
+    /// cloned on-disk snapshot to serialize OUTSIDE the lock. `None` when clean,
+    /// so a redundant flush never touches the filesystem.
+    fn take_dirty(&mut self) -> Option<(PathBuf, Persisted)> {
+        if !self.dirty {
+            return None;
         }
-        let persisted = Persisted {
-            dnd: self.dnd,
-            notifications: self.items.clone(),
-        };
-        match serde_json::to_string_pretty(&persisted) {
-            Ok(json) => {
-                if let Err(e) = std::fs::write(&self.path, json) {
-                    tracing::warn!("[notifd] cannot write store {}: {e}", self.path.display());
-                }
-            }
-            Err(e) => tracing::warn!("[notifd] cannot serialize store: {e}"),
+        self.dirty = false;
+        Some((
+            self.path.clone(),
+            Persisted {
+                dnd: self.dnd,
+                notifications: self.items.clone(),
+            },
+        ))
+    }
+}
+
+/// Serialize a persisted snapshot to disk. Best-effort: failures are logged,
+/// never fatal. Callers run this on a `spawn_blocking` thread (see
+/// [`flush_store`]) so the runtime worker is never blocked on the filesystem.
+fn write_persisted(path: &Path, persisted: &Persisted) {
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!("[notifd] cannot create state dir {}: {e}", parent.display());
+            return;
         }
     }
+    // Crash-safe: write a sibling temp file then rename over the target, so a
+    // crash or full disk can never truncate the sole store (same pattern as the
+    // launcher frecency store).
+    let tmp = path.with_extension("json.tmp");
+    match serde_json::to_string_pretty(persisted) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&tmp, json) {
+                tracing::warn!("[notifd] cannot write store temp {}: {e}", tmp.display());
+                return;
+            }
+            if let Err(e) = std::fs::rename(&tmp, path) {
+                tracing::warn!("[notifd] cannot commit store {}: {e}", path.display());
+                let _ = std::fs::remove_file(&tmp);
+            }
+        }
+        Err(e) => tracing::warn!("[notifd] cannot serialize store: {e}"),
+    }
+}
+
+/// The single debounced persistence writer. Waits for a dirty signal, coalesces
+/// the rest of the burst over [`PERSIST_DEBOUNCE`], then flushes once. Every disk
+/// write happens here, so nothing races the final shutdown flush: on the
+/// shutdown signal it flushes the latest snapshot immediately and exits.
+async fn persist_loop(
+    store: Arc<Mutex<Store>>,
+    wake: Arc<Notify>,
+    mut shutdown_rx: oneshot::Receiver<()>,
+) {
+    loop {
+        tokio::select! {
+            biased;
+            _ = &mut shutdown_rx => {
+                flush_store(&store).await;
+                return;
+            }
+            _ = wake.notified() => {}
+        }
+        // Coalesce: absorb the rest of the burst, but cut the wait short on
+        // shutdown so the final state is flushed promptly.
+        tokio::select! {
+            biased;
+            _ = &mut shutdown_rx => {
+                flush_store(&store).await;
+                return;
+            }
+            _ = tokio::time::sleep(PERSIST_DEBOUNCE) => {}
+        }
+        flush_store(&store).await;
+    }
+}
+
+/// Flush a pending write if the store is dirty. The snapshot is cloned under the
+/// lock and released before the blocking `std::fs::write`, which runs via
+/// `spawn_blocking`. Called only from [`persist_loop`], keeping all writes
+/// serialized in one task.
+async fn flush_store(store: &Arc<Mutex<Store>>) {
+    let pending = store.lock().take_dirty();
+    let Some((path, persisted)) = pending else {
+        return;
+    };
+    let _ = tokio::task::spawn_blocking(move || write_persisted(&path, &persisted)).await;
 }
 
 // ---- zbus server interface ------------------------------------------------
@@ -369,7 +456,18 @@ pub(crate) async fn run(
     mut cmd_rx: UnboundedReceiver<NotifdCommand>,
     mut shutdown_rx: oneshot::Receiver<()>,
 ) {
-    let store = Arc::new(Mutex::new(Store::load(state_file_path())));
+    let store = Arc::new(Mutex::new(
+        tokio::task::spawn_blocking(|| Store::load(state_file_path()))
+            .await
+            .expect("[notifd] store load task panicked"),
+    ));
+
+    // Debounced persistence: mutations set a dirty flag and wake this writer,
+    // which coalesces a burst into one off-worker disk write. Every disk write
+    // lives in this single task, so nothing races the final shutdown flush.
+    let wake = store.lock().wake.clone();
+    let (persist_shutdown_tx, persist_shutdown_rx) = oneshot::channel::<()>();
+    let persist = tokio::spawn(persist_loop(Arc::clone(&store), wake, persist_shutdown_rx));
 
     let conn = match Connection::session().await {
         Ok(conn) => Some(conn),
@@ -430,6 +528,25 @@ pub(crate) async fn run(
             }
         }
     }
+
+    // Quiesce mutations before the final flush: pull our interface off the bus so
+    // no late Notify can dirty the store after the persist writer has exited (UI
+    // commands already stopped when the loop above broke).
+    if let Some(conn) = conn.as_ref() {
+        if let Err(e) = conn
+            .object_server()
+            .remove::<NotificationsServer, _>(PATH)
+            .await
+        {
+            tracing::debug!("[notifd] interface remove on shutdown failed: {e}");
+        }
+    }
+
+    // Stop the debounce writer: signal it, let it flush the latest snapshot, and
+    // wait for it to finish BEFORE releasing the name. All disk writes happen in
+    // that one task, so no in-flight write can race this final flush.
+    let _ = persist_shutdown_tx.send(());
+    let _ = persist.await;
 
     // Hand the name back so gnome-shell / gnoblin regains it. Release our claim
     // first, then re-enable the gnoblin feature so it can re-acquire.
@@ -726,13 +843,19 @@ mod tests {
         cleanup(&path);
     }
 
-    #[test]
-    fn persistence_round_trip() {
+    #[tokio::test]
+    async fn persistence_round_trip() {
         let path = temp_path("persist");
-        let mut store = Store::load(path.clone());
-        store.set_dnd(true);
-        store.ingest(0, notif("one"), false);
-        let two = store.ingest(0, notif("two"), true);
+        let store = Arc::new(Mutex::new(Store::load(path.clone())));
+        let two = {
+            let mut s = store.lock();
+            s.set_dnd(true);
+            s.ingest(0, notif("one"), false);
+            s.ingest(0, notif("two"), true)
+        };
+        // Mutations only mark the store dirty now; the debounced writer persists.
+        // Flush once, then reload from disk.
+        flush_store(&store).await;
 
         let reloaded = Store::load(path.clone());
         assert!(reloaded.dnd);
@@ -740,12 +863,64 @@ mod tests {
         // Newest-first order survives the round trip.
         assert_eq!(reloaded.items[0].notif.summary, "two");
         assert_eq!(reloaded.items[1].notif.summary, "one");
-        assert_eq!(reloaded.items, store.items, "exact round trip");
+        assert_eq!(reloaded.items, store.lock().items, "exact round trip");
         // Private residency metadata persists too.
         assert_eq!(reloaded.residency(two), Some(true));
         // Ids continue after the max loaded id.
         let mut reloaded = reloaded;
         assert_eq!(reloaded.ingest(0, notif("three"), false), two + 1);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn rapid_mutations_coalesce_to_one_pending_write() {
+        let path = temp_path("coalesce");
+        let mut store = Store::load(path.clone());
+        // A burst of rapid mutations, as a client hammering Notify would produce.
+        for i in 0..20 {
+            store.ingest(0, notif(&format!("n{i}")), false);
+        }
+        store.set_dnd(true);
+        // The whole burst collapses into a SINGLE pending write carrying the
+        // final state -- not one write per mutation.
+        let pending = store.take_dirty();
+        assert!(pending.is_some(), "a burst leaves exactly one pending write");
+        let (_, persisted) = pending.unwrap();
+        assert_eq!(persisted.notifications.len(), 20);
+        assert!(persisted.dnd);
+        assert_eq!(persisted.notifications[0].notif.summary, "n19");
+        // Nothing is left pending: the burst did not queue N separate writes.
+        assert!(
+            store.take_dirty().is_none(),
+            "no residual pending writes after the coalesced flush"
+        );
+        cleanup(&path);
+    }
+
+    #[tokio::test]
+    async fn debounced_flush_writes_once_for_a_burst() {
+        let path = temp_path("debounce");
+        let store = Arc::new(Mutex::new(Store::load(path.clone())));
+        // Burst of rapid mutations under one lock, then a single debounced flush.
+        {
+            let mut s = store.lock();
+            for i in 0..25 {
+                s.ingest(0, notif(&format!("n{i}")), false);
+            }
+            s.set_dnd(true);
+        }
+        flush_store(&store).await;
+        let reloaded = Store::load(path.clone());
+        assert_eq!(reloaded.items.len(), 25);
+        assert!(reloaded.dnd);
+        assert_eq!(reloaded.items[0].notif.summary, "n24");
+
+        // The burst produced exactly ONE write: with nothing newly dirty, a
+        // second flush must not touch the fs. Prove it by deleting the file
+        // first -- a no-op flush leaves it absent.
+        std::fs::remove_file(&path).unwrap();
+        flush_store(&store).await;
+        assert!(!path.exists(), "no residual write after the coalesced flush");
         cleanup(&path);
     }
 
