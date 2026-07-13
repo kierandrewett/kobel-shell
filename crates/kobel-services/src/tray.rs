@@ -4,15 +4,20 @@
 //! `org.kde.StatusNotifierWatcher` and registers us as a host -- on the
 //! services runtime, then translate its item events into `TraySnapshot`.
 //!
-//! Phase-6 scope: items + activate. DBusMenu rendering needs popup surface
-//! design and is an explicit follow-up (docs/FREYA-PLAN.md section 6 note);
-//! menu events are ignored here without disturbing item tracking.
+//! Phase-6 scope: items + activate + DBusMenu tree/actions. The `system-tray`
+//! crate already tracks each item's `com.canonical.dbusmenu` layout in its item
+//! map (the `data` feature) and re-emits it on menu-update events; we translate
+//! that tree into a plain `TrayMenu` snapshot and route about-to-show / clicked
+//! calls back. Menu UI (popup surface) is a later wave.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use system_tray::client::{ActivateRequest, Client, Event};
 use system_tray::item::{IconPixmap, StatusNotifierItem};
+use system_tray::menu::{
+    MenuItem as SniMenuItem, MenuType, ToggleState, ToggleType, TrayMenu as SniMenu,
+};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -40,6 +45,10 @@ pub struct TrayItem {
     /// Resolved icon: a theme/file path when available, else raw ARGB32 pixmap
     /// bytes with dimensions.
     pub icon: TrayIcon,
+    /// The item's DBusMenu tree, if it advertised a `com.canonical.dbusmenu`
+    /// object and the crate has fetched its layout. `None` while the layout is
+    /// still loading or if the item exposes no menu.
+    pub menu: Option<TrayMenu>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,17 +70,74 @@ pub struct TraySnapshot {
     pub items: Vec<TrayItem>,
 }
 
+/// A tray item's DBusMenu (`com.canonical.dbusmenu`) tree, flattened to plain
+/// data the UI can render directly. Built from the `system-tray` crate's own
+/// layout via [`convert_menu`]; `items` are the root menu's children.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TrayMenu {
+    pub items: Vec<TrayMenuItem>,
+}
+
+/// One node in a [`TrayMenu`]. Ids are the DBusMenu numeric item ids used by
+/// the clicked/about-to-show calls; `children` is non-empty for submenus.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrayMenuItem {
+    /// DBusMenu numeric id, passed back verbatim on a `TrayMenuClicked`.
+    pub id: i32,
+    /// Display label with GTK/DBusMenu underscore mnemonics stripped (see
+    /// [`strip_mnemonics`]). Empty when the item carries no label.
+    pub label: String,
+    /// Whether the item can be activated.
+    pub enabled: bool,
+    /// Whether the item should be shown at all.
+    pub visible: bool,
+    /// Standard row or a separator line.
+    pub kind: TrayMenuItemKind,
+    /// Present only for checkmark/radio items; carries the current on-state.
+    pub toggle: Option<TrayToggle>,
+    /// Nested submenu items (empty for leaves).
+    pub children: Vec<TrayMenuItem>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayMenuItemKind {
+    Standard,
+    Separator,
+}
+
+/// Toggle state of a checkmark/radio menu item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrayToggle {
+    pub kind: TrayToggleKind,
+    /// True when the item is toggled on. DBusMenu's `Indeterminate` maps to
+    /// `false` (neither on nor a distinct tri-state in the UI model).
+    pub on: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayToggleKind {
+    Check,
+    Radio,
+}
+
 /// Command routed to the tray task; acts on an item by its bus address.
 pub(crate) enum TrayCommand {
     /// Primary activation (left click): `Activate(x, y)` with x=y=0.
     Activate(String),
     /// Secondary activation (middle click): `SecondaryActivate(x, y)`, x=y=0.
     SecondaryActivate(String),
+    /// DBusMenu `AboutToShow` on the root menu (id 0) before it is displayed,
+    /// per the com.canonical.dbusmenu contract. Address is the item's bus name.
+    MenuAboutToShow(String),
+    /// DBusMenu `Event("clicked", ...)` for one item, with a proper timestamp
+    /// supplied by the crate. Address is the item's bus name.
+    MenuClicked { address: String, item_id: i32 },
 }
 
-/// Tray service task. Starts the SNI host, mirrors its item cache into a
-/// deterministic `TraySnapshot` on every change, and routes activate commands.
-/// Menu events are ignored (out of scope) but never remove items from tracking.
+/// Tray service task. Starts the SNI host, mirrors its item cache (items +
+/// DBusMenu layouts) into a deterministic `TraySnapshot` on every change, and
+/// routes activate / menu commands. Menu-update events refresh the tree in
+/// place and re-emit; they never remove items from tracking.
 pub(crate) async fn run(
     events: UnboundedSender<ServiceEvent>,
     mut cmd_rx: UnboundedReceiver<TrayCommand>,
@@ -154,22 +220,23 @@ async fn emit_snapshot(
     icon_cache: &mut HashMap<IconKey, Option<PathBuf>>,
 ) {
     let map = client.items();
-    let raw: Vec<(String, StatusNotifierItem)> = {
+    let raw: Vec<(String, StatusNotifierItem, Option<SniMenu>)> = {
         let guard = map.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         guard
             .iter()
-            .map(|(addr, (item, _menu))| (addr.clone(), item.clone()))
+            .map(|(addr, (item, menu))| (addr.clone(), item.clone(), menu.clone()))
             .collect()
     };
 
     let mut items: Vec<TrayItem> = Vec::with_capacity(raw.len());
-    for (address, item) in &raw {
+    for (address, item, menu) in &raw {
         let icon = resolve_icon_cached(item, theme, icon_cache).await;
         items.push(TrayItem {
             address: address.clone(),
             title: item.title.clone().unwrap_or_else(|| item.id.clone()),
             tooltip: tooltip_text(item),
             icon,
+            menu: menu.as_ref().map(convert_menu),
         });
     }
     // HashMap iteration is unordered; sort by address for determinism.
@@ -237,18 +304,118 @@ where
     found
 }
 
-/// Route an activate command to the SNI item. x=y=0 (we have no screen-position
-/// hint to offer; items use it only to place their own popups).
+/// Route a command to the SNI item / its DBusMenu.
+///
+/// Activate/SecondaryActivate use x=y=0 (we have no screen-position hint to
+/// offer; items use it only to place their own popups). Menu commands need the
+/// item's `com.canonical.dbusmenu` object path, which lives on the item's
+/// `menu` property; we resolve it from the crate's item map by address.
 async fn handle_command(client: &Client, cmd: TrayCommand) {
-    let req = match cmd {
-        TrayCommand::Activate(address) => ActivateRequest::Default { address, x: 0, y: 0 },
-        TrayCommand::SecondaryActivate(address) => {
-            ActivateRequest::Secondary { address, x: 0, y: 0 }
+    match cmd {
+        TrayCommand::Activate(address) => {
+            activate(client, ActivateRequest::Default { address, x: 0, y: 0 }).await;
         }
-    };
+        TrayCommand::SecondaryActivate(address) => {
+            activate(client, ActivateRequest::Secondary { address, x: 0, y: 0 }).await;
+        }
+        TrayCommand::MenuAboutToShow(address) => {
+            let Some(menu_path) = menu_path_for(client, &address) else {
+                tracing::warn!("[tray] about-to-show: no menu path for {address}");
+                return;
+            };
+            // Root menu id is 0 per the DBusMenu contract; ignore needsUpdate
+            // (the crate refreshes the layout on its own layout-updated signal).
+            if let Err(e) = client.about_to_show_menuitem(address, menu_path, 0).await {
+                tracing::warn!("[tray] about-to-show failed: {e}");
+            }
+        }
+        TrayCommand::MenuClicked { address, item_id } => {
+            let Some(menu_path) = menu_path_for(client, &address) else {
+                tracing::warn!("[tray] menu click: no menu path for {address}");
+                return;
+            };
+            activate(
+                client,
+                ActivateRequest::MenuItem {
+                    address,
+                    menu_path,
+                    submenu_id: item_id,
+                },
+            )
+            .await;
+        }
+    }
+}
+
+/// Send an activate request, logging any failure. Shared by every command.
+async fn activate(client: &Client, req: ActivateRequest) {
     if let Err(e) = client.activate(req).await {
         tracing::warn!("[tray] activate failed: {e}");
     }
+}
+
+/// Look up an item's DBusMenu object path (the `menu` property) by bus address.
+/// Read straight from the crate's item map; cheap and never held across await.
+fn menu_path_for(client: &Client, address: &str) -> Option<String> {
+    let map = client.items();
+    let guard = map.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    guard.get(address).and_then(|(item, _menu)| item.menu.clone())
+}
+
+/// Convert the crate's DBusMenu layout into the plain [`TrayMenu`] the UI
+/// renders. The crate's `TrayMenu.submenus` are the root menu's children.
+fn convert_menu(menu: &SniMenu) -> TrayMenu {
+    TrayMenu {
+        items: menu.submenus.iter().map(convert_menu_item).collect(),
+    }
+}
+
+/// Convert one DBusMenu item, recursing into its submenu. Maps the crate's
+/// `menu_type`/`toggle_type`/`toggle_state` onto our flat model and strips
+/// underscore mnemonics from the label.
+fn convert_menu_item(item: &SniMenuItem) -> TrayMenuItem {
+    let kind = match item.menu_type {
+        MenuType::Separator => TrayMenuItemKind::Separator,
+        MenuType::Standard => TrayMenuItemKind::Standard,
+    };
+    // DBusMenu `On` == toggled; `Off`/`Indeterminate` render as not-on.
+    let on = item.toggle_state == ToggleState::On;
+    let toggle = match item.toggle_type {
+        ToggleType::Checkmark => Some(TrayToggle { kind: TrayToggleKind::Check, on }),
+        ToggleType::Radio => Some(TrayToggle { kind: TrayToggleKind::Radio, on }),
+        ToggleType::CannotBeToggled => None,
+    };
+    TrayMenuItem {
+        id: item.id,
+        label: item.label.as_deref().map(strip_mnemonics).unwrap_or_default(),
+        enabled: item.enabled,
+        visible: item.visible,
+        kind,
+        toggle,
+        children: item.submenu.iter().map(convert_menu_item).collect(),
+    }
+}
+
+/// Strip GTK/DBusMenu underscore mnemonics from a menu label. Per the
+/// com.canonical.dbusmenu `label` contract: a doubled underscore "__" renders
+/// as one literal underscore; any other underscore is a mnemonic marker and is
+/// dropped. GTK does this transparently via the menu model (which AGS used);
+/// we do it explicitly so labels read as plain text.
+fn strip_mnemonics(label: &str) -> String {
+    let mut out = String::with_capacity(label.len());
+    let mut chars = label.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '_' {
+            if chars.peek() == Some(&'_') {
+                chars.next();
+                out.push('_');
+            }
+            // A lone underscore is a mnemonic marker: drop it.
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Collapse the SNI tooltip (title + description) into one display string.
@@ -443,5 +610,100 @@ mod tests {
             2,
             "a cached miss is not re-resolved"
         );
+    }
+
+    /// Build a standard, enabled, visible fixture menu item.
+    fn item(id: i32, label: Option<&str>) -> SniMenuItem {
+        SniMenuItem {
+            id,
+            label: label.map(str::to_owned),
+            enabled: true,
+            visible: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn strip_mnemonics_matches_dbusmenu_spec() {
+        // Lone underscore is a mnemonic marker and vanishes.
+        assert_eq!(strip_mnemonics("_File"), "File");
+        assert_eq!(strip_mnemonics("Save _As"), "Save As");
+        assert_eq!(strip_mnemonics("trailing_"), "trailing");
+        // Doubled underscore renders as one literal underscore.
+        assert_eq!(strip_mnemonics("a__b"), "a_b");
+        assert_eq!(strip_mnemonics("__leading"), "_leading");
+        // Mixed: markers drop, doubles collapse.
+        assert_eq!(strip_mnemonics("_a__b_c"), "a_bc");
+        // No markers: passthrough.
+        assert_eq!(strip_mnemonics("no marker"), "no marker");
+    }
+
+    #[test]
+    fn convert_menu_flattens_tree() {
+        let sni = SniMenu {
+            id: 0,
+            submenus: vec![
+                // A submenu with a nested item, a separator, and a doubled label.
+                SniMenuItem {
+                    submenu: vec![
+                        item(11, Some("_Open")),
+                        SniMenuItem {
+                            menu_type: MenuType::Separator,
+                            ..item(12, None)
+                        },
+                        item(13, Some("Save __as__")),
+                    ],
+                    ..item(1, Some("_File"))
+                },
+                // Checkmark, toggled on.
+                SniMenuItem {
+                    toggle_type: ToggleType::Checkmark,
+                    toggle_state: ToggleState::On,
+                    ..item(2, Some("Show _hidden"))
+                },
+                // Radio, off.
+                SniMenuItem {
+                    toggle_type: ToggleType::Radio,
+                    toggle_state: ToggleState::Off,
+                    ..item(3, Some("Option A"))
+                },
+                // Disabled + invisible flags carried through.
+                SniMenuItem {
+                    enabled: false,
+                    ..item(4, Some("_Disabled"))
+                },
+                SniMenuItem {
+                    visible: false,
+                    ..item(5, Some("Hidden"))
+                },
+            ],
+        };
+
+        let menu = convert_menu(&sni);
+        assert_eq!(menu.items.len(), 5);
+
+        let file = &menu.items[0];
+        assert_eq!(file.id, 1);
+        assert_eq!(file.label, "File", "mnemonic marker stripped");
+        assert!(file.enabled && file.visible);
+        assert_eq!(file.kind, TrayMenuItemKind::Standard);
+        assert_eq!(file.toggle, None);
+        assert_eq!(file.children.len(), 3, "submenu recursed");
+        assert_eq!(file.children[0].label, "Open");
+        assert_eq!(file.children[1].kind, TrayMenuItemKind::Separator);
+        assert_eq!(file.children[1].label, "", "separator has no label");
+        assert_eq!(file.children[2].label, "Save _as_", "doubled underscore kept");
+
+        assert_eq!(
+            menu.items[1].toggle,
+            Some(TrayToggle { kind: TrayToggleKind::Check, on: true }),
+        );
+        assert_eq!(
+            menu.items[2].toggle,
+            Some(TrayToggle { kind: TrayToggleKind::Radio, on: false }),
+        );
+
+        assert!(!menu.items[3].enabled, "disabled flag carried");
+        assert!(!menu.items[4].visible, "invisible flag carried");
     }
 }

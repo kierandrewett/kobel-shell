@@ -32,7 +32,10 @@ pub use bluetooth::{BluetoothSnapshot, BtDevice};
 pub use network::{AccessPointInfo, NetworkSnapshot};
 pub use sysctl::{BrightnessSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot};
 pub use notifd::{NotifdSnapshot, Notification};
-pub use tray::{TrayIcon, TrayItem, TraySnapshot};
+pub use tray::{
+    TrayIcon, TrayItem, TrayMenu, TrayMenuItem, TrayMenuItemKind, TraySnapshot, TrayToggle,
+    TrayToggleKind,
+};
 
 use audio::{AudioCommand, AudioMsg};
 use gnoblin::GnoblinCommand;
@@ -128,6 +131,12 @@ pub enum Command {
     ActivateTrayItem(String),
     /// tray: secondary-activate an item by address (middle click).
     SecondaryActivateTrayItem(String),
+    /// tray: fire the item's DBusMenu `AboutToShow` before its menu is shown,
+    /// per the com.canonical.dbusmenu contract. Address is the item's bus name.
+    TrayMenuAboutToShow { address: String },
+    /// tray: send a DBusMenu `clicked` event for a menu item (proper timestamp
+    /// supplied by the crate). `item_id` is the DBusMenu numeric id.
+    TrayMenuClicked { address: String, item_id: i32 },
 }
 
 /// A session-control verb, executed by the exec service (docs/FREYA-PLAN.md
@@ -352,6 +361,12 @@ async fn run(
                 }
                 Command::SecondaryActivateTrayItem(address) => {
                     let _ = tray_tx.send(TrayCommand::SecondaryActivate(address));
+                }
+                Command::TrayMenuAboutToShow { address } => {
+                    let _ = tray_tx.send(TrayCommand::MenuAboutToShow(address));
+                }
+                Command::TrayMenuClicked { address, item_id } => {
+                    let _ = tray_tx.send(TrayCommand::MenuClicked { address, item_id });
                 }
                 Command::SetDnd(on) => {
                     let _ = notifd_tx.send(NotifdCommand::SetDnd(on));

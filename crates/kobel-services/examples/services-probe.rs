@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use kobel_services::{ServiceEvent, Services};
+use kobel_services::{ServiceEvent, Services, TrayMenuItem};
 
 /// The six dock pins the shell ships with; we report whether each resolves via
 /// `AppsSnapshot::by_id` and whether an icon file was found.
@@ -18,6 +18,12 @@ const PINS: &[&str] = &[
     "com.spotify.Client",
     "org.gnome.Settings",
 ];
+
+/// Total nodes in a menu subtree (the item itself plus all descendants), so the
+/// probe reports the full DBusMenu size, not just the top-level row count.
+fn count_menu_items(item: &TrayMenuItem) -> usize {
+    1 + item.children.iter().map(count_menu_items).sum::<usize>()
+}
 
 fn main() {
     tracing_subscriber::fmt()
@@ -45,6 +51,26 @@ fn main() {
                         println!("[probe]   {pin} -> id={} icon={}", app.id, icon);
                     }
                     None => println!("[probe]   {pin} -> <not found>"),
+                }
+            }
+        }
+        // Report which tray items expose a DBusMenu and how many items it has.
+        ServiceEvent::Tray(snapshot) => {
+            println!("[probe] Tray snapshot: {} item(s)", snapshot.items.len());
+            for item in &snapshot.items {
+                match &item.menu {
+                    Some(menu) => {
+                        let top = menu.items.len();
+                        let total = menu.items.iter().map(count_menu_items).sum::<usize>();
+                        println!(
+                            "[probe]   {} ({}) -> menu: {top} top-level, {total} total item(s)",
+                            item.title, item.address,
+                        );
+                    }
+                    None => println!(
+                        "[probe]   {} ({}) -> no menu",
+                        item.title, item.address,
+                    ),
                 }
             }
         }
