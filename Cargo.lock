@@ -1168,6 +1168,7 @@ dependencies = [
  "torin",
  "tracing",
  "tracing-subscriber",
+ "zbus",
 ]
 
 [[package]]
