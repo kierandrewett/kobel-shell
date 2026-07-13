@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Phase-2 visual/IPC pass: boot headless gnoblin, run the REAL kobel-shell binary
-# (per-output bar + osd), verify the IPC round-trip via kobelctl, screenshot the bar.
+# Run the REAL kobel-shell binary against gnoblin.
+#
+# Default: the headless verification pass -- boot headless gnoblin, mount the shell,
+# assert IPC/input/notifd round-trips, screenshot, tear down.
+# INTERACTIVE=1: open the visible nested gnoblin devkit window and run kobel-shell
+# inside it until Ctrl-C (the successor of the old AGS INTERACTIVE flow).
 #
 # Env:
-#   GNOBLIN=/path   gnoblin repo (default /home/kieran/dev/gnoblin)
-#   OUT=/path.png   screenshot destination (default /tmp/kobel-shell-shot.png)
+#   GNOBLIN=/path          gnoblin repo (default /home/kieran/dev/gnoblin)
+#   OUT=/path.png          headless screenshot destination
+#   INTERACTIVE=1          visible nested devkit; run until Ctrl-C
+#   KOBEL_PROFILE_ANIM=1   reveal-spring traces   KOBEL_REDUCED_MOTION=1  instant springs
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,6 +24,29 @@ CTL_BIN="$ROOT/target/debug/kobelctl"
 # Always rebuild so the pass provably runs the current source (fast when clean).
 ( cd "$ROOT" && cargo build -p kobel-shell --bins ) || { echo "shell build failed" >&2; exit 1; }
 [ -x "$SHELL_BIN" ] && [ -x "$CTL_BIN" ] || { echo "missing shell/ctl binaries after build" >&2; exit 1; }
+
+if [ "${INTERACTIVE:-0}" = 1 ]; then
+  # Visible nested devkit: gnoblin's runner boots the windowed session and execs
+  # our command inside it with WAYLAND_DISPLAY pointed at the nested compositor.
+  # gnoblin's own OSD is handed to us for the session (notifications hand-off is
+  # negotiated by kobel-notifd itself).
+  export KOBEL_SHELL_BIN="$SHELL_BIN"
+  export KOBEL_PROFILE_ANIM="${KOBEL_PROFILE_ANIM:-}"
+  export KOBEL_REDUCED_MOTION="${KOBEL_REDUCED_MOTION:-}"
+  # Isolated control socket so the nested shell never unlinks/collides with a
+  # real session's kobel-shell.sock. Reach it with:
+  #   KOBEL_SHELL_SOCKET=<path> kobelctl toggle launcher
+  export KOBEL_SHELL_SOCKET="${XDG_RUNTIME_DIR:-/tmp}/kobel-shell-devkit-$$.sock"
+  echo ">> nested shell control socket: $KOBEL_SHELL_SOCKET"
+  GNOME_DEVKIT_EXEC="gnoblinctl disable osd 2>/dev/null || true; "
+  GNOME_DEVKIT_EXEC+='RUST_LOG="${RUST_LOG:-info}" '
+  GNOME_DEVKIT_EXEC+='KOBEL_PROFILE_ANIM="$KOBEL_PROFILE_ANIM" '
+  GNOME_DEVKIT_EXEC+='KOBEL_REDUCED_MOTION="$KOBEL_REDUCED_MOTION" '
+  GNOME_DEVKIT_EXEC+='KOBEL_SHELL_SOCKET="$KOBEL_SHELL_SOCKET" '
+  GNOME_DEVKIT_EXEC+='exec "$KOBEL_SHELL_BIN"'
+  export GNOME_DEVKIT_EXEC
+  exec "$GNOBLIN/scripts/run-gnome-devkit.sh"
+fi
 
 # --- gnoblin runtime env (mirrors scripts/run-spike-in-gnoblin.sh) ---
 export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17"

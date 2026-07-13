@@ -40,6 +40,8 @@ Rust 1.95+, clang/ninja (skia ships prebuilt), wayland/egl/xkbcommon headers.
 cargo build --release --bins
 # In a gnoblin session:
 ./target/release/kobel-shell
+# Or in a visible nested devkit window (from any session), until Ctrl-C:
+INTERACTIVE=1 ./scripts/run-shell-in-gnoblin.sh
 # Control a running shell:
 ./target/release/kobelctl ping
 ./target/release/kobelctl toggle launcher   # launcher|quicksettings|calendar|drawer|session
