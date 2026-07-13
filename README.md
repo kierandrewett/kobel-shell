@@ -62,7 +62,7 @@ compositor needed):
 ```sh
 ./scripts/run-spike-in-gnoblin.sh            # host render gate
 INPUT_TEST=1 ./scripts/run-spike-in-gnoblin.sh   # host input gate (injected HID)
-./scripts/run-shell-in-gnoblin.sh            # full shell gate: 25 assertions incl.
+./scripts/run-shell-in-gnoblin.sh            # full shell gate: 26 assertions incl.
                                              # notify-send round-trip, injected
                                              # keyboard/click paths, screenshots
 VIRTUAL_MONITORS="1280x800 1024x768" ./scripts/run-shell-in-gnoblin.sh  # multi-monitor
@@ -126,7 +126,6 @@ was drawn, not a replacement for them.
 ## Follow-ups (known, deliberate)
 
 - DBusMenu rendering for tray items (needs popup-surface design).
-- Dynamic toast input regions (toasts are click-through; dismiss lives in the drawer).
 - Fractional scale (gnoblin advertises it; the host uses integer buffer scale).
 - IME (`zwp_text_input_v3`) for CJK input in the launcher.
 - Calendar events remain sample data pending an EDS/ICS decision.
