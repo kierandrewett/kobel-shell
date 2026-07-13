@@ -24,6 +24,9 @@ accesskit = "0.24"
 
 smithay-client-toolkit = { workspace = true }
 wayland-client = { workspace = true }
+# Staging wp_fractional_scale_v1 + stable wp_viewporter. sctk 0.20 exposes neither
+# natively, so Host implements raw Dispatch for both (see conn.rs / surface.rs).
+wayland-protocols = { workspace = true }
 # client_system selects the libwayland backend so wl_surface ObjectIds expose the
 # C wl_proxy pointer that wayland-egl (WlEglSurface) requires.
 wayland-backend = { workspace = true, features = ["client_system"] }

@@ -10,6 +10,10 @@
 #   GNOBLIN=/path          gnoblin repo (default /home/kieran/dev/gnoblin)
 #   OUT=/path.png          headless screenshot destination
 #   INTERACTIVE=1          visible nested devkit; run until Ctrl-C
+#   KOBEL_TEST_SCALE=1.5   headless only: after boot, apply a fractional monitor
+#                          scale via mutter DisplayConfig and assert the host sized
+#                          its buffers physically (nearest supported non-1 scale is
+#                          used when the exact value is unavailable for the monitor)
 #   KOBEL_PROFILE_ANIM=1   reveal-spring traces   KOBEL_REDUCED_MOTION=1  instant springs
 set -uo pipefail
 
@@ -73,6 +77,7 @@ CONF="$(python3 "$GNOBLIN/scripts/devkit_dbus.py" "$DK" "$GNOBLIN")" || exit 1
 # KOBEL_REDUCED_MOTION makes every spring settle instantly (accessibility).
 export KOBEL_PROFILE_ANIM="${KOBEL_PROFILE_ANIM:-}"
 export KOBEL_REDUCED_MOTION="${KOBEL_REDUCED_MOTION:-}"
+export KOBEL_TEST_SCALE="${KOBEL_TEST_SCALE:-}"
 # Space-separated WxH list; two entries = the multi-monitor pass.
 export VIRTUAL_MONITORS="${VIRTUAL_MONITORS:-1280x800}"
 export DISP DK OUT PREFIX SHELL_BIN CTL_BIN

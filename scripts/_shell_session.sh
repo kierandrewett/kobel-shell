@@ -319,6 +319,122 @@ else
   echo "FAIL: click inside the toasts rect was eaten (launcher stayed open)"; fail=1
 fi
 
+# --- fractional-scale verification (opt-in via KOBEL_TEST_SCALE, e.g. 1.5) ---
+# Deep-host acceptance: drive mutter to a fractional monitor scale, then prove the
+# kobel host (crates/kobel-wayland) received the preferred fractional scale and
+# sized its PHYSICAL buffer to round(logical*scale) via a wp_viewport mapping (NOT
+# integer buffer_scale). Runs LAST so all scale-1 checks above are exercised on the
+# untouched 1280x800 monitor; the whole block is skipped unless KOBEL_TEST_SCALE is
+# set to a non-1 value, so the default gate is byte-for-byte unaffected.
+#
+# mutter only offers scales whose logical size stays integer, so 1.5 is unavailable
+# for 1280x800 (1280 is not divisible by 3); the helper falls back to the nearest
+# supported non-1 scale (1.3333 == 160/120), which is a genuine fractional scale.
+if [ -n "${KOBEL_TEST_SCALE:-}" ] && [ "${KOBEL_TEST_SCALE}" != "1" ]; then
+  echo "== fractional-scale pass (KOBEL_TEST_SCALE=$KOBEL_TEST_SCALE) =="
+  # Enable mutter's fractional scaling so non-integer monitor scales are offered.
+  gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffer']" 2>/dev/null || true
+  sleep 1
+  # Apply the (nearest supported) non-1 scale via org.gnome.Mutter.DisplayConfig.
+  apply_out="$(python3 - "$KOBEL_TEST_SCALE" <<'PY'
+import sys
+from gi.repository import Gio, GLib
+DESIRED = float(sys.argv[1])
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+def call(method, params):
+    return bus.call_sync("org.gnome.Mutter.DisplayConfig",
+        "/org/gnome/Mutter/DisplayConfig", "org.gnome.Mutter.DisplayConfig",
+        method, params, None, Gio.DBusCallFlags.NONE, -1, None)
+serial, monitors, logical_monitors, props = call("GetCurrentState", None).unpack()
+if not monitors:
+    print("NO-MONITORS"); sys.exit(2)
+mon = monitors[0]
+connector = mon[0][0]
+modes = mon[1]
+cur = next((m for m in modes if m[6].get("is-current")), modes[0])
+mode_id, mw, mh, refresh, pref, supported, mprops = cur
+print(f"supported_scales={[round(s,4) for s in supported]}")
+chosen = next((s for s in supported if abs(s - DESIRED) < 1e-3), None)
+if chosen is None:
+    non_one = [s for s in supported if abs(s - 1.0) > 1e-3]
+    if not non_one:
+        print("NO-NON-1-SCALE"); sys.exit(3)
+    chosen = min(non_one, key=lambda s: abs(s - DESIRED))
+# Persistent config (method=2) so it sticks for the rest of the pass (headless has
+# no confirm dialog, so a temporary config would auto-revert).
+logical = [(0, 0, float(chosen), 0, True, [(connector, mode_id, {})])]
+args = GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})", (serial, 2, logical, {}))
+try:
+    call("ApplyMonitorsConfig", args)
+except GLib.Error as e:
+    print(f"APPLY-FAILED {e.message}"); sys.exit(4)
+print(f"APPLIED_SCALE={chosen}")
+PY
+)"
+  ac_rc=$?
+  echo "$apply_out"
+  achieved="$(printf '%s\n' "$apply_out" | sed -n 's/^APPLIED_SCALE=//p' | tail -1)"
+  if [ "$ac_rc" = 0 ] && [ -n "$achieved" ]; then
+    echo "PASS: applied non-1 monitor scale $achieved via ApplyMonitorsConfig"
+  else
+    echo "FAIL: could not apply a non-1 monitor scale (rc=$ac_rc)"; fail=1
+  fi
+  # Let the shell receive preferred_scale + relayout, then screenshot for the orchestrator.
+  sleep 3
+  gdbus call --session --dest org.gnome.Shell.Screenshot \
+    --object-path /org/gnome/Shell/Screenshot \
+    --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/fractional.png" >/dev/null 2>&1
+  cp "$DK/fractional.png" /tmp/kobel-fractional.png 2>/dev/null || true
+  [ -s "$DK/fractional.png" ] && echo "PASS: fractional-scale screenshot captured (/tmp/kobel-fractional.png)" \
+    || { echo "FAIL: fractional-scale screenshot missing"; fail=1; }
+  echo "-- host fractional preferred_scale logs --"
+  grep -a "fractional preferred_scale=" "$DK/kobel.log" | tail -6
+  # Verify: (a) a non-120 numerator was received; (b) every logged physical buffer
+  # equals round(logical*num/120) per axis (host-computed vs an independent oracle).
+  verify_out="$(python3 - "$DK/kobel.log" <<'PY'
+import re, sys
+lines = open(sys.argv[1], errors="ignore").read().splitlines()
+pat = re.compile(r"fractional preferred_scale=(\d+)/120 .* logical (\d+)x(\d+) -> physical (\d+)x(\d+)")
+nonone = []; bad = 0
+for ln in lines:
+    m = pat.search(ln)
+    if not m:
+        continue
+    num, lw, lh, pw, ph = (int(x) for x in m.groups())
+    ew = max(1, (lw * num + 60) // 120)   # round-half-up(logical*num/120), floored at 1
+    eh = max(1, (lh * num + 60) // 120)
+    if (pw, ph) != (ew, eh):
+        print(f"MISMATCH num={num} logical {lw}x{lh} physical {pw}x{ph} expected {ew}x{eh}")
+        bad += 1
+    if num != 120:
+        nonone.append((num, lw, lh, pw, ph))
+print(f"RECEIVED={1 if nonone else 0}")
+print(f"SIZING={'bad' if bad else 'ok'}")
+if nonone:
+    n = nonone[-1]
+    print(f"detail: num={n[0]} scale={n[0]/120:.4f} logical {n[1]}x{n[2]} -> physical {n[3]}x{n[4]}")
+PY
+)"
+  echo "$verify_out"
+  recv="$(printf '%s\n' "$verify_out" | sed -n 's/^RECEIVED=//p' | tail -1)"
+  sizing="$(printf '%s\n' "$verify_out" | sed -n 's/^SIZING=//p' | tail -1)"
+  if [ "$recv" = 1 ]; then
+    echo "PASS: host received a non-1 preferred fractional scale"
+  else
+    echo "FAIL: host never received a non-1 fractional preferred_scale"; fail=1
+  fi
+  if [ "$sizing" = ok ]; then
+    echo "PASS: physical buffer dims == round(logical*scale) for every logged frame"
+  else
+    echo "FAIL: physical buffer sizing mismatch (see MISMATCH lines)"; fail=1
+  fi
+  if grep -aq "viewport destination" "$DK/kobel.log"; then
+    echo "PASS: wp_viewport destination drives the mapping (buffer_scale stays 1)"
+  else
+    echo "FAIL: no viewport destination log (viewport mapping not active)"; fail=1
+  fi
+fi
+
 # Clean shutdown via IPC: wait on the child (kill -0 can see a zombie) and require
 # exit status 0, watchdogged so a lost quit surfaces as FAIL instead of a hang.
 "$CTL_BIN" quit >/dev/null 2>&1

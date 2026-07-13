@@ -39,7 +39,15 @@ use smithay_client_toolkit::{
 use torin::prelude::CursorPoint;
 use wayland_client::globals::registry_queue_init;
 use wayland_client::protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface};
-use wayland_client::{Connection, QueueHandle};
+use wayland_client::{Connection, Dispatch, QueueHandle};
+use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::{
+    self, WpFractionalScaleManagerV1,
+};
+use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::{
+    self, WpFractionalScaleV1,
+};
+use wayland_protocols::wp::viewporter::client::wp_viewport::{self, WpViewport};
+use wayland_protocols::wp::viewporter::client::wp_viewporter::{self, WpViewporter};
 
 use crate::egl::Egl;
 use crate::frame::runner_waker;
@@ -60,18 +68,15 @@ impl Shell {
             registry_queue_init::<Host>(&conn).context("initialize Wayland registry")?;
         let qh = event_queue.handle();
 
-        // Log advertised globals so we learn what gnoblin offers -- especially whether
-        // fractional-scale + viewporter are available (we use integer buffer_scale for
-        // now; TODO fractional).
+        // Log advertised globals for diagnostics; wp_fractional_scale_manager_v1 +
+        // wp_viewporter presence gates the fractional path bound just below.
         globals.contents().with_list(|list| {
             for g in list {
                 tracing::debug!("[host] global {} v{}", g.interface, g.version);
             }
             let frac = list.iter().any(|g| g.interface == "wp_fractional_scale_manager_v1");
             let vp = list.iter().any(|g| g.interface == "wp_viewporter");
-            tracing::info!(
-                "[host] fractional_scale={frac} viewporter={vp}; using integer buffer_scale (TODO fractional)"
-            );
+            tracing::info!("[host] advertised fractional_scale={frac} viewporter={vp}");
         });
 
         let event_loop: EventLoop<'static, Host> =
@@ -99,12 +104,30 @@ impl Shell {
         let layer_shell =
             LayerShell::bind(&globals, &qh).map_err(|e| anyhow!("bind wlr-layer-shell: {e}"))?;
 
+        // Fractional scaling: bind wp_viewporter (stable) + staging
+        // wp_fractional_scale_manager_v1 when advertised. sctk 0.20 wraps neither,
+        // so Host implements their Dispatch directly. Either absent -> integer
+        // buffer_scale fallback (surface.rs). Version 1 is the only version.
+        let viewporter = globals.bind::<WpViewporter, Host, _>(&qh, 1..=1, ()).ok();
+        let fractional_manager =
+            globals.bind::<WpFractionalScaleManagerV1, Host, _>(&qh, 1..=1, ()).ok();
+        tracing::info!(
+            "[host] fractional scaling {}",
+            if viewporter.is_some() && fractional_manager.is_some() {
+                "enabled (per-surface wp_fractional_scale_v1 + wp_viewport)"
+            } else {
+                "unavailable; integer buffer_scale fallback"
+            }
+        );
+
         let host = Host {
             registry_state: RegistryState::new(&globals),
             seat_state: SeatState::new(&globals, &qh),
             output_state: OutputState::new(&globals, &qh),
             compositor_state,
             layer_shell,
+            viewporter,
+            fractional_manager,
             egl,
             surfaces: Vec::new(),
             next_id: 0,
@@ -276,6 +299,11 @@ struct Host {
     output_state: OutputState,
     compositor_state: CompositorState,
     layer_shell: LayerShell,
+    /// wp_viewporter global (surface cropping/scaling). `None` => not advertised.
+    viewporter: Option<WpViewporter>,
+    /// wp_fractional_scale_manager_v1 global. `None` => not advertised. Both this
+    /// and `viewporter` are required to drive a surface fractionally.
+    fractional_manager: Option<WpFractionalScaleManagerV1>,
 
     egl: Egl,
     surfaces: Vec<FreyaLayerSurface>,
@@ -349,7 +377,22 @@ impl Host {
         // height before the initial (buffer-less) commit that triggers the first
         // configure. The EGL buffer is created later, on that configure.
         let (mut surface, extra) =
-            FreyaLayerSurface::new(id, layer, (init_w, init_h), 1, self.waker.clone(), app, setup, content);
+            FreyaLayerSurface::new(id, layer, (init_w, init_h), self.waker.clone(), app, setup, content);
+
+        // Fractional scaling: attach a wp_fractional_scale_v1 (its preferred_scale
+        // event routes back to this surface by the SurfaceId udata) and a wp_viewport
+        // when the compositor advertised both globals. Absent -> integer buffer_scale
+        // path in surface.rs. The wl_surface handle is cloned so the manager calls
+        // do not hold a borrow across enable_fractional.
+        if let (Some(viewporter), Some(manager)) = (&self.viewporter, &self.fractional_manager) {
+            let wl = surface.wl_surface().clone();
+            let viewport = viewporter.get_viewport(&wl, &self.qh, ());
+            let fractional = manager.get_fractional_scale(&wl, &self.qh, id);
+            surface.enable_fractional(viewport, fractional);
+            tracing::info!(
+                "[host] surface {id:?} fractional scaling enabled (wp_viewport + wp_fractional_scale_v1)"
+            );
+        }
         if surface.is_content_sized() {
             if let Some((w, h)) = surface.measure_if_dirty() {
                 surface.layer.set_size(w, h);
@@ -506,28 +549,48 @@ impl Host {
     fn configure_surface(&mut self, idx: usize, new_size: (u32, u32)) {
         self.surfaces[idx].on_configure(new_size);
         let (pw, ph) = self.surfaces[idx].physical_size();
-        let scale = self.surfaces[idx].scale();
 
-        let Self { egl, surfaces, .. } = self;
-        let s = &mut surfaces[idx];
-        if s.egl_surface.is_some() {
-            if let Some(es) = s.egl_surface.as_mut() {
-                es.resize(pw, ph);
-            }
-        } else {
-            match egl.create_surface(s.wl_surface(), pw, ph) {
-                Ok(es) => s.egl_surface = Some(es),
-                Err(e) => {
-                    tracing::error!("[egl] create window surface failed: {e:#}");
-                    return;
+        // Apply the scale mapping first (viewport destination for fractional mode,
+        // wl buffer_scale for the integer fallback), then size the EGL buffer to
+        // physical. Both are pre-commit -- the next render swap presents them
+        // together, so a buffer is never shown against a stale mapping.
+        self.surfaces[idx].apply_surface_scaling();
+
+        {
+            let Self { egl, surfaces, .. } = self;
+            let s = &mut surfaces[idx];
+            if s.egl_surface.is_some() {
+                if let Some(es) = s.egl_surface.as_mut() {
+                    es.resize(pw, ph);
+                }
+            } else {
+                match egl.create_surface(s.wl_surface(), pw, ph) {
+                    Ok(es) => s.egl_surface = Some(es),
+                    Err(e) => {
+                        tracing::error!("[egl] create window surface failed: {e:#}");
+                        return;
+                    }
                 }
             }
         }
-        s.wl_surface().set_buffer_scale(scale);
+
+        let s = &mut self.surfaces[idx];
         let first = !s.configured;
         s.configured = true;
+        let (lw, lh) = s.logical_size();
         if first {
-            tracing::info!("[host] surface {:?} configured {pw}x{ph} (scale {scale})", s.id);
+            tracing::info!(
+                "[host] surface {:?} configured logical {lw}x{lh} physical {pw}x{ph} scale {:.4} fractional={}",
+                s.id,
+                s.scale_factor(),
+                s.is_fractional(),
+            );
+        } else if s.is_fractional() {
+            tracing::info!(
+                "[host] surface {:?} fractional buffer logical {lw}x{lh} scale {:.4} physical {pw}x{ph}",
+                s.id,
+                s.scale_factor(),
+            );
         }
     }
 
@@ -586,10 +649,16 @@ impl CompositorHandler for Host {
         new_factor: i32,
     ) {
         if let Some(idx) = self.index_of(surface) {
-            let scale = new_factor.max(1);
-            if self.surfaces[idx].set_scale(scale) {
-                self.surfaces[idx].wl_surface().set_buffer_scale(scale);
-                tracing::info!("[host] surface {:?} scale -> {scale}", self.surfaces[idx].id);
+            // Integer wl_output scale. Ignored in fractional mode (the
+            // wp_fractional_scale protocol drives the scale and buffer_scale stays
+            // 1); set_integer_scale returns false there.
+            if self.surfaces[idx].set_integer_scale(new_factor.max(1)) {
+                self.surfaces[idx].apply_surface_scaling();
+                tracing::info!(
+                    "[host] surface {:?} integer buffer_scale -> {}",
+                    self.surfaces[idx].id,
+                    new_factor.max(1)
+                );
             }
         }
     }
@@ -833,7 +902,15 @@ impl PointerHandler for Host {
             let Some(idx) = self.index_of(&event.surface) else {
                 continue;
             };
-            let scale = self.surfaces[idx].scale() as f64;
+            // Coordinate story (identical for integer + fractional scale, only the
+            // factor differs): Torin measures the tree logically then scales node
+            // areas by scale_factor, so layout/hit-test areas live in PHYSICAL space.
+            // The compositor delivers pointer positions in LOGICAL surface-local
+            // coordinates, so we multiply by the surface's scale_factor to hand
+            // feed_event a physical-space cursor (what EventsMeasurerAdapter hit-tests
+            // against). Freya then divides the event data by the same scale_factor in
+            // EmmitableEvent::new, so app handlers still receive logical coordinates.
+            let scale = self.surfaces[idx].scale_factor();
             let (lx, ly) = event.position;
             let cursor = CursorPoint::new(lx * scale, ly * scale);
             match event.kind {
@@ -877,3 +954,71 @@ delegate_keyboard!(Host);
 delegate_pointer!(Host);
 delegate_layer!(Host);
 delegate_registry!(Host);
+
+// --- Fractional-scale + viewporter raw Dispatch (sctk 0.20 wraps neither) ---
+// The managers and wp_viewport carry no events; only wp_fractional_scale_v1 does
+// (preferred_scale), routed to its surface by the SurfaceId udata.
+
+impl Dispatch<WpViewporter, ()> for Host {
+    fn event(
+        _: &mut Self,
+        _: &WpViewporter,
+        _: wp_viewporter::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WpViewport, ()> for Host {
+    fn event(
+        _: &mut Self,
+        _: &WpViewport,
+        _: wp_viewport::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WpFractionalScaleManagerV1, ()> for Host {
+    fn event(
+        _: &mut Self,
+        _: &WpFractionalScaleManagerV1,
+        _: wp_fractional_scale_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WpFractionalScaleV1, SurfaceId> for Host {
+    fn event(
+        state: &mut Self,
+        _obj: &WpFractionalScaleV1,
+        event: wp_fractional_scale_v1::Event,
+        id: &SurfaceId,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // preferred_scale carries the numerator of a scale fraction over 120.
+        if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event {
+            let Some(idx) = state.surfaces.iter().position(|s| s.id == *id) else {
+                return;
+            };
+            let changed = state.surfaces[idx].set_fractional_scale(scale);
+            let s = &state.surfaces[idx];
+            let (pw, ph) = s.physical_size();
+            let (lw, lh) = s.logical_size();
+            tracing::info!(
+                "[host] surface {:?} fractional preferred_scale={}/120 ({:.4}); logical {lw}x{lh} -> physical {pw}x{ph} (changed={changed})",
+                s.id,
+                scale,
+                scale as f64 / 120.0,
+            );
+        }
+    }
+}

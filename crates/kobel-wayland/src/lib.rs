@@ -166,7 +166,8 @@ impl SurfaceConfig {
 pub struct FrameStats {
     /// Smoothed frames per second.
     pub fps: f32,
-    /// Integer buffer scale in effect.
+    /// Effective scale factor in effect (fractional under wp_fractional_scale_v1,
+    /// otherwise the integer wl buffer scale).
     pub scale: f32,
     /// Milliseconds between the last two presents.
     pub last_frame_ms: f32,

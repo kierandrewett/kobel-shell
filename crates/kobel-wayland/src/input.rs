@@ -3,7 +3,8 @@
 // Everything here is pure (no Wayland object handles, no I/O) so the conversions
 // are unit-testable. conn.rs owns the sctk handlers and calls into these helpers
 // with cursor coordinates already converted to surface-local *physical* pixels
-// (logical position * integer buffer scale), matching the space measure_layout and
+// (logical position * the surface scale_factor -- integer buffer scale, or the
+// wp_fractional_scale_v1 fraction), matching the space measure_layout and
 // RenderPipeline render into. See docs/FREYA-PLAN.md section 3.
 
 use freya_core::integration::{MouseEventName, PlatformEvent, WheelEventName};

@@ -34,6 +34,8 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use torin::prelude::Size2D;
 use wayland_client::protocol::wl_surface::WlSurface;
+use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
+use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 
 use crate::egl::LayerEglSurface;
 use crate::frame::FrameClock;
@@ -65,7 +67,9 @@ pub(crate) struct FreyaLayerSurface {
     waker: Waker,
 
     // --- sizing / scale ---
-    scale: i32,
+    /// Preferred scale numerator over 120: effective scale factor = scale_num/120.
+    /// The integer wl buffer_scale fallback keeps this a multiple of 120.
+    scale_num: u32,
     logical_size: (u32, u32),
     physical_size: (i32, i32),
 
@@ -84,6 +88,14 @@ pub(crate) struct FreyaLayerSurface {
 
     // --- Wayland / EGL (egl_surface MUST drop before `layer`) ---
     pub(crate) egl_surface: Option<LayerEglSurface>,
+    /// wp_viewport driving the logical<-physical mapping. `Some` => fractional
+    /// mode: wl buffer_scale stays 1 and the viewport destination carries the
+    /// logical size, so the physical buffer may be any round(logical*scale).
+    /// `None` => integer buffer_scale fallback (viewporter/fractional-scale absent).
+    /// Destroyed with `fractional` in Drop while `wl_surface` is still alive.
+    viewport: Option<WpViewport>,
+    /// wp_fractional_scale_v1 add-on; kept alive so preferred_scale keeps arriving.
+    fractional: Option<WpFractionalScaleV1>,
     pub(crate) layer: LayerSurface,
     wl_surface: WlSurface,
 }
@@ -123,15 +135,20 @@ impl FreyaLayerSurface {
         id: SurfaceId,
         layer: LayerSurface,
         initial_logical: (u32, u32),
-        scale: i32,
         waker: Waker,
         app: impl Fn() -> Element + 'static,
         setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
         content: Option<(u32, u32)>,
     ) -> (Self, C) {
-        let scale = scale.max(1);
         let wl_surface = layer.wl_surface().clone();
-        let physical = ((initial_logical.0 as i32 * scale).max(1), (initial_logical.1 as i32 * scale).max(1));
+        // Start at scale 1.0 (num=120); the compositor updates it via
+        // wp_fractional_scale_v1::preferred_scale (fractional mode) or the integer
+        // wl_output buffer scale (integer fallback).
+        let scale_num = SCALE_DENOM;
+        let physical = (
+            physical_dim(initial_logical.0, scale_num),
+            physical_dim(initial_logical.1, scale_num),
+        );
 
         let (events_sender, events_receiver) = futures_channel::mpsc::unbounded();
 
@@ -173,7 +190,7 @@ impl FreyaLayerSurface {
                 focused_accessibility_id: State::create(ACCESSIBILITY_ROOT_ID),
                 focused_accessibility_node: State::create(AccessNode::new(AccessRole::Window)),
                 root_size: State::create(Size2D::new(pw, ph)),
-                scale_factor: State::create(scale as f64),
+                scale_factor: State::create(scale_num as f64 / SCALE_DENOM as f64),
                 navigation_mode: State::create(NavigationMode::NotKeyboard),
                 // kobel is a dark-first shell.
                 preferred_theme: State::create(PreferredTheme::Dark),
@@ -222,7 +239,7 @@ impl FreyaLayerSurface {
             frame_stats,
             redraw,
             waker,
-            scale,
+            scale_num,
             logical_size: initial_logical,
             physical_size: physical,
             content: content
@@ -233,6 +250,8 @@ impl FreyaLayerSurface {
             clock: FrameClock::new(),
             frames_since_log: 0,
             egl_surface: None,
+            viewport: None,
+            fractional: None,
             layer,
             wl_surface,
         };
@@ -253,24 +272,94 @@ impl FreyaLayerSurface {
         self.redraw.get()
     }
 
-    /// Current integer buffer scale in effect for this surface.
-    pub(crate) fn scale(&self) -> i32 {
-        self.scale
+    /// Effective scale factor in effect (scale_num/120). Feeds measure_layout,
+    /// RenderPipeline, Platform.scale_factor and the events hit-test path.
+    pub(crate) fn scale_factor(&self) -> f64 {
+        self.scale_num as f64 / SCALE_DENOM as f64
     }
 
-    /// Update the integer buffer scale (from output/compositor). Recomputes the
-    /// physical buffer size and forces a relayout.
-    pub(crate) fn set_scale(&mut self, scale: i32) -> bool {
-        let scale = scale.max(1);
-        if scale == self.scale {
+    /// Current surface-local logical size (what the layer surface is sized to).
+    pub(crate) fn logical_size(&self) -> (u32, u32) {
+        self.logical_size
+    }
+
+    /// Update the integer wl buffer scale (wl_output/compositor). No-op in
+    /// fractional mode -- wp_fractional_scale_v1 owns the scale there and
+    /// buffer_scale must stay 1. Returns true if the effective scale changed.
+    pub(crate) fn set_integer_scale(&mut self, scale: i32) -> bool {
+        if self.viewport.is_some() {
             return false;
         }
-        self.scale = scale;
+        self.apply_scale_num((scale.max(1) as u32).saturating_mul(SCALE_DENOM))
+    }
+
+    /// Apply a preferred fractional scale (numerator over 120) from
+    /// wp_fractional_scale_v1::preferred_scale. Only meaningful in fractional mode.
+    /// Returns true if the effective scale changed.
+    pub(crate) fn set_fractional_scale(&mut self, num: u32) -> bool {
+        if self.viewport.is_none() {
+            return false;
+        }
+        self.apply_scale_num(num.max(1))
+    }
+
+    /// Common scale update: recompute the physical buffer, push the new scale
+    /// factor to Platform, and reset the layout + text caches so Torin/Skia
+    /// re-measure at the new scale (mirrors freya-winit's ScaleFactorChanged).
+    fn apply_scale_num(&mut self, num: u32) -> bool {
+        if num == self.scale_num {
+            return false;
+        }
+        self.scale_num = num;
         self.recompute_physical();
-        self.platform.scale_factor.set_if_modified(scale as f64);
+        self.platform.scale_factor.set_if_modified(self.scale_factor());
+        self.tree.layout.reset();
+        self.tree.text_cache.reset();
         self.layout_dirty = true;
         self.redraw.set(true);
         true
+    }
+
+    /// Attach the wp_viewport + wp_fractional_scale_v1 add-ons, switching this
+    /// surface to fractional scaling. Called once by the host right after
+    /// construction when the compositor advertised both globals.
+    pub(crate) fn enable_fractional(
+        &mut self,
+        viewport: WpViewport,
+        fractional: WpFractionalScaleV1,
+    ) {
+        self.viewport = Some(viewport);
+        self.fractional = Some(fractional);
+    }
+
+    /// Whether this surface is driven by fractional scaling (viewport present).
+    pub(crate) fn is_fractional(&self) -> bool {
+        self.viewport.is_some()
+    }
+
+    /// Commit the scale mapping for the current logical size (sticky double-buffered
+    /// state, applied on the next surface commit -- the render swap): fractional
+    /// mode sets the viewport destination to the logical size and leaves
+    /// buffer_scale at 1; the integer fallback sets wl buffer_scale. The viewport
+    /// destination needs positive axes, so a not-yet-configured zero axis (e.g. a
+    /// both-edges-anchored bar) is skipped until the first real configure.
+    pub(crate) fn apply_surface_scaling(&mut self) {
+        match &self.viewport {
+            Some(vp) => {
+                let (lw, lh) = self.logical_size;
+                if lw > 0 && lh > 0 {
+                    vp.set_destination(lw as i32, lh as i32);
+                    tracing::info!(
+                        "[host] surface {:?} viewport destination {lw}x{lh} (buffer_scale=1)",
+                        self.id
+                    );
+                }
+            }
+            None => {
+                let scale = (self.scale_num / SCALE_DENOM).max(1) as i32;
+                self.wl_surface.set_buffer_scale(scale);
+            }
+        }
     }
 
     /// Update the surface-local logical size (from a layer-shell configure).
@@ -305,14 +394,15 @@ impl FreyaLayerSurface {
 
     fn recompute_physical(&mut self) {
         let (lw, lh) = self.logical_size;
-        self.physical_size = ((lw as i32 * self.scale).max(1), (lh as i32 * self.scale).max(1));
+        self.physical_size = (physical_dim(lw, self.scale_num), physical_dim(lh, self.scale_num));
     }
 
     /// Hit-test an input event and queue it for dispatch on the next `process()`.
     /// `cursor` coordinates inside `event` must already be surface-local *physical*
     /// pixels (see input.rs / conn.rs).
     pub(crate) fn feed_event(&mut self, event: PlatformEvent) {
-        let processed = EventsMeasurerAdapter { tree: &mut self.tree, scale_factor: self.scale as f64 }
+        let scale_factor = self.scale_factor();
+        let processed = EventsMeasurerAdapter { tree: &mut self.tree, scale_factor }
             .run(&mut vec![event], &mut self.nodes_state, None);
         let _ = self.events_sender.unbounded_send(EventsChunk::Processed(processed));
     }
@@ -369,12 +459,13 @@ impl FreyaLayerSurface {
     pub(crate) fn measure_if_dirty(&mut self) -> Option<(u32, u32)> {
         if self.layout_dirty {
             let size = self.measure_size();
+            let scale_factor = self.scale_factor();
             self.tree.measure_layout(
                 size,
                 &mut self.font_collection,
                 &self.font_manager,
                 &self.events_sender,
-                self.scale as f64,
+                scale_factor,
                 &self.default_fonts,
             );
             self.platform.root_size.set_if_modified(size);
@@ -388,8 +479,8 @@ impl FreyaLayerSurface {
     fn measure_size(&self) -> Size2D {
         match &self.content {
             Some(c) => Size2D::new(
-                (c.width as i32 * self.scale).max(1) as f32,
-                (c.max_height as i32 * self.scale).max(1) as f32,
+                physical_dim(c.width, self.scale_num) as f32,
+                physical_dim(c.max_height, self.scale_num) as f32,
             ),
             None => {
                 let (pw, ph) = self.physical_size;
@@ -416,7 +507,7 @@ impl FreyaLayerSurface {
         };
         let content_phys =
             self.tree.layout.get(&NodeId::ROOT).map(|n| n.inner_sizes.height).unwrap_or(0.0);
-        let logical_h = content_logical_height(content_phys, self.scale, max_height);
+        let logical_h = content_logical_height(content_phys, self.scale_factor(), max_height);
         let c = self.content.as_mut().expect("content present");
         if logical_h != c.last_requested_h {
             c.last_requested_h = logical_h;
@@ -428,12 +519,13 @@ impl FreyaLayerSurface {
 
     /// Paint the current tree onto `canvas`. The tree must already be measured.
     pub(crate) fn render_into(&mut self, canvas: &Canvas) {
+        let scale_factor = self.scale_factor();
         RenderPipeline {
             font_collection: &mut self.font_collection,
             font_manager: &self.font_manager,
             tree: &self.tree,
             canvas,
-            scale_factor: self.scale as f64,
+            scale_factor,
             // Transparent so the compositor blends the surface (translucent panels).
             background: Color::TRANSPARENT,
         }
@@ -448,7 +540,7 @@ impl FreyaLayerSurface {
         let ms = self.clock.tick();
         let stats = FrameStats {
             fps: self.clock.fps().round(),
-            scale: self.scale as f32,
+            scale: self.scale_factor() as f32,
             last_frame_ms: (ms * 10.0).round() / 10.0,
         };
         // set_if_modified: only dirties consumers when the rounded value changes, so
@@ -466,47 +558,117 @@ impl FreyaLayerSurface {
     }
 }
 
+impl Drop for FreyaLayerSurface {
+    fn drop(&mut self) {
+        // wp_viewport / wp_fractional_scale_v1 have explicit `destroy` requests that
+        // dropping the Rust proxy does NOT send. Tear them down here, before the
+        // fields drop, so the wl_surface is still alive and no inert server-side
+        // objects linger for a compositor-closed surface.
+        if let Some(vp) = &self.viewport {
+            vp.destroy();
+        }
+        if let Some(fs) = &self.fractional {
+            fs.destroy();
+        }
+    }
+}
+
+/// Wayland fractional-scale denominator: wp_fractional_scale_v1::preferred_scale is
+/// a numerator over 120 (so scale 1.5 == 180/120).
+const SCALE_DENOM: u32 = 120;
+
+/// Physical pixels for a logical dimension at a scale numerator over 120. Uses the
+/// protocol's round-half-away-from-zero (round(logical * num / 120)), computed in
+/// integer math so it matches the compositor exactly; floors at 1 so a zero axis
+/// still yields a valid 1px buffer. Integer buffer_scale is the num = 120*k case.
+fn physical_dim(logical: u32, scale_num: u32) -> i32 {
+    let num = scale_num.max(1) as u128;
+    let denom = SCALE_DENOM as u128;
+    let phys = (logical as u128 * num + denom / 2) / denom;
+    phys.clamp(1, i32::MAX as u128) as i32
+}
+
 /// Convert a measured physical content height into the logical surface height to
 /// request for a content-sized surface. Rounds UP (so a fractional last row is
 /// never clipped) and clamps to `[1, max_height]` (never a zero-height surface,
 /// never taller than the configured viewport bound).
-fn content_logical_height(content_phys: f32, scale: i32, max_height: u32) -> u32 {
-    let scale = scale.max(1) as f32;
-    ((content_phys / scale).ceil() as i64).clamp(1, max_height as i64) as u32
+fn content_logical_height(content_phys: f32, scale: f64, max_height: u32) -> u32 {
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    ((content_phys as f64 / scale).ceil() as i64).clamp(1, max_height as i64) as u32
 }
 
 #[cfg(test)]
 mod tests {
-    use super::content_logical_height;
+    use super::{SCALE_DENOM, content_logical_height, physical_dim};
 
     #[test]
     fn divides_physical_by_scale_and_rounds_up() {
         // 420px content at scale 1 -> 420 logical.
-        assert_eq!(content_logical_height(420.0, 1, 700), 420);
+        assert_eq!(content_logical_height(420.0, 1.0, 700), 420);
         // A fractional extent rounds up so the last row is never clipped.
-        assert_eq!(content_logical_height(420.2, 1, 700), 421);
+        assert_eq!(content_logical_height(420.2, 1.0, 700), 421);
         // HiDPI: physical is scale x logical, so divide back down.
-        assert_eq!(content_logical_height(840.0, 2, 700), 420);
-        assert_eq!(content_logical_height(841.0, 2, 700), 421);
+        assert_eq!(content_logical_height(840.0, 2.0, 700), 420);
+        assert_eq!(content_logical_height(841.0, 2.0, 700), 421);
+        // Fractional scale (1.5): 630 physical -> 420 logical.
+        assert_eq!(content_logical_height(630.0, 1.5, 700), 420);
+        assert_eq!(content_logical_height(630.1, 1.5, 700), 421);
     }
 
     #[test]
     fn clamps_to_max_height_ceiling() {
         // Content taller than the bound is capped (the surface scrolls instead).
-        assert_eq!(content_logical_height(900.0, 1, 640), 640);
-        assert_eq!(content_logical_height(1400.0, 2, 640), 640);
+        assert_eq!(content_logical_height(900.0, 1.0, 640), 640);
+        assert_eq!(content_logical_height(1400.0, 2.0, 640), 640);
     }
 
     #[test]
     fn never_requests_a_zero_height_surface() {
         // Empty/unmeasured content floors at 1px, not 0.
-        assert_eq!(content_logical_height(0.0, 1, 520), 1);
-        assert_eq!(content_logical_height(0.4, 1, 520), 1);
+        assert_eq!(content_logical_height(0.0, 1.0, 520), 1);
+        assert_eq!(content_logical_height(0.4, 1.0, 520), 1);
     }
 
     #[test]
     fn guards_a_nonpositive_scale() {
         // A bogus scale is treated as 1 rather than dividing by zero.
-        assert_eq!(content_logical_height(300.0, 0, 700), 300);
+        assert_eq!(content_logical_height(300.0, 0.0, 700), 300);
+    }
+
+    #[test]
+    fn physical_dim_integer_scale_is_exact_multiple() {
+        // Integer buffer_scale is num = 120*k: physical = logical*k, no rounding.
+        assert_eq!(physical_dim(100, SCALE_DENOM), 100);
+        assert_eq!(physical_dim(100, 2 * SCALE_DENOM), 200);
+        assert_eq!(physical_dim(1280, 3 * SCALE_DENOM), 3840);
+    }
+
+    #[test]
+    fn physical_dim_fractional_rounds_half_up() {
+        // Protocol example: 100x50 logical at 1.5 (num=180) -> 150x75 buffer.
+        assert_eq!(physical_dim(100, 180), 150);
+        assert_eq!(physical_dim(50, 180), 75);
+        // round(logical*num/120), half away from zero.
+        // 101*180/120 = 151.5 -> 152.
+        assert_eq!(physical_dim(101, 180), 152);
+        // 1*125/120 = 1.041.. -> 1; 12*125/120 = 12.5 -> 13.
+        assert_eq!(physical_dim(12, 125), 13);
+        // 1280 at 1.25 (num=150) -> 1600 exactly.
+        assert_eq!(physical_dim(1280, 150), 1600);
+    }
+
+    #[test]
+    fn physical_dim_floors_at_one() {
+        // A zero axis (both-edges-anchored bar before configure) still yields 1px.
+        assert_eq!(physical_dim(0, 180), 1);
+        // A bogus zero numerator is treated as 1 rather than collapsing to 0.
+        assert_eq!(physical_dim(100, 0), 1);
+    }
+
+    #[test]
+    fn physical_dim_saturates_instead_of_overflowing() {
+        // Absurd inputs must clamp to i32::MAX (u128 intermediate), never wrap
+        // negative or panic.
+        assert_eq!(physical_dim(u32::MAX, u32::MAX), i32::MAX);
     }
 }
