@@ -19,8 +19,9 @@ use std::sync::mpsc;
 
 use freya_core::prelude::{IntoElement, State, WritableUtils};
 use kobel_services::{
-    AppsSnapshot, AudioSnapshot, BatterySnapshot, GnoblinSnapshot, MediaSnapshot, ServiceEvent,
-    Services,
+    AppsSnapshot, AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot,
+    GnoblinSnapshot, MediaSnapshot, NetworkSnapshot, PowerSnapshot, ServiceEvent, Services,
+    SettingsSnapshot,
 };
 use kobel_wayland::{
     Anchor, KeyboardInteractivity, Layer, Margins, Shell, SurfaceConfig, SurfaceContexts,
@@ -37,12 +38,19 @@ struct SurfaceStates {
     battery: State<BatterySnapshot>,
     apps: State<AppsSnapshot>,
     media: State<MediaSnapshot>,
+    network: State<NetworkSnapshot>,
+    bluetooth: State<BluetoothSnapshot>,
+    brightness: State<BrightnessSnapshot>,
+    power: State<PowerSnapshot>,
+    settings: State<SettingsSnapshot>,
 }
 
-/// Provide the seven frozen root contexts on a surface and return the mutable snapshot
-/// handles. Called once per surface at creation. The exact context set is the frozen
-/// contract in manager.rs, extended additively with the apps + media snapshots the dock
-/// consumes: State<Gnoblin/Audio/Battery/Apps/Media Snapshot>, State<Tokens>, ShellBus.
+/// Provide the frozen root contexts on a surface and return the mutable snapshot
+/// handles. Called once per surface at creation. The frozen contract (manager.rs)
+/// is extended additively with the dock's apps + media snapshots and the phase-5
+/// QS snapshots (network/bluetooth/brightness/power/settings), all seeded Default:
+/// State<Gnoblin/Audio/Battery/Apps/Media/Network/Bluetooth/Brightness/Power/
+/// Settings Snapshot>, State<Tokens>, ShellBus.
 fn provide_contexts(
     cx: &mut SurfaceContexts<'_>,
     bus: &ShellBus,
@@ -56,9 +64,25 @@ fn provide_contexts(
     let battery = cx.provide(|| State::create(BatterySnapshot::default()));
     let apps = cx.provide(|| State::create(AppsSnapshot::default()));
     let media = cx.provide(|| State::create(MediaSnapshot::default()));
+    let network = cx.provide(|| State::create(NetworkSnapshot::default()));
+    let bluetooth = cx.provide(|| State::create(BluetoothSnapshot::default()));
+    let brightness = cx.provide(|| State::create(BrightnessSnapshot::default()));
+    let power = cx.provide(|| State::create(PowerSnapshot::default()));
+    let settings = cx.provide(|| State::create(SettingsSnapshot::default()));
     cx.provide(|| State::create(tokens));
     cx.provide(|| bus.clone());
-    SurfaceStates { gnoblin, audio, battery, apps, media }
+    SurfaceStates {
+        gnoblin,
+        audio,
+        battery,
+        apps,
+        media,
+        network,
+        bluetooth,
+        brightness,
+        power,
+        settings,
+    }
 }
 
 /// Provide the frozen root contexts plus the additive per-surface OpenProgress (the
@@ -73,10 +97,15 @@ fn provide_panel_contexts(
 ) -> (SurfaceStates, State<f32>, Option<State<Option<ui::panels::KeyEvent>>>) {
     let states = provide_contexts(cx, bus, tokens);
     let progress = cx.provide(|| ui::panels::OpenProgress(State::create(0.0)));
-    // KeyFeed only on keyboard-Exclusive surfaces (launcher, session): main.rs
-    // routes the focused surface's key stream into it (the KeyFeed contract).
-    let keyfeed = matches!(kb_open(key), KeyboardInteractivity::Exclusive)
-        .then(|| cx.provide(|| ui::panels::KeyFeed(State::create(None))).0);
+    // KeyFeed on the keyboard-Exclusive surfaces (launcher, session) AND on
+    // QuickSettings: QS is OnDemand, but its Escape must route through the feed
+    // (in-drill Esc steps back to root, root Esc closes), so main.rs delivers keys
+    // to it like the exclusive surfaces. Calendar/Drawer keep plain Esc -> CloseAll.
+    let keyfeed = matches!(
+        key,
+        SurfaceKey::Launcher | SurfaceKey::Session | SurfaceKey::QuickSettings
+    )
+    .then(|| cx.provide(|| ui::panels::KeyFeed(State::create(None))).0);
     (states, progress.0, keyfeed)
 }
 
@@ -124,7 +153,10 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
         // TOP (centered).
         SurfaceKey::Calendar => base(
             "kobel-calendar",
-            SurfaceSize::Exact { width: t.calendar_w as u32, height: 360 },
+            // Height fits the six-week grid + events card with headroom for a
+            // two-event day (measured sheet content ~372px for one event, ~422px
+            // for two); the phase-1 host has no ContentSized, so this is fixed.
+            SurfaceSize::Exact { width: t.calendar_w as u32, height: 432 },
         )
         .anchor(Anchor::TOP)
         .margins(Margins { top: panel_top, right: 0, bottom: 0, left: 0 }),
@@ -275,6 +307,8 @@ fn main() -> anyhow::Result<()> {
             move || match key {
                 SurfaceKey::Launcher => ui::launcher::launcher().into_element(),
                 SurfaceKey::Session => ui::session::session().into_element(),
+                SurfaceKey::QuickSettings => ui::quick_settings::quick_settings().into_element(),
+                SurfaceKey::Calendar => ui::calendar::calendar().into_element(),
                 _ => ui::panels::panel(key).into_element(),
             },
         )?;
@@ -357,6 +391,26 @@ fn main() -> anyhow::Result<()> {
                     }
                     ServiceEvent::Media(snapshot) => {
                         let mut handle = surface.media;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Network(snapshot) => {
+                        let mut handle = surface.network;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Bluetooth(snapshot) => {
+                        let mut handle = surface.bluetooth;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Brightness(snapshot) => {
+                        let mut handle = surface.brightness;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Power(snapshot) => {
+                        let mut handle = surface.power;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Settings(snapshot) => {
+                        let mut handle = surface.settings;
                         handle.set_if_modified(snapshot.clone());
                     }
                 }

@@ -20,3 +20,12 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+futures-channel = { workspace = true }
+
+# render-panel: headless, compositor-free layout preview for a single surface
+# body (dev tool; see examples/render_panel.rs).
+[[example]]
+name = "render-panel"
+path = "examples/render_panel.rs"

@@ -10,11 +10,14 @@
 //!   - [`osd::osd`] -- the display-only volume pill.
 
 pub mod bar;
+pub mod calendar;
+pub mod chip;
 pub mod dock;
 pub mod fuzzy;
 pub mod launcher;
 pub mod osd;
 pub mod panels;
+pub mod quick_settings;
 pub mod session;
 
 use std::path::PathBuf;
@@ -67,6 +70,19 @@ pub const ICON_LOCK: &[u8] = shell_icon!("kobel-lock-symbolic.svg");
 pub const ICON_MOON: &[u8] = shell_icon!("kobel-moon-symbolic.svg");
 pub const ICON_LOGOUT: &[u8] = shell_icon!("kobel-logout-symbolic.svg");
 pub const ICON_RESTART: &[u8] = shell_icon!("kobel-restart-symbolic.svg");
+/// Quick-settings glyphs (chip grid, sliders, drill headers, gnoblin banner).
+/// All ship under ags/icons and tint via `currentColor`.
+pub const ICON_WIFI: &[u8] = shell_icon!("kobel-wifi-symbolic.svg");
+pub const ICON_BLUETOOTH: &[u8] = shell_icon!("kobel-bluetooth-symbolic.svg");
+pub const ICON_BOLT: &[u8] = shell_icon!("kobel-bolt-symbolic.svg");
+pub const ICON_BELL_SLASH: &[u8] = shell_icon!("kobel-bell-slash-symbolic.svg");
+pub const ICON_SUN: &[u8] = shell_icon!("kobel-sun-symbolic.svg");
+pub const ICON_BRIGHTNESS: &[u8] = shell_icon!("kobel-brightness-symbolic.svg");
+pub const ICON_CHEVRON_LEFT: &[u8] = shell_icon!("kobel-chevron-left-symbolic.svg");
+pub const ICON_CHEVRON_RIGHT: &[u8] = shell_icon!("kobel-chevron-right-symbolic.svg");
+pub const ICON_WARNING: &[u8] = shell_icon!("kobel-warning-symbolic.svg");
+pub const ICON_LEAF: &[u8] = shell_icon!("kobel-leaf-symbolic.svg");
+pub const ICON_CHECK: &[u8] = shell_icon!("kobel-check-symbolic.svg");
 
 /// Render a `currentColor` SVG icon, tinted to `tint` and laid out `size` square.
 /// The one place SVG tinting is expressed for the whole shell.

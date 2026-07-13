@@ -1156,6 +1156,7 @@ dependencies = [
  "freya-components",
  "freya-core",
  "freya-engine",
+ "futures-channel",
  "kobel-services",
  "kobel-wayland",
  "serde",
