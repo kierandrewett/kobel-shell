@@ -20,8 +20,8 @@ use std::sync::mpsc;
 use freya_core::prelude::{IntoElement, State, WritableUtils};
 use kobel_services::{
     AppsSnapshot, AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot,
-    GnoblinSnapshot, MediaSnapshot, NetworkSnapshot, PowerSnapshot, ServiceEvent, Services,
-    SettingsSnapshot,
+    GnoblinSnapshot, MediaSnapshot, NetworkSnapshot, NotifdSnapshot, PowerSnapshot, ServiceEvent,
+    Services, SettingsSnapshot, TraySnapshot,
 };
 use kobel_wayland::{
     Anchor, KeyboardInteractivity, Layer, Margins, Shell, SurfaceConfig, SurfaceContexts,
@@ -43,6 +43,8 @@ struct SurfaceStates {
     brightness: State<BrightnessSnapshot>,
     power: State<PowerSnapshot>,
     settings: State<SettingsSnapshot>,
+    notifd: State<NotifdSnapshot>,
+    tray: State<TraySnapshot>,
 }
 
 /// Provide the frozen root contexts on a surface and return the mutable snapshot
@@ -69,6 +71,8 @@ fn provide_contexts(
     let brightness = cx.provide(|| State::create(BrightnessSnapshot::default()));
     let power = cx.provide(|| State::create(PowerSnapshot::default()));
     let settings = cx.provide(|| State::create(SettingsSnapshot::default()));
+    let notifd = cx.provide(|| State::create(NotifdSnapshot::default()));
+    let tray = cx.provide(|| State::create(TraySnapshot::default()));
     cx.provide(|| State::create(tokens));
     cx.provide(|| bus.clone());
     SurfaceStates {
@@ -82,6 +86,8 @@ fn provide_contexts(
         brightness,
         power,
         settings,
+        notifd,
+        tray,
     }
 }
 
@@ -107,6 +113,20 @@ fn provide_panel_contexts(
     )
     .then(|| cx.provide(|| ui::panels::KeyFeed(State::create(None))).0);
     (states, progress.0, keyfeed)
+}
+
+/// Provide the frozen root contexts plus the additive [`ui::notifications::DrawerOpen`]
+/// flag for a toasts surface. Returns the snapshot handles for the fan-out and the
+/// inner `State<bool>` main.rs writes from the drawer's reveal callback so toasts
+/// suppress while the drawer is open.
+fn provide_toast_contexts(
+    cx: &mut SurfaceContexts<'_>,
+    bus: &ShellBus,
+    tokens: theme::Tokens,
+) -> (SurfaceStates, State<bool>) {
+    let states = provide_contexts(cx, bus, tokens);
+    let drawer_open = cx.provide(|| ui::notifications::DrawerOpen(State::create(false)));
+    (states, drawer_open.0)
 }
 
 /// Keyboard mode a surface takes while open: Exclusive grabs every key (launcher and
@@ -160,14 +180,15 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
         )
         .anchor(Anchor::TOP)
         .margins(Margins { top: panel_top, right: 0, bottom: 0, left: 0 }),
-        // TOP+RIGHT+BOTTOM, margin-right 12: full-height right rail (height filled by
-        // the top+bottom anchor, so the height axis is 0).
+        // TOP+RIGHT+BOTTOM full-height right rail (ags marginRight=12 only): the top
+        // and bottom anchors fill the height axis (size 0), and the compositor already
+        // seats it below the bar's exclusive zone, so only the right inset is set.
         SurfaceKey::Drawer => base(
             "kobel-drawer",
             SurfaceSize::Exact { width: t.panel_w as u32, height: 0 },
         )
         .anchor(Anchor::TOP | Anchor::RIGHT | Anchor::BOTTOM)
-        .margins(Margins { top: panel_top, right: 12, bottom: t.gap as i32, left: 0 }),
+        .margins(Margins { top: 0, right: 12, bottom: 0, left: 0 }),
         // All edges: full-screen (both axes filled, so size is 0x0).
         SurfaceKey::Session => base("kobel-session", SurfaceSize::Exact { width: 0, height: 0 })
             .anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT),
@@ -248,6 +269,25 @@ fn main() -> anyhow::Result<()> {
     .margins(Margins { top: 0, right: 0, bottom: tokens.gap as i32, left: 0 })
     .keyboard_interactivity(KeyboardInteractivity::None);
 
+    // Toasts: per-output, top-right, below the bar (ags marginTop 58 / marginRight
+    // 12). Top layer, no keyboard, NO exclusive zone. Input region EMPTY: a fixed
+    // surface with a full region would eat clicks over its whole rect even with no
+    // visible toast, so toasts are display-only this phase (dismiss/actions live in
+    // the drawer). TODO: flip the region dynamically with toast visibility so toast
+    // close buttons work (needs a UI -> manager visibility bridge).
+    let toasts_cfg = SurfaceConfig::new(
+        "kobel-toasts",
+        SurfaceSize::Exact {
+            width: ui::notifications::TOASTS_SURFACE_W,
+            height: ui::notifications::TOASTS_SURFACE_H,
+        },
+    )
+    .layer(Layer::Top)
+    .anchor(Anchor::TOP | Anchor::RIGHT)
+    .margins(Margins { top: 58, right: 12, bottom: 0, left: 0 })
+    .keyboard_interactivity(KeyboardInteractivity::None)
+    .input_region_empty(true);
+
     let mut states: Vec<SurfaceStates> = Vec::new();
 
     let bars = shell.create_surface_on_outputs(
@@ -270,6 +310,19 @@ fn main() -> anyhow::Result<()> {
         || ui::dock::dock().into_element(),
     )?;
     states.extend(docks.into_iter().map(|(_, s)| s));
+
+    // Toasts per-output. Collect each surface's DrawerOpen flag so the drawer's
+    // reveal callback can suppress toasts while the drawer is open.
+    let mut toast_drawer_flags: Vec<State<bool>> = Vec::new();
+    let toasts = shell.create_surface_on_outputs(
+        toasts_cfg,
+        |cx| provide_toast_contexts(cx, &bus, tokens),
+        || ui::notifications::toasts().into_element(),
+    )?;
+    for (_, (surface_states, drawer_open)) in toasts {
+        states.push(surface_states);
+        toast_drawer_flags.push(drawer_open);
+    }
 
     // On-demand singletons + dismiss layer (docs/FREYA-PLAN.md 2.4, 6). Each is
     // created once and stays mapped forever (the warm-open trick): closed = opacity 0
@@ -309,7 +362,7 @@ fn main() -> anyhow::Result<()> {
                 SurfaceKey::Session => ui::session::session().into_element(),
                 SurfaceKey::QuickSettings => ui::quick_settings::quick_settings().into_element(),
                 SurfaceKey::Calendar => ui::calendar::calendar().into_element(),
-                _ => ui::panels::panel(key).into_element(),
+                SurfaceKey::Drawer => ui::notifications::drawer().into_element(),
             },
         )?;
         states.push(surface_states);
@@ -337,15 +390,26 @@ fn main() -> anyhow::Result<()> {
     let mut manager = Manager::new(bus_rx, services);
     manager.set_dismiss(dismiss_id);
     for (key, id, kb, progress) in reveal_regs {
-        manager.register_reveal(
-            key,
-            id,
-            kb,
+        // The drawer's reveal callback also mirrors its open state into every toasts
+        // surface's DrawerOpen flag, so toasts suppress while the drawer is open.
+        let write: Box<dyn FnMut(f32)> = if key == SurfaceKey::Drawer {
+            let flags = std::mem::take(&mut toast_drawer_flags);
+            let mut progress = progress;
             Box::new(move |value: f32| {
-                let mut handle = progress;
-                handle.set_if_modified(value);
-            }),
-        );
+                progress.set_if_modified(value);
+                let open = value > 0.001;
+                for flag in &flags {
+                    let mut flag = *flag;
+                    flag.set_if_modified(open);
+                }
+            })
+        } else {
+            let mut progress = progress;
+            Box::new(move |value: f32| {
+                progress.set_if_modified(value);
+            })
+        };
+        manager.register_reveal(key, id, kb, write);
     }
 
     // Route keyboard input by focus. While a keyboard-Exclusive surface (launcher /
@@ -411,6 +475,14 @@ fn main() -> anyhow::Result<()> {
                     }
                     ServiceEvent::Settings(snapshot) => {
                         let mut handle = surface.settings;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Notifd(snapshot) => {
+                        let mut handle = surface.notifd;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Tray(snapshot) => {
+                        let mut handle = surface.tray;
                         handle.set_if_modified(snapshot.clone());
                     }
                 }

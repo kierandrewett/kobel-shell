@@ -16,6 +16,7 @@ pub mod dock;
 pub mod fuzzy;
 pub mod launcher;
 pub mod osd;
+pub mod notifications;
 pub mod panels;
 pub mod quick_settings;
 pub mod session;
@@ -83,6 +84,15 @@ pub const ICON_CHEVRON_RIGHT: &[u8] = shell_icon!("kobel-chevron-right-symbolic.
 pub const ICON_WARNING: &[u8] = shell_icon!("kobel-warning-symbolic.svg");
 pub const ICON_LEAF: &[u8] = shell_icon!("kobel-leaf-symbolic.svg");
 pub const ICON_CHECK: &[u8] = shell_icon!("kobel-check-symbolic.svg");
+/// Notification-surface glyphs (toast/drawer cards, header, media card). All ship
+/// under ags/icons and tint via `currentColor`.
+pub const ICON_CLOSE: &[u8] = shell_icon!("kobel-close-symbolic.svg");
+pub const ICON_TRASH: &[u8] = shell_icon!("kobel-trash-symbolic.svg");
+pub const ICON_DISC: &[u8] = shell_icon!("kobel-disc-symbolic.svg");
+pub const ICON_PLAY: &[u8] = shell_icon!("kobel-play-symbolic.svg");
+pub const ICON_PAUSE: &[u8] = shell_icon!("kobel-pause-symbolic.svg");
+pub const ICON_SKIP_BACK: &[u8] = shell_icon!("kobel-skip-back-symbolic.svg");
+pub const ICON_SKIP_FWD: &[u8] = shell_icon!("kobel-skip-fwd-symbolic.svg");
 
 /// Render a `currentColor` SVG icon, tinted to `tint` and laid out `size` square.
 /// The one place SVG tinting is expressed for the whole shell.
