@@ -38,7 +38,7 @@ macro_rules! calendar_icon {
     ($file:literal) => {
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../ags/icons/hicolor/scalable/actions/",
+            "/assets/hicolor/scalable/actions/",
             $file
         ))
     };

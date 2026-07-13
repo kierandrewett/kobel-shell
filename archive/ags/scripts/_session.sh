@@ -24,7 +24,7 @@ fi
 # KOBEL_TEST_NOTIFD=1 enables the real notifd (bus was freed above) so the drawer/toasts
 # can be rendered; otherwise notifd is skipped (default, avoids blocking on a busy bus).
 if [ -n "${KOBEL_TEST_NOTIFD:-}" ]; then SKIP=""; else SKIP="1"; fi
-KOBEL_ICONS="/home/kieran/dev/kobel-shell/ags/icons" KOBEL_DEMO="${KOBEL_DEMO:-}" KOBEL_SKIP_NOTIFD="$SKIP" KOBEL_DRILL="${KOBEL_DRILL:-}" KOBEL_QUERY="${KOBEL_QUERY:-}" KOBEL_DUMP="${KOBEL_DUMP:-}" KOBEL_DUMP_OUT="${KOBEL_DUMP_OUT:-}" KOBEL_PROFILE_ANIM="${KOBEL_PROFILE_ANIM:-}" stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
+KOBEL_ICONS="$AGSDIR/icons" KOBEL_DEMO="${KOBEL_DEMO:-}" KOBEL_SKIP_NOTIFD="$SKIP" KOBEL_DRILL="${KOBEL_DRILL:-}" KOBEL_QUERY="${KOBEL_QUERY:-}" KOBEL_DUMP="${KOBEL_DUMP:-}" KOBEL_DUMP_OUT="${KOBEL_DUMP_OUT:-}" KOBEL_PROFILE_ANIM="${KOBEL_PROFILE_ANIM:-}" stdbuf -oL -eL env LD_PRELOAD="$LAYER_PRELOAD" gjs -m "$BUNDLE" >"$DK/ags.log" 2>&1 &
 AP=$!
 check_ags() {
   kill -0 "$AP" 2>/dev/null && return 0

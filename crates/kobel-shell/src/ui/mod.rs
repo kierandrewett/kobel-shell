@@ -37,7 +37,7 @@ use crate::theme::{self, Rgb};
 // Icons
 // -------------------------------------------------------------------------
 //
-// The shell ships its own symbolic icon set under ags/icons; every glyph uses
+// The shell ships its own symbolic icon set under crates/kobel-shell/assets; every glyph uses
 // `fill="currentColor"`, so `SvgViewer::color` (which overrides the SVG's
 // currentColor at raster time) recolors each icon per state. Bytes are embedded
 // at build time -- no runtime file IO, no theme lookup.
@@ -47,7 +47,7 @@ macro_rules! shell_icon {
     ($file:literal) => {
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../ags/icons/hicolor/scalable/actions/",
+            "/assets/hicolor/scalable/actions/",
             $file
         ))
     };
@@ -65,7 +65,7 @@ pub const ICON_APP: &[u8] = shell_icon!("kobel-app-symbolic.svg");
 /// Media tile glyph when no player art is available (dock `kobel-music-symbolic`).
 pub const ICON_MUSIC: &[u8] = shell_icon!("kobel-music-symbolic.svg");
 /// Symbolic icons used by launcher result rows (`:` commands, calculator, web,
-/// session actions). All ship under ags/icons and tint via `currentColor`.
+/// session actions). All ship under crates/kobel-shell/assets and tint via `currentColor`.
 pub const ICON_TERMINAL: &[u8] = shell_icon!("kobel-terminal-symbolic.svg");
 pub const ICON_CALCULATOR: &[u8] = shell_icon!("kobel-calculator-symbolic.svg");
 pub const ICON_GLOBE: &[u8] = shell_icon!("kobel-globe-symbolic.svg");
@@ -74,7 +74,7 @@ pub const ICON_MOON: &[u8] = shell_icon!("kobel-moon-symbolic.svg");
 pub const ICON_LOGOUT: &[u8] = shell_icon!("kobel-logout-symbolic.svg");
 pub const ICON_RESTART: &[u8] = shell_icon!("kobel-restart-symbolic.svg");
 /// Quick-settings glyphs (chip grid, sliders, drill headers, gnoblin banner).
-/// All ship under ags/icons and tint via `currentColor`.
+/// All ship under crates/kobel-shell/assets and tint via `currentColor`.
 pub const ICON_WIFI: &[u8] = shell_icon!("kobel-wifi-symbolic.svg");
 pub const ICON_WIFI_OFF: &[u8] = shell_icon!("kobel-wifi-off-symbolic.svg");
 pub const ICON_BLUETOOTH: &[u8] = shell_icon!("kobel-bluetooth-symbolic.svg");
@@ -88,7 +88,7 @@ pub const ICON_WARNING: &[u8] = shell_icon!("kobel-warning-symbolic.svg");
 pub const ICON_LEAF: &[u8] = shell_icon!("kobel-leaf-symbolic.svg");
 pub const ICON_CHECK: &[u8] = shell_icon!("kobel-check-symbolic.svg");
 /// Notification-surface glyphs (toast/drawer cards, header, media card). All ship
-/// under ags/icons and tint via `currentColor`.
+/// under crates/kobel-shell/assets and tint via `currentColor`.
 pub const ICON_CLOSE: &[u8] = shell_icon!("kobel-close-symbolic.svg");
 pub const ICON_TRASH: &[u8] = shell_icon!("kobel-trash-symbolic.svg");
 pub const ICON_DISC: &[u8] = shell_icon!("kobel-disc-symbolic.svg");
