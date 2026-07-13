@@ -181,6 +181,48 @@ else
   echo "FAIL: calendar Esc did not close"; fail=1
 fi
 
+# --- phase 6: notifd owns the bus name, notify-send round-trip, drawer ---
+# kobel-notifd does its own handshake (SetFeature notifications=false -> RequestName
+# retries ~5s); wait for the serving log rather than racing it.
+served=no
+for _ in $(seq 1 16); do
+  grep -aq "\[notifd\] serving org.freedesktop.Notifications" "$DK/kobel.log" && { served=yes; break; }
+  sleep 0.5
+done
+if [ "$served" = yes ]; then
+  echo "PASS: notifd acquired org.freedesktop.Notifications"
+else
+  echo "FAIL: notifd never acquired the bus name"
+  grep -a "\[notifd\]" "$DK/kobel.log" | head -5
+  fail=1
+fi
+notify-send "Kobel Gate" "toast round-trip body" 2>/dev/null \
+  || { echo "FAIL: notify-send errored"; fail=1; }
+sleep 1
+gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/toast.png" >/dev/null 2>&1
+cp "$DK/toast.png" /tmp/kobel-toast.png 2>/dev/null || true
+[ -s "$DK/toast.png" ] && echo "PASS: toast screenshot captured" \
+  || { echo "FAIL: toast screenshot missing"; fail=1; }
+before_d=$(surface_closes drawer)
+"$CTL_BIN" toggle drawer >/dev/null 2>&1
+sleep 1
+gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/drawer.png" >/dev/null 2>&1
+cp "$DK/drawer.png" /tmp/kobel-drawer.png 2>/dev/null || true
+[ -s "$DK/drawer.png" ] && echo "PASS: drawer screenshot captured" \
+  || { echo "FAIL: drawer screenshot missing"; fail=1; }
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:Escape" >"$DK/inject-drawer-esc.log" 2>&1 \
+  || { echo "FAIL: injector (drawer esc) exited nonzero"; fail=1; }
+sleep 1
+if [ "$(surface_closes drawer)" -gt "$before_d" ]; then
+  echo "PASS: drawer Esc closed"
+else
+  echo "FAIL: drawer Esc did not close"; fail=1
+fi
+
 # --- screenshot (bar visible at top) ---
 res=$(gdbus call --session --dest org.gnome.Shell.Screenshot \
   --object-path /org/gnome/Shell/Screenshot \
@@ -216,6 +258,21 @@ else
   echo "FAIL: hide close_reply='$close_reply', closed-launcher log missing"; fail=1
 fi
 
+# --- toasts must be click-through: click INSIDE the fixed top-right toasts rect
+# (empty input region) with the launcher open; it must fall through to the dismiss
+# layer and close the launcher rather than being eaten by the invisible overlay. ---
+before=$(closes)
+"$CTL_BIN" toggle launcher >/dev/null 2>&1
+sleep 1
+python3 "$SCRIPTS_DIR/devkit_input.py" "click:1200:100" >"$DK/inject-toastrect.log" 2>&1 \
+  || { echo "FAIL: injector (toast-rect click) exited nonzero"; fail=1; }
+sleep 1
+if [ "$(closes)" -gt "$before" ]; then
+  echo "PASS: toasts overlay is click-through (dismiss fired under toast rect)"
+else
+  echo "FAIL: click inside the toasts rect was eaten (launcher stayed open)"; fail=1
+fi
+
 # Clean shutdown via IPC: wait on the child (kill -0 can see a zombie) and require
 # exit status 0, watchdogged so a lost quit surfaces as FAIL instead of a hang.
 "$CTL_BIN" quit >/dev/null 2>&1
@@ -227,6 +284,11 @@ if [ "$shell_rc" = 0 ]; then
   echo "PASS: kobelctl quit -> clean shutdown (exit 0)"
 else
   echo "FAIL: kobel-shell exit status $shell_rc after kobelctl quit"; fail=1
+fi
+if grep -aq "\[notifd\] released org.freedesktop.Notifications" "$DK/kobel.log"; then
+  echo "PASS: notifd released the bus name on shutdown"
+else
+  echo "FAIL: notifd release log missing after quit"; fail=1
 fi
 kill "$SP" 2>/dev/null; wait 2>/dev/null
 if [ "$fail" = 0 ]; then echo "== SHELL PASS =="; exit 0; else echo "== SHELL FAIL =="; exit 1; fi
