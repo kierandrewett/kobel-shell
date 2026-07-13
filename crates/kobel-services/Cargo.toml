@@ -9,8 +9,9 @@ license.workspace = true
 # zbus over tokio: the `tokio` feature switches zbus's executor/transport to
 # tokio (compile-time cfg), so the connections live on our tokio runtime.
 zbus = { workspace = true, features = ["tokio"] }
-# `net` gives tokio the IO driver zbus needs (UnixStream) + enable_all().
-tokio = { workspace = true, features = ["net", "process"] }
+# `net` gives tokio the IO driver zbus needs (UnixStream) + enable_all();
+# `io-util` powers the exec/gsettings child stdio and the settings line reader.
+tokio = { workspace = true, features = ["io-util", "net", "process"] }
 libpulse-binding = { workspace = true }
 futures-util = "0.3"
 tracing = { workspace = true }

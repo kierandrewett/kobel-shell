@@ -33,6 +33,9 @@ use audio::{AudioCommand, AudioMsg};
 use gnoblin::GnoblinCommand;
 use apps::AppsCommand;
 use mpris::MprisCommand;
+use network::NetworkCommand;
+use bluetooth::BtCommand;
+use sysctl::{BrightnessCommand, PowerCommand, SettingsCommand};
 
 /// A state change from one of the services. Plain, thread-safe data only.
 #[derive(Debug, Clone)]
@@ -232,6 +235,16 @@ async fn run(
     let apps = tokio::spawn(apps::run(event_tx.clone(), apps_rx));
     let (mpris_tx, mpris_rx) = unbounded_channel::<MprisCommand>();
     let mpris = tokio::spawn(mpris::run(event_tx.clone(), mpris_rx));
+    let (network_tx, network_rx) = unbounded_channel::<NetworkCommand>();
+    let network = tokio::spawn(network::run(event_tx.clone(), network_rx));
+    let (bt_tx, bt_rx) = unbounded_channel::<BtCommand>();
+    let bluetooth = tokio::spawn(bluetooth::run(event_tx.clone(), bt_rx));
+    let (brightness_tx, brightness_rx) = unbounded_channel::<BrightnessCommand>();
+    let brightness = tokio::spawn(sysctl::run_brightness(event_tx.clone(), brightness_rx));
+    let (power_tx, power_rx) = unbounded_channel::<PowerCommand>();
+    let power = tokio::spawn(sysctl::run_power(event_tx.clone(), power_rx));
+    let (settings_tx, settings_rx) = unbounded_channel::<SettingsCommand>();
+    let settings = tokio::spawn(sysctl::run_settings(event_tx.clone(), settings_rx));
 
     let router = tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
@@ -281,17 +294,32 @@ async fn run(
                 Command::ReloadExtension(uuid) => {
                     let _ = gnoblin_tx.send(GnoblinCommand::ReloadExtension(uuid));
                 }
-                // Routed once the phase-5 service tasks land.
-                other @ (Command::SetWifiEnabled(_)
-                | Command::ConnectWifi(_)
-                | Command::SetBluetoothPowered(_)
-                | Command::ConnectBtDevice(_)
-                | Command::DisconnectBtDevice(_)
-                | Command::SetBrightness(_)
-                | Command::SetPowerProfile(_)
-                | Command::SetDarkStyle(_)
-                | Command::SetNightLight(_)) => {
-                    tracing::warn!("[services] command not yet routed: {other:?}");
+                Command::SetWifiEnabled(on) => {
+                    let _ = network_tx.send(NetworkCommand::SetEnabled(on));
+                }
+                Command::ConnectWifi(ssid) => {
+                    let _ = network_tx.send(NetworkCommand::Connect(ssid));
+                }
+                Command::SetBluetoothPowered(on) => {
+                    let _ = bt_tx.send(BtCommand::SetPowered(on));
+                }
+                Command::ConnectBtDevice(address) => {
+                    let _ = bt_tx.send(BtCommand::Connect(address));
+                }
+                Command::DisconnectBtDevice(address) => {
+                    let _ = bt_tx.send(BtCommand::Disconnect(address));
+                }
+                Command::SetBrightness(level) => {
+                    let _ = brightness_tx.send(BrightnessCommand::Set(level));
+                }
+                Command::SetPowerProfile(profile) => {
+                    let _ = power_tx.send(PowerCommand::Set(profile));
+                }
+                Command::SetDarkStyle(on) => {
+                    let _ = settings_tx.send(SettingsCommand::SetDarkStyle(on));
+                }
+                Command::SetNightLight(on) => {
+                    let _ = settings_tx.send(SettingsCommand::SetNightLight(on));
                 }
             }
         }
@@ -304,4 +332,9 @@ async fn run(
     router.abort();
     apps.abort();
     mpris.abort();
+    network.abort();
+    bluetooth.abort();
+    brightness.abort();
+    power.abort();
+    settings.abort();
 }
