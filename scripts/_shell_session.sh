@@ -55,6 +55,35 @@ else
   echo "FAIL: kobel-dock surface not created"; fail=1
 fi
 
+# --- reveal input paths: Esc closes; dismiss-layer click closes ---
+# (100,700) is empty desktop: outside the launcher sheet, bar and dock, so the
+# click lands on the dismiss layer's (now full) input region.
+SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+closes() { grep -ac '\[manager\] closed launcher' "$DK/kobel.log"; }
+gdbus wait --session --timeout 15 org.gnome.Mutter.RemoteDesktop 2>/dev/null || true
+before=$(closes)
+"$CTL_BIN" toggle launcher >/dev/null 2>&1
+sleep 1
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:Escape" >"$DK/inject-esc.log" 2>&1 \
+  || { echo "FAIL: injector (esc) exited nonzero"; cat "$DK/inject-esc.log"; fail=1; }
+sleep 1
+if [ "$(closes)" -gt "$before" ]; then
+  echo "PASS: Escape closed the launcher"
+else
+  echo "FAIL: Escape did not close the launcher"; fail=1
+fi
+before=$(closes)
+"$CTL_BIN" toggle launcher >/dev/null 2>&1
+sleep 1
+python3 "$SCRIPTS_DIR/devkit_input.py" "click:100:700" >"$DK/inject-dismiss.log" 2>&1 \
+  || { echo "FAIL: injector (dismiss) exited nonzero"; cat "$DK/inject-dismiss.log"; fail=1; }
+sleep 1
+if [ "$(closes)" -gt "$before" ]; then
+  echo "PASS: dismiss-layer click closed the launcher"
+else
+  echo "FAIL: dismiss click did not close the launcher"; fail=1
+fi
+
 # --- screenshot (bar visible at top) ---
 res=$(gdbus call --session --dest org.gnome.Shell.Screenshot \
   --object-path /org/gnome/Shell/Screenshot \

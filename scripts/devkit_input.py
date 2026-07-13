@@ -281,6 +281,15 @@ class Injector:
                 log(f"Stop failed (ignored): {e}")
 
 
+USAGE = """usage: devkit_input.py [--connector NAME] [--settle MS] [--settle-prime S] [ACTION ...]
+
+Actions (colon-separated args): move:X:Y  click[:X:Y]  btndown  btnup
+  key:NAME  kdown:NAME  kup:NAME  wait:MS
+No actions -> the built-in spike sequence. Runs against the CURRENT session
+bus and creates a Mutter RemoteDesktop session: devkit sessions only.
+"""
+
+
 def main(argv: list[str]) -> int:
     connector = "Meta-0"
     settle_ms = 250
@@ -289,6 +298,14 @@ def main(argv: list[str]) -> int:
     i = 0
     while i < len(argv):
         a = argv[i]
+        if a in ("-h", "--help"):
+            # Side-effect free: exits before any bus connection or session setup.
+            print(USAGE, end="")
+            return 0
+        if a.startswith("--") and a not in ("--connector", "--settle", "--settle-prime"):
+            print(USAGE, end="", file=sys.stderr)
+            print(f"[inject] unknown flag: {a}", file=sys.stderr)
+            return 2
         if a == "--connector":
             connector = argv[i + 1]
             i += 2
