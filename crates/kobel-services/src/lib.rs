@@ -6,6 +6,7 @@
 //! (UPower DisplayDevice). Other Astal replacements land in later phases.
 
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::sync::oneshot;
@@ -40,6 +41,8 @@ use mpris::MprisCommand;
 use network::NetworkCommand;
 use bluetooth::BtCommand;
 use sysctl::{BrightnessCommand, PowerCommand, SettingsCommand};
+use tray::TrayCommand;
+use notifd::NotifdCommand;
 
 /// A state change from one of the services. Plain, thread-safe data only.
 #[derive(Debug, Clone)]
@@ -263,6 +266,11 @@ async fn run(
     let power = tokio::spawn(sysctl::run_power(event_tx.clone(), power_rx));
     let (settings_tx, settings_rx) = unbounded_channel::<SettingsCommand>();
     let settings = tokio::spawn(sysctl::run_settings(event_tx.clone(), settings_rx));
+    let (tray_tx, tray_rx) = unbounded_channel::<TrayCommand>();
+    let tray = tokio::spawn(tray::run(event_tx.clone(), tray_rx));
+    let (notifd_tx, notifd_rx) = unbounded_channel::<NotifdCommand>();
+    let (notifd_shutdown_tx, notifd_shutdown_rx) = oneshot::channel::<()>();
+    let notifd = tokio::spawn(notifd::run(event_tx.clone(), notifd_rx, notifd_shutdown_rx));
 
     let router = tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
@@ -339,20 +347,34 @@ async fn run(
                 Command::SetNightLight(on) => {
                     let _ = settings_tx.send(SettingsCommand::SetNightLight(on));
                 }
-                // Routed once the phase-6 notifd/tray service tasks land.
-                other @ (Command::SetDnd(_)
-                | Command::CloseNotification(_)
-                | Command::ClearNotifications
-                | Command::InvokeNotificationAction { .. }
-                | Command::ActivateTrayItem(_)
-                | Command::SecondaryActivateTrayItem(_)) => {
-                    tracing::warn!("[services] command not yet routed: {other:?}");
+                Command::ActivateTrayItem(address) => {
+                    let _ = tray_tx.send(TrayCommand::Activate(address));
+                }
+                Command::SecondaryActivateTrayItem(address) => {
+                    let _ = tray_tx.send(TrayCommand::SecondaryActivate(address));
+                }
+                Command::SetDnd(on) => {
+                    let _ = notifd_tx.send(NotifdCommand::SetDnd(on));
+                }
+                Command::CloseNotification(id) => {
+                    let _ = notifd_tx.send(NotifdCommand::Close(id));
+                }
+                Command::ClearNotifications => {
+                    let _ = notifd_tx.send(NotifdCommand::ClearAll);
+                }
+                Command::InvokeNotificationAction { id, action_key } => {
+                    let _ = notifd_tx.send(NotifdCommand::InvokeAction { id, action_key });
                 }
             }
         }
     });
 
     let _ = shutdown_rx.await;
+    // Let notifd release the bus name and hand the notifications feature back to
+    // gnoblin / gnome-shell before the runtime tears down. notifd talks to gnoblin
+    // over its own proxy, so this is independent of the task-abort order below.
+    let _ = notifd_shutdown_tx.send(());
+    let _ = tokio::time::timeout(Duration::from_secs(3), notifd).await;
     consumer.abort();
     gnoblin.abort();
     battery.abort();
@@ -364,4 +386,5 @@ async fn run(
     brightness.abort();
     power.abort();
     settings.abort();
+    tray.abort();
 }
