@@ -13,6 +13,8 @@ freya-engine = { workspace = true }
 freya-animation = { workspace = true }
 freya-components = { workspace = true }
 torin = { workspace = true }
+async-io = { workspace = true }
+chrono = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
