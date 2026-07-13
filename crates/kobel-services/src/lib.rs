@@ -15,6 +15,7 @@ mod apps;
 mod audio;
 mod battery;
 mod bluetooth;
+mod calendar;
 mod exec;
 mod gnoblin;
 mod mpris;
@@ -29,6 +30,7 @@ pub use gnoblin::{GnoblinSnapshot, GnoblinWindow};
 pub use apps::{AppEntry, AppsSnapshot};
 pub use mpris::{MediaSnapshot, PlayerInfo};
 pub use bluetooth::{BluetoothSnapshot, BtDevice};
+pub use calendar::{CalendarEvent, CalendarSnapshot};
 pub use network::{AccessPointInfo, NetworkSnapshot};
 pub use sysctl::{BrightnessSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot};
 pub use notifd::{NotifdSnapshot, Notification};
@@ -43,6 +45,7 @@ use apps::AppsCommand;
 use mpris::MprisCommand;
 use network::NetworkCommand;
 use bluetooth::BtCommand;
+use calendar::CalendarCommand;
 use sysctl::{BrightnessCommand, PowerCommand, SettingsCommand};
 use tray::TrayCommand;
 use notifd::NotifdCommand;
@@ -62,6 +65,7 @@ pub enum ServiceEvent {
     Settings(sysctl::SettingsSnapshot),
     Notifd(notifd::NotifdSnapshot),
     Tray(tray::TraySnapshot),
+    Calendar(calendar::CalendarSnapshot),
 }
 
 /// A request routed to the owning service. Fire-and-forget.
@@ -137,6 +141,9 @@ pub enum Command {
     /// tray: send a DBusMenu `clicked` event for a menu item (proper timestamp
     /// supplied by the crate). `item_id` is the DBusMenu numeric id.
     TrayMenuClicked { address: String, item_id: i32 },
+    /// calendar: query events for a local-day epoch range `[since, until)` (one
+    /// viewed month). Routed to the calendar service's persistent subscription.
+    SetCalendarRange { since: i64, until: i64 },
 }
 
 /// A session-control verb, executed by the exec service (docs/FREYA-PLAN.md
@@ -280,6 +287,8 @@ async fn run(
     let (notifd_tx, notifd_rx) = unbounded_channel::<NotifdCommand>();
     let (notifd_shutdown_tx, notifd_shutdown_rx) = oneshot::channel::<()>();
     let notifd = tokio::spawn(notifd::run(event_tx.clone(), notifd_rx, notifd_shutdown_rx));
+    let (calendar_tx, calendar_rx) = unbounded_channel::<CalendarCommand>();
+    let calendar = tokio::spawn(calendar::run(event_tx.clone(), calendar_rx));
 
     let router = tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
@@ -380,6 +389,9 @@ async fn run(
                 Command::InvokeNotificationAction { id, action_key } => {
                     let _ = notifd_tx.send(NotifdCommand::InvokeAction { id, action_key });
                 }
+                Command::SetCalendarRange { since, until } => {
+                    let _ = calendar_tx.send(CalendarCommand::SetRange { since, until });
+                }
             }
         }
     });
@@ -402,4 +414,5 @@ async fn run(
     power.abort();
     settings.abort();
     tray.abort();
+    calendar.abort();
 }

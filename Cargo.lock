@@ -1135,6 +1135,7 @@ dependencies = [
 name = "kobel-services"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "freedesktop-desktop-entry",
  "freedesktop-icons",
  "futures-util",
@@ -1168,7 +1169,6 @@ dependencies = [
  "torin",
  "tracing",
  "tracing-subscriber",
- "zbus",
 ]
 
 [[package]]

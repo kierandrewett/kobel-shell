@@ -19,25 +19,29 @@
 //! only shows while open, and every open recomputes today.
 //!
 //! Events come from the real desktop calendar, not hardcoded demo data: GNOME
-//! Shell's own `org.gnome.Shell.CalendarServer` D-Bus service (implemented by
-//! `gnome-shell-calendar-server`, backed by Evolution Data Server), the same
-//! source GNOME Calendar and the GNOME Shell clock dropdown read. Whatever's
+//! Shell's own `org.gnome.Shell.CalendarServer` D-Bus service, read by the
+//! `kobel_services::calendar` async service (like every other system source)
+//! and fanned in as a [`CalendarSnapshot`] this surface consumes. Whatever's
 //! configured system-wide via GNOME Online Accounts / local EDS calendars shows
-//! up automatically -- no kobel-shell-specific config file. See [`load_events`].
+//! up automatically -- no kobel-shell-specific config file. On open / month
+//! change this surface asks the service for the viewed month's range; the
+//! snapshot is grouped for display by [`events_by_day`].
 //!
-//! The grid math (`month_grid` / `step_month` / `ymd_key`) is pure and
-//! unit-tested; the reactive body only wires it to Freya state.
+//! The grid math (`month_grid` / `step_month` / `ymd_key`) and the
+//! [`events_by_day`] transform are pure and unit-tested; the reactive body only
+//! wires them to Freya state.
 
 use std::collections::HashMap;
 
 use chrono::{Datelike, Duration, Local, NaiveDate, TimeZone};
 use freya_core::prelude::*;
 use torin::prelude::{Alignment, Content, Position, Size};
-use zbus::proxy;
 
 use super::icon;
 use super::panels::{OpenProgress, use_open_scale};
+use crate::manager::{ShellBus, ShellMsg};
 use crate::theme;
+use kobel_services::{CalendarEvent, CalendarSnapshot, Command};
 
 // Icons embedded at build time (currentColor SVGs recolored per state by
 // `super::icon`), kept local to this module like ui/session.rs so ui/mod.rs stays
@@ -156,105 +160,8 @@ struct Ev {
 }
 
 // ---------------------------------------------------------------------------
-// org.gnome.Shell.CalendarServer (real desktop calendar data, no config file)
+// Event data transform (pure; unit-tested)
 // ---------------------------------------------------------------------------
-//
-// This is the exact D-Bus service GNOME Shell's own clock/calendar dropdown and
-// GNOME Calendar read from -- implemented by the `gnome-shell-calendar-server`
-// binary (part of gnome-shell / gnoblin's own patched copy of it), backed by
-// Evolution Data Server. Live-verified interface (gdbus introspect against a
-// running gnoblin session):
-//   methods: SetTimeRange(x since, x until, b force_reload)
-//   signals: EventsAddedOrUpdated(a(ssxxa{sv}) events), EventsRemoved(as ids),
-//            ClientDisappeared(s source_uid)
-//   properties: Since (x), Until (x), HasCalendars (b)
-// Recurring events are expanded SERVER-SIDE (EDS does the RRULE work): each
-// occurrence within the queried range arrives as its own tuple, so no RRULE
-// parsing is needed here. Whatever's configured system-wide via GNOME Online
-// Accounts or local EDS calendars shows up automatically -- deliberately no
-// kobel-shell-specific config file, unlike dock.rs's pin list.
-//
-// SCOPE NOTE: every other system data source in this shell (audio/battery/
-// network/bluetooth/apps/mpris/...) lives in the `kobel-services` crate as an
-// async tokio service fanning a typed snapshot into a Freya `State` (see
-// docs/FREYA-PLAN.md). That crate currently carries unrelated in-progress work
-// this session must not touch, so calendar data is fetched here instead: a
-// bounded (800ms) BLOCKING D-Bus round-trip on the calendar's closed->open
-// reveal edge, the same edge that already refreshes `today`. The daemon is
-// already running and warm in practice (evolution-calendar-factory +
-// gnome-shell-calendar-server are always-on GNOME session services), so this
-// is a small, occasional stall on an already-occasional user action, not a
-// per-frame cost. Follow-up: migrate to a proper `kobel-services::calendar`
-// async service (matching every other source) once that crate is free again.
-
-/// One event tuple as `EventsAddedOrUpdated` delivers it: `(uid, summary,
-/// start_epoch, end_epoch, extras)`. `extras` is accepted for interface-shape
-/// correctness but unused -- GNOME Shell's own client (`js/ui/calendar.js`
-/// `_onEventsAddedOrUpdated`) doesn't read it either; all-day is inferred from
-/// the start/end epoch alignment instead (see [`raw_event_to_ev`]).
-type RawEvent = (String, String, i64, i64, HashMap<String, zbus::zvariant::OwnedValue>);
-
-#[proxy(
-    interface = "org.gnome.Shell.CalendarServer",
-    default_service = "org.gnome.Shell.CalendarServer",
-    default_path = "/org/gnome/Shell/CalendarServer"
-)]
-trait CalendarServer {
-    fn set_time_range(&self, since: i64, until: i64, force_reload: bool) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    fn events_added_or_updated(&self, events: Vec<RawEvent>) -> zbus::Result<()>;
-
-    #[zbus(property)]
-    fn has_calendars(&self) -> zbus::Result<bool>;
-}
-
-/// Upper bound on the blocking D-Bus round-trip (connect + subscribe +
-/// SetTimeRange + wait for the reply signal). Live-verified against a running
-/// gnoblin session's `gnome-shell-calendar-server`: when the queried range has
-/// ANY matching events, `EventsAddedOrUpdated` fires quickly (a warm local
-/// D-Bus round-trip); when it has NONE, the server never emits the signal at
-/// all -- there is no explicit "done, zero results" signal in this protocol
-/// (confirmed via `gdbus monitor` against a real `SetTimeRange` call: three
-/// seconds, no signal). So every empty-result month genuinely pays this full
-/// timeout -- kept short (not the original 800ms) to bound that to a brief,
-/// tolerable stall rather than a freeze. This is the real cost of doing a
-/// synchronous fetch-on-open against a fundamentally async, cache-oriented
-/// protocol; the proper fix is a persistent async subscription with a live
-/// cache (matching how GNOME Shell's own calendar widget uses this same
-/// interface, and how kobel-services fans out every other data source) -- see
-/// the SCOPE NOTE above for why that isn't done this round.
-const CALENDAR_DBUS_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
-
-/// Do the actual blocking D-Bus work on a throwaway thread so a hung/absent
-/// service can never wedge the caller past [`CALENDAR_DBUS_TIMEOUT`] -- the
-/// thread is simply abandoned (and later reaped by the OS) if the timeout
-/// fires first. Returns an empty list on ANY failure (no service, no name
-/// owner, no calendars, timeout, malformed reply): the calendar must degrade
-/// to its "No events" empty state, never panic, never show stale/fake data.
-fn fetch_raw_events(since: i64, until: i64) -> Vec<RawEvent> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let events = (|| -> zbus::Result<Vec<RawEvent>> {
-            let conn = zbus::blocking::Connection::session()?;
-            let proxy = CalendarServerProxyBlocking::new(&conn)?;
-            if !proxy.has_calendars().unwrap_or(false) {
-                return Ok(Vec::new());
-            }
-            // Subscribe BEFORE calling SetTimeRange so the reply signal can never
-            // fire in the window before we start listening.
-            let mut updates = proxy.receive_events_added_or_updated()?;
-            proxy.set_time_range(since, until, true)?;
-            match updates.next() {
-                Some(signal) => Ok(signal.args()?.events),
-                None => Ok(Vec::new()),
-            }
-        })()
-        .unwrap_or_default();
-        let _ = tx.send(events);
-    });
-    rx.recv_timeout(CALENDAR_DBUS_TIMEOUT).unwrap_or_default()
-}
 
 /// Pick a symbolic icon for an event from simple keyword heuristics over its
 /// title -- real events carry no category metadata, this is a best-effort
@@ -270,57 +177,41 @@ fn pick_event_icon(name: &str) -> &'static [u8] {
     }
 }
 
-/// Convert one raw `(uid, summary, start_epoch, end_epoch, extras)` tuple into
-/// a display [`Ev`] plus the local calendar date it should be filed under, or
-/// `None` if the epoch is unrepresentable (defensive; should not happen for
-/// real EDS data). All-day detection: an all-day event's start AND end both
-/// land on an exact local midnight (matches how EDS/iCal `DATE`-only values
-/// convert to a UTC instant), rather than trusting `extras` (which GNOME
-/// Shell's own client does not read either -- see [`RawEvent`]).
-fn raw_event_to_ev(raw: &RawEvent) -> Option<(NaiveDate, Ev)> {
-    let (_uid, summary, start_epoch, end_epoch, _extras) = raw;
-    let start = Local.timestamp_opt(*start_epoch, 0).single()?;
-    let end = Local.timestamp_opt(*end_epoch, 0).single()?;
-    let is_midnight = |dt: chrono::DateTime<Local>| dt.time() == chrono::NaiveTime::MIN;
-    let all_day = is_midnight(start) && is_midnight(end) && end > start;
-    let time = if all_day { "All day".to_string() } else { start.format("%H:%M").to_string() };
-    let icon = pick_event_icon(summary);
-    Some((start.date_naive(), Ev { time, name: summary.clone(), icon }))
-}
-
-/// Load every event in the viewed `(year, month)` from the real desktop
-/// calendar, keyed by day (`ymd_key`). No D-Bus service, no configured
-/// calendars, or a timeout all yield an empty map -- the "No events" empty
-/// state, never fake data. Queries exactly the viewed month's local day range
-/// (midnight on the 1st to midnight on the 1st of the following month).
-fn load_events(year: i32, month: u32) -> HashMap<String, Vec<Ev>> {
+/// Group events by their local start day (`ymd_key`), resolving each into a
+/// display [`Ev`]: "All day" when the service flagged it, else the local start
+/// time (`%H:%M`), with an icon from [`pick_event_icon`]. A PURE data transform
+/// over the consumed [`CalendarSnapshot`] -- no D-Bus -- so it is directly
+/// unit-testable with [`CalendarEvent`] fixtures. Events whose epoch is
+/// unrepresentable are skipped (defensive; should not happen for real EDS data).
+fn events_by_day(events: &[CalendarEvent]) -> HashMap<String, Vec<Ev>> {
     let mut out: HashMap<String, Vec<Ev>> = HashMap::new();
-    let Some(first) = NaiveDate::from_ymd_opt(year, month, 1) else {
-        return out;
-    };
-    let (ny, nm) = step_month(year, month, true);
-    let Some(next_first) = NaiveDate::from_ymd_opt(ny, nm, 1) else {
-        return out;
-    };
-    let Some(since) = Local.from_local_datetime(&first.and_time(chrono::NaiveTime::MIN)).single()
-    else {
-        return out;
-    };
-    let Some(until) =
-        Local.from_local_datetime(&next_first.and_time(chrono::NaiveTime::MIN)).single()
-    else {
-        return out;
-    };
-
-    for raw in fetch_raw_events(since.timestamp(), until.timestamp()) {
-        if let Some((date, ev)) = raw_event_to_ev(&raw)
-            && date.year() == year
-            && date.month() == month
-        {
-            out.entry(ymd_key(date)).or_default().push(ev);
-        }
+    for event in events {
+        let Some(start) = Local.timestamp_opt(event.start_epoch, 0).single() else {
+            continue;
+        };
+        let time = if event.all_day {
+            "All day".to_string()
+        } else {
+            start.format("%H:%M").to_string()
+        };
+        let icon = pick_event_icon(&event.summary);
+        out.entry(ymd_key(start.date_naive()))
+            .or_default()
+            .push(Ev { time, name: event.summary.clone(), icon });
     }
     out
+}
+
+/// The viewed month's local-day epoch range `[since, until)` -- midnight on the
+/// 1st to midnight on the 1st of the following month -- to query the calendar
+/// service for. `None` if the (year, month) is unrepresentable.
+fn month_range(year: i32, month: u32) -> Option<(i64, i64)> {
+    let first = NaiveDate::from_ymd_opt(year, month, 1)?;
+    let (ny, nm) = step_month(year, month, true);
+    let next_first = NaiveDate::from_ymd_opt(ny, nm, 1)?;
+    let since = Local.from_local_datetime(&first.and_time(chrono::NaiveTime::MIN)).single()?;
+    let until = Local.from_local_datetime(&next_first.and_time(chrono::NaiveTime::MIN)).single()?;
+    Some((since.timestamp(), until.timestamp()))
 }
 
 // ---------------------------------------------------------------------------
@@ -343,7 +234,8 @@ pub fn calendar() -> impl IntoElement {
     let init = *today.peek();
     let view = use_state(move || (init.year(), init.month()));
     let selected = use_state(move || init);
-    let mut events = use_state(HashMap::new);
+    let cal = use_consume::<State<CalendarSnapshot>>();
+    let bus = use_consume::<ShellBus>();
 
     let (vy, vm) = *view.read();
 
@@ -356,23 +248,23 @@ pub fn calendar() -> impl IntoElement {
         }
     });
 
-    // Fetch events on the same open edge, and again whenever the viewed month
-    // changes while open (nav_row lets the user page months without closing the
-    // sheet). A blocking D-Bus round-trip on every animated opacity frame would
-    // be disastrous (this component re-renders each spring tick while the reveal
-    // animates); keying the effect on `(open, vy, vm)` instead of running
-    // load_events() unconditionally in the render body keeps it to exactly one
-    // fetch per real transition.
+    // Ask the calendar service for the viewed month on the open edge, and again
+    // whenever the viewed month changes while open (nav_row lets the user page
+    // months without closing the sheet). This surface re-renders each spring tick
+    // while the reveal animates, so keying the effect on `(open, vy, vm)` -- not
+    // the render body -- keeps it to exactly one request per real transition. The
+    // service owns a persistent subscription + live cache and fans the snapshot
+    // back via use_consume, so nothing blocks here.
     use_side_effect_with_deps(&(open, vy, vm), move |deps| {
         let (open, vy, vm) = *deps;
-        if open {
-            events.set(load_events(vy, vm));
+        if open && let Some((since, until)) = month_range(vy, vm) {
+            bus.send(ShellMsg::Service(Command::SetCalendarRange { since, until }));
         }
     });
 
     let today = *today.read();
     let sel = *selected.read();
-    let events = events.read();
+    let events = events_by_day(&cal.read().events);
 
     let scale = use_open_scale(opacity);
     let sheet = rect()
@@ -886,44 +778,75 @@ mod tests {
         assert_eq!(ymd_key(d(2026, 12, 25)), "2026-12-25");
     }
 
-    fn raw_event(name: &str, start: (i32, u32, u32, u32, u32), end: (i32, u32, u32, u32, u32)) -> RawEvent {
-        let epoch = |(y, mo, day, h, mi): (i32, u32, u32, u32, u32)| {
-            Local
-                .from_local_datetime(&d(y, mo, day).and_hms_opt(h, mi, 0).unwrap())
-                .single()
-                .unwrap()
-                .timestamp()
-        };
-        ("uid".to_string(), name.to_string(), epoch(start), epoch(end), HashMap::new())
+    #[test]
+    fn month_range_covers_the_viewed_month() {
+        let (since, until) = month_range(2026, 7).expect("valid month");
+        let s = Local.timestamp_opt(since, 0).single().unwrap();
+        let u = Local.timestamp_opt(until, 0).single().unwrap();
+        assert_eq!(s.date_naive(), d(2026, 7, 1));
+        assert_eq!(s.time(), chrono::NaiveTime::MIN);
+        assert_eq!(u.date_naive(), d(2026, 8, 1));
+        assert!(until > since);
+    }
+
+    /// A `CalendarEvent` fixture as the service would produce it: `all_day` is
+    /// pre-computed there (see `kobel_services::calendar::is_all_day`), so these
+    /// tests supply it directly and exercise only `events_by_day`'s day-keying and
+    /// display formatting.
+    fn cal_event(name: &str, start: (i32, u32, u32, u32, u32), all_day: bool) -> CalendarEvent {
+        let (y, mo, day, h, mi) = start;
+        let start_epoch = Local
+            .from_local_datetime(&d(y, mo, day).and_hms_opt(h, mi, 0).unwrap())
+            .single()
+            .unwrap()
+            .timestamp();
+        CalendarEvent {
+            uid: "uid".to_string(),
+            summary: name.to_string(),
+            start_epoch,
+            end_epoch: start_epoch,
+            all_day,
+        }
     }
 
     #[test]
-    fn raw_event_to_ev_formats_a_timed_event() {
-        let raw = raw_event("Daily Standup", (2026, 7, 6, 9, 45), (2026, 7, 6, 10, 0));
-        let (date, ev) = raw_event_to_ev(&raw).expect("valid epoch");
-        assert_eq!(date, d(2026, 7, 6));
-        assert_eq!(ev.name, "Daily Standup");
-        assert_eq!(ev.time, "09:45");
+    fn events_by_day_formats_a_timed_event() {
+        let map = events_by_day(&[cal_event("Daily Standup", (2026, 7, 6, 9, 45), false)]);
+        let day = map.get(&ymd_key(d(2026, 7, 6))).expect("keyed under its start day");
+        assert_eq!(day.len(), 1);
+        assert_eq!(day[0].name, "Daily Standup");
+        assert_eq!(day[0].time, "09:45");
     }
 
     #[test]
-    fn raw_event_to_ev_detects_all_day_from_midnight_to_midnight() {
-        // A one-day all-day event: DTSTART/DTEND both land on a local midnight,
-        // one day apart (matches how an iCal DATE-only value round-trips through
-        // this D-Bus interface's epoch-second encoding).
-        let raw = raw_event("My Birthday", (2026, 7, 13, 0, 0), (2026, 7, 14, 0, 0));
-        let (date, ev) = raw_event_to_ev(&raw).expect("valid epoch");
-        assert_eq!(date, d(2026, 7, 13));
-        assert_eq!(ev.time, "All day");
+    fn events_by_day_renders_all_day_flag() {
+        // The service flagged this all-day; events_by_day must show "All day",
+        // not a clock time, filed under the local start day.
+        let map = events_by_day(&[cal_event("My Birthday", (2026, 7, 13, 0, 0), true)]);
+        let day = map.get(&ymd_key(d(2026, 7, 13))).expect("keyed under its start day");
+        assert_eq!(day[0].time, "All day");
     }
 
     #[test]
-    fn raw_event_to_ev_midnight_start_alone_is_not_all_day() {
-        // Starts exactly at midnight but does NOT end on a midnight boundary --
-        // a real (if unusual) timed event, not an all-day one.
-        let raw = raw_event("Midnight Release", (2026, 7, 13, 0, 0), (2026, 7, 13, 0, 30));
-        let (_date, ev) = raw_event_to_ev(&raw).expect("valid epoch");
-        assert_eq!(ev.time, "00:00");
+    fn events_by_day_midnight_start_not_flagged_shows_clock_time() {
+        // A timed event that happens to start at midnight (all_day=false) formats
+        // as "00:00", never "All day".
+        let map = events_by_day(&[cal_event("Midnight Release", (2026, 7, 13, 0, 0), false)]);
+        let day = map.get(&ymd_key(d(2026, 7, 13))).unwrap();
+        assert_eq!(day[0].time, "00:00");
+    }
+
+    #[test]
+    fn events_by_day_groups_by_local_day() {
+        let map = events_by_day(&[
+            cal_event("A", (2026, 7, 6, 9, 0), false),
+            cal_event("B", (2026, 7, 11, 10, 0), false),
+            cal_event("C", (2026, 7, 11, 13, 0), false),
+        ]);
+        assert_eq!(map.get(&ymd_key(d(2026, 7, 6))).map(Vec::len), Some(1));
+        assert_eq!(map.get(&ymd_key(d(2026, 7, 11))).map(Vec::len), Some(2));
+        // A day with no events resolves to None (the "No events" path).
+        assert!(map.get(&ymd_key(d(2026, 7, 20))).is_none());
     }
 
     #[test]

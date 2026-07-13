@@ -22,8 +22,8 @@ use std::sync::mpsc;
 use freya_core::prelude::{IntoElement, State, WritableUtils};
 use kobel_services::{
     AppsSnapshot, AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot,
-    GnoblinSnapshot, MediaSnapshot, NetworkSnapshot, NotifdSnapshot, PowerSnapshot, ServiceEvent,
-    Services, SettingsSnapshot, TraySnapshot,
+    CalendarSnapshot, GnoblinSnapshot, MediaSnapshot, NetworkSnapshot, NotifdSnapshot,
+    PowerSnapshot, ServiceEvent, Services, SettingsSnapshot, TraySnapshot,
 };
 use kobel_wayland::{
     Anchor, Control, KeyboardInteractivity, Layer, Margins, OutputControl, OutputEvent, OutputId,
@@ -41,6 +41,7 @@ struct SurfaceStates {
     battery: State<BatterySnapshot>,
     apps: State<AppsSnapshot>,
     media: State<MediaSnapshot>,
+    calendar: State<CalendarSnapshot>,
     network: State<NetworkSnapshot>,
     bluetooth: State<BluetoothSnapshot>,
     brightness: State<BrightnessSnapshot>,
@@ -69,6 +70,7 @@ fn provide_contexts(
     let battery = cx.provide(|| State::create(BatterySnapshot::default()));
     let apps = cx.provide(|| State::create(AppsSnapshot::default()));
     let media = cx.provide(|| State::create(MediaSnapshot::default()));
+    let calendar = cx.provide(|| State::create(CalendarSnapshot::default()));
     let network = cx.provide(|| State::create(NetworkSnapshot::default()));
     let bluetooth = cx.provide(|| State::create(BluetoothSnapshot::default()));
     let brightness = cx.provide(|| State::create(BrightnessSnapshot::default()));
@@ -84,6 +86,7 @@ fn provide_contexts(
         battery,
         apps,
         media,
+        calendar,
         network,
         bluetooth,
         brightness,
@@ -1019,6 +1022,10 @@ fn main() -> anyhow::Result<()> {
                             }
                             ServiceEvent::Tray(snapshot) => {
                                 let mut handle = surface.tray;
+                                handle.set_if_modified(snapshot.clone());
+                            }
+                            ServiceEvent::Calendar(snapshot) => {
+                                let mut handle = surface.calendar;
                                 handle.set_if_modified(snapshot.clone());
                             }
                         }

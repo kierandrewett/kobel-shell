@@ -14,6 +14,9 @@ zbus = { workspace = true, features = ["tokio"] }
 tokio = { workspace = true, features = ["io-util", "net", "process"] }
 libpulse-binding = { workspace = true }
 futures-util = "0.3"
+# Epoch/local-time math for the calendar service (all-day detection via
+# midnight alignment). `clock` gives Local; no other features needed.
+chrono = { workspace = true }
 tracing = { workspace = true }
 # Desktop-entry scan (apps.rs): XDG_DATA_HOME + XDG_DATA_DIRS applications dirs.
 freedesktop-desktop-entry = "0.8"

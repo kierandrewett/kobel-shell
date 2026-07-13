@@ -48,8 +48,9 @@ use torin::prelude::Size2D;
 
 use kobel_services::{
     AccessPointInfo, AppEntry, AppsSnapshot, AudioSnapshot, AudioStream, BatterySnapshot,
-    BluetoothSnapshot, BtDevice, BrightnessSnapshot, GnoblinSnapshot, NetworkSnapshot,
-    NotifdSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot, TraySnapshot,
+    BluetoothSnapshot, BtDevice, BrightnessSnapshot, CalendarEvent, CalendarSnapshot,
+    GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot, PowerProfile, PowerSnapshot,
+    SettingsSnapshot, TraySnapshot,
 };
 
 use crate::manager::ShellBus;
@@ -134,6 +135,44 @@ fn fake_power() -> PowerSnapshot {
 
 fn fake_settings() -> SettingsSnapshot {
     SettingsSnapshot { dark_style: true, night_light: false }
+}
+
+/// A fake calendar snapshot (the calendar service is a real-session async source
+/// with no D-Bus here): an all-day event plus a timed one anchored to today, so
+/// the calendar's events card renders real content for the default (today)
+/// selection instead of the "No events" empty state.
+fn fake_calendar() -> CalendarSnapshot {
+    use chrono::{Duration, Local, NaiveTime, TimeZone};
+    let today = Local::now().date_naive();
+    let at = |h: u32, mi: u32| {
+        Local
+            .from_local_datetime(&today.and_hms_opt(h, mi, 0).unwrap())
+            .single()
+            .unwrap()
+            .timestamp()
+    };
+    let midnight = |date: chrono::NaiveDate| {
+        Local.from_local_datetime(&date.and_time(NaiveTime::MIN)).single().unwrap().timestamp()
+    };
+    CalendarSnapshot {
+        has_calendars: true,
+        events: vec![
+            CalendarEvent {
+                uid: "standup".to_string(),
+                summary: "Daily Standup".to_string(),
+                start_epoch: at(9, 45),
+                end_epoch: at(10, 0),
+                all_day: false,
+            },
+            CalendarEvent {
+                uid: "birthday".to_string(),
+                summary: "Kieran Birthday".to_string(),
+                start_epoch: midnight(today),
+                end_epoch: midnight(today + Duration::days(1)),
+                all_day: true,
+            },
+        ],
+    }
 }
 
 /// A handful of fake resolved apps so the launcher's curated tile row and
@@ -232,6 +271,7 @@ fn main() {
     runner.provide_root_context(|| State::create(fake_brightness()));
     runner.provide_root_context(|| State::create(fake_power()));
     runner.provide_root_context(|| State::create(fake_settings()));
+    runner.provide_root_context(|| State::create(fake_calendar()));
     runner.provide_root_context(|| State::create(NotifdSnapshot::default()));
     runner.provide_root_context(|| State::create(TraySnapshot::default()));
     runner.provide_root_context(|| State::create(fake_apps()));
