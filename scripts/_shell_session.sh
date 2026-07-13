@@ -21,6 +21,7 @@ export WAYLAND_DISPLAY="$DISP"
 RUST_LOG="${RUST_LOG:-info}" \
   KOBEL_PROFILE_ANIM="${KOBEL_PROFILE_ANIM:-}" \
   KOBEL_REDUCED_MOTION="${KOBEL_REDUCED_MOTION:-}" \
+  KOBEL_TEST_DOCK_HITTEST=1 \
   stdbuf -oL -eL "$SHELL_BIN" >"$DK/kobel.log" 2>&1 &
 AP=$!
 
@@ -317,6 +318,56 @@ if [ "$(closes)" -gt "$before" ]; then
   echo "PASS: toasts overlay is click-through (dismiss fired under toast rect)"
 else
   echo "FAIL: click inside the toasts rect was eaten (launcher stayed open)"; fail=1
+fi
+
+# --- dock right-click context menu (xdg popup): opens on right-click at a tile,
+# screenshot it, then click empty desktop and assert it dismisses (the popup grab
+# turns an outside click into popup_done). This exercises the whole popup path:
+# UI PopupHost -> app-tick drain -> Control::open_popup -> render -> dismiss. ---
+# The first dock tile's SCREEN coords are derived from the FLOATING tokens
+# (crates/kobel-shell/src/theme.rs) and dock_width/dock_height
+# (crates/kobel-shell/src/ui/dock.rs), so this stays correct if the numbers change:
+#   - 6 pins -> dock 352x54, bottom-anchored gap=10 up, horizontally centered.
+#     surf_x = (MON_W - 352)/2; first tile center = surf_x + dock_pad(5) + icon/2(22).
+#     tile center y = MON_H - gap(10) - dock_h/2(27).
+dock_mon="${VIRTUAL_MONITORS:-1280x800}"; dock_mon="${dock_mon%% *}"
+DOCK_MON_W="${dock_mon%%x*}"; DOCK_MON_H="${dock_mon##*x}"
+D_ICON=44; D_PAD=5; D_GAP=10; D_W=352; D_H=54
+d_surf_x=$(( (DOCK_MON_W - D_W) / 2 ))
+d_click_x=$(( d_surf_x + D_PAD + D_ICON / 2 ))
+d_click_y=$(( DOCK_MON_H - D_GAP - D_H / 2 ))
+popup_opens() { grep -ac '\[popup\] opened' "$DK/kobel.log"; }
+popup_dismisses() { grep -ac '\[popup\] dismissed' "$DK/kobel.log"; }
+# The RemoteDesktop virtual pointer must reach the dock via an ON-SCREEN move first:
+# a direct warp from the off-screen prime position never establishes pointer focus on
+# a bottom-edge layer surface, so the button is dropped. An intermediate work-area
+# move then the right-click delivers reliably.
+before_open=$(popup_opens)
+python3 "$SCRIPTS_DIR/devkit_input.py" "move:640:400" "rclick:${d_click_x}:${d_click_y}" >"$DK/inject-dock-rclick.log" 2>&1 \
+  || { echo "FAIL: injector (dock rclick) exited nonzero"; cat "$DK/inject-dock-rclick.log"; fail=1; }
+sleep 1
+gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/dock-menu.png" >/dev/null 2>&1
+cp "$DK/dock-menu.png" /tmp/kobel-dock-menu.png 2>/dev/null || true
+if [ "$(popup_opens)" -gt "$before_open" ]; then
+  echo "PASS: dock context menu opened (right-click popup)"
+else
+  echo "FAIL: dock context menu did not open"; tail -5 "$DK/inject-dock-rclick.log"; fail=1
+fi
+[ -s "$DK/dock-menu.png" ] && echo "PASS: dock menu screenshot captured" \
+  || { echo "FAIL: dock menu screenshot missing"; fail=1; }
+# Dismiss on outside click: an empty-desktop click at mid-screen. The popup holds a
+# pointer grab, so the compositor delivers this as popup_done (dismiss), never to a
+# surface -- the shell logs "[popup] dismissed" from the SurfaceClosed path.
+before_dismiss=$(popup_dismisses)
+python3 "$SCRIPTS_DIR/devkit_input.py" "move:640:400" "click:100:300" >"$DK/inject-dock-dismiss.log" 2>&1 \
+  || { echo "FAIL: injector (dock dismiss) exited nonzero"; cat "$DK/inject-dock-dismiss.log"; fail=1; }
+sleep 1
+if [ "$(popup_dismisses)" -gt "$before_dismiss" ]; then
+  echo "PASS: dock context menu dismissed on outside click"
+else
+  echo "FAIL: dock context menu did not dismiss on outside click"; fail=1
 fi
 
 # --- fractional-scale verification (opt-in via KOBEL_TEST_SCALE, e.g. 1.5) ---

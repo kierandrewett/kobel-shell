@@ -80,6 +80,7 @@ SC_SESSION_IFACE = "org.gnome.Mutter.ScreenCast.Session"
 PROPS_IFACE = "org.freedesktop.DBus.Properties"
 
 BTN_LEFT = 0x110
+BTN_RIGHT = 0x111
 
 # X keysyms we need by name (XK_*). Anything else is taken as a literal number or,
 # for a single printable character, its ordinal (which equals the keysym for the
@@ -246,6 +247,16 @@ class Injector:
                 self._button(BTN_LEFT, True)
                 time.sleep(0.05)
                 self._button(BTN_LEFT, False)
+            elif op == "rclick":
+                if len(parts) >= 3:
+                    x, y = float(parts[1]), float(parts[2])
+                    log(f"move {x} {y}")
+                    self._motion(x, y)
+                    time.sleep(0.08)
+                log("click BTN_RIGHT")
+                self._button(BTN_RIGHT, True)
+                time.sleep(0.05)
+                self._button(BTN_RIGHT, False)
             elif op == "btndown":
                 log("btndown BTN_LEFT")
                 self._button(BTN_LEFT, True)
@@ -287,7 +298,7 @@ class Injector:
 
 USAGE = """usage: devkit_input.py [--connector NAME] [--settle MS] [--settle-prime S] [ACTION ...]
 
-Actions (colon-separated args): move:X:Y  click[:X:Y]  btndown  btnup
+Actions (colon-separated args): move:X:Y  click[:X:Y]  rclick[:X:Y]  btndown  btnup
   key:NAME  kdown:NAME  kup:NAME  wait:MS
 No actions -> the built-in spike sequence. Runs against the CURRENT session
 bus and creates a Mutter RemoteDesktop session: devkit sessions only.
