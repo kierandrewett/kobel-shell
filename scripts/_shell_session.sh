@@ -127,6 +127,59 @@ if [ "$(session_closes)" -gt "$before_s" ]; then
 else
   echo "FAIL: session Esc did not close"; fail=1
 fi
+# Arm/disarm regression (the State borrow-panic class): select Restart, Enter once
+# (ARMS only -- a second Enter would fire, never sent), Esc disarms, Esc closes.
+before_s=$(session_closes)
+"$CTL_BIN" toggle session >/dev/null 2>&1
+sleep 1
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:Right" "key:Right" "key:Return" "wait:300" "key:Escape" "wait:300" "key:Escape" >"$DK/inject-arm.log" 2>&1 \
+  || { echo "FAIL: injector (arm/disarm) exited nonzero"; cat "$DK/inject-arm.log"; fail=1; }
+sleep 1
+if grep -aq "\[session\] armed Restart" "$DK/kobel.log" \
+   && grep -aq "\[session\] disarmed" "$DK/kobel.log" \
+   && [ "$(session_closes)" -gt "$before_s" ] \
+   && kill -0 "$AP" 2>/dev/null; then
+  echo "PASS: session arm/disarm/close survived (no borrow panic)"
+else
+  echo "FAIL: session arm/disarm path broken (armed=$(grep -ac '\[session\] armed' "$DK/kobel.log"), disarmed=$(grep -ac '\[session\] disarmed' "$DK/kobel.log"), alive=$(kill -0 "$AP" 2>/dev/null && echo yes || echo no))"; fail=1
+fi
+
+# --- phase 5: quick settings (Esc-at-root closes) + calendar surfaces ---
+surface_closes() { grep -ac "\[manager\] closed $1" "$DK/kobel.log"; }
+before_q=$(surface_closes quicksettings)
+"$CTL_BIN" toggle quicksettings >/dev/null 2>&1
+sleep 1
+gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/qs-open.png" >/dev/null 2>&1
+cp "$DK/qs-open.png" /tmp/kobel-qs-open.png 2>/dev/null || true
+[ -s "$DK/qs-open.png" ] && echo "PASS: quicksettings screenshot captured" \
+  || { echo "FAIL: quicksettings screenshot missing"; fail=1; }
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:Escape" >"$DK/inject-qs-esc.log" 2>&1 \
+  || { echo "FAIL: injector (qs esc) exited nonzero"; fail=1; }
+sleep 1
+if [ "$(surface_closes quicksettings)" -gt "$before_q" ]; then
+  echo "PASS: quicksettings Esc closed"
+else
+  echo "FAIL: quicksettings Esc did not close"; fail=1
+fi
+before_c=$(surface_closes calendar)
+"$CTL_BIN" toggle calendar >/dev/null 2>&1
+sleep 1
+gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/calendar-open.png" >/dev/null 2>&1
+cp "$DK/calendar-open.png" /tmp/kobel-calendar-open.png 2>/dev/null || true
+[ -s "$DK/calendar-open.png" ] && echo "PASS: calendar screenshot captured" \
+  || { echo "FAIL: calendar screenshot missing"; fail=1; }
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:Escape" >"$DK/inject-cal-esc.log" 2>&1 \
+  || { echo "FAIL: injector (calendar esc) exited nonzero"; fail=1; }
+sleep 1
+if [ "$(surface_closes calendar)" -gt "$before_c" ]; then
+  echo "PASS: calendar Esc closed"
+else
+  echo "FAIL: calendar Esc did not close"; fail=1
+fi
 
 # --- screenshot (bar visible at top) ---
 res=$(gdbus call --session --dest org.gnome.Shell.Screenshot \
