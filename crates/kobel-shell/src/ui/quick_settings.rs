@@ -462,7 +462,7 @@ fn top_row(bus: &ShellBus, tokens: &theme::Tokens, battery: &BatterySnapshot) ->
         icon: ICON_POWER,
         size: ctl,
         icon_size: 16.0,
-        tint: theme::ROSE,
+        tint: theme::MUT,
         hover_tint: theme::ROSE,
         on_press: {
             let bus = bus.clone();

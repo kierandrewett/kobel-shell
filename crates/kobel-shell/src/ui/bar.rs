@@ -3,13 +3,13 @@
 //! Layout ports the AGS `centerbox.bar`:
 //!   - Left:  launcher icon button -> Launcher, then the focused-window title.
 //!   - Center: clock+date button -> Calendar.
-//!   - Right: status pill (speaker/battery) -> QuickSettings, bell -> Drawer,
+//!   - Right: status pill (wifi/speaker/battery) -> QuickSettings, bell -> Drawer,
 //!            power -> Session.
 //!
 //! Sizing/colors come from [`crate::theme`]; surface toggles go through the
-//! [`ShellBus`]. Wi-Fi glyph and tray are intentionally omitted: kobel-services
-//! ships gnoblin/audio/battery only, so there is no network/tray state to read
-//! yet (see the module TODOs).
+//! [`ShellBus`]. The status pill's Wi-Fi glyph is the anomaly segment (ags
+//! `.net-icon`): AMBER while gnoblin is disconnected. Speaker and battery read
+//! audio/battery snapshots; the tray row renders SNI items.
 
 use std::time::Duration;
 
@@ -20,15 +20,15 @@ use freya_engine::prelude::AlphaType;
 use torin::prelude::{Alignment, Content, Position, Size};
 
 use kobel_services::{
-    AudioSnapshot, BatterySnapshot, Command, GnoblinSnapshot, NotifdSnapshot, TrayIcon, TrayItem,
-    TraySnapshot,
+    AudioSnapshot, BatterySnapshot, Command, GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot,
+    TrayIcon, TrayItem, TraySnapshot,
 };
 
 use super::chip::{HoverShape, hover_button, use_hover};
 use super::notifications::badge_text;
 use super::{
     AppIcon, ICON_APP, ICON_BATTERY, ICON_BELL, ICON_MAGNIFIER, ICON_POWER, ICON_SPEAKER_MUTE,
-    ICON_SPEAKER_WAVE, IconButton, icon,
+    ICON_SPEAKER_WAVE, ICON_WIFI, ICON_WIFI_OFF, IconButton, icon,
 };
 use crate::manager::{ShellBus, ShellMsg, SurfaceKey};
 use crate::theme;
@@ -200,9 +200,10 @@ impl Component for ClockButton {
 // -------------------------------------------------------------------------
 
 /// Status pill -> QuickSettings (ags/widget/Bar.tsx `StatusPill`). A PANEL2 pill
-/// carrying the speaker glyph (volume/mute) and, when a battery is present, its
-/// percentage. The glyph tints AMBER while gnoblin is disconnected; hover lifts
-/// the pill to CHIP.
+/// carrying the Wi-Fi glyph, the speaker glyph (volume/mute), and, when a battery
+/// is present, its percentage. The Wi-Fi glyph is the anomaly segment (ags
+/// `.net-icon`): it tints AMBER while gnoblin is disconnected; hover lifts the
+/// pill to CHIP.
 #[derive(PartialEq)]
 struct StatusPill;
 
@@ -212,6 +213,7 @@ impl Component for StatusPill {
         let audio = use_consume::<State<AudioSnapshot>>();
         let battery = use_consume::<State<BatterySnapshot>>();
         let gnoblin = use_consume::<State<GnoblinSnapshot>>();
+        let network = use_consume::<State<NetworkSnapshot>>();
         let hover = use_hover();
 
         let (muted, volume) = {
@@ -224,14 +226,24 @@ impl Component for StatusPill {
             (b.present, b.percentage)
         };
 
-        // Speaker glyph tracks volume/mute; the tint (not the glyph) carries the
-        // gnoblin-disconnected anomaly as AMBER.
+        // Speaker glyph tracks volume/mute; the Wi-Fi glyph is the anomaly
+        // segment (ags `.net-icon`): its tint goes AMBER while gnoblin is
+        // disconnected. Speaker and battery stay MUT.
+        let (net_available, net_enabled) = {
+            let n = network.read();
+            (n.available, n.enabled)
+        };
         let speaker = if muted || volume <= 0.0 {
             ICON_SPEAKER_MUTE
         } else {
             ICON_SPEAKER_WAVE
         };
-        let tint = if connected { theme::MUT } else { theme::AMBER };
+        let wifi = if net_available && net_enabled {
+            ICON_WIFI
+        } else {
+            ICON_WIFI_OFF
+        };
+        let net_tint = if connected { theme::MUT } else { theme::AMBER };
 
         let mut pill = hover_button(
             hover,
@@ -241,7 +253,8 @@ impl Component for StatusPill {
             theme::CHIP.rgb().into(),
             move |_| bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings)),
         )
-        .child(icon(speaker, 16.0, tint));
+        .child(icon(wifi, 16.0, net_tint))
+        .child(icon(speaker, 16.0, theme::MUT));
 
         if present {
             pill = pill.child(
@@ -249,7 +262,7 @@ impl Component for StatusPill {
                     .horizontal()
                     .cross_align(Alignment::Center)
                     .spacing(6.0)
-                    .child(icon(ICON_BATTERY, 16.0, tint))
+                    .child(icon(ICON_BATTERY, 16.0, theme::MUT))
                     .child(
                         label()
                             .text(format!("{}%", percentage.round() as i64))

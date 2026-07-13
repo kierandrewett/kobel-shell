@@ -76,6 +76,7 @@ pub const ICON_RESTART: &[u8] = shell_icon!("kobel-restart-symbolic.svg");
 /// Quick-settings glyphs (chip grid, sliders, drill headers, gnoblin banner).
 /// All ship under ags/icons and tint via `currentColor`.
 pub const ICON_WIFI: &[u8] = shell_icon!("kobel-wifi-symbolic.svg");
+pub const ICON_WIFI_OFF: &[u8] = shell_icon!("kobel-wifi-off-symbolic.svg");
 pub const ICON_BLUETOOTH: &[u8] = shell_icon!("kobel-bluetooth-symbolic.svg");
 pub const ICON_BOLT: &[u8] = shell_icon!("kobel-bolt-symbolic.svg");
 pub const ICON_BELL_SLASH: &[u8] = shell_icon!("kobel-bell-slash-symbolic.svg");
