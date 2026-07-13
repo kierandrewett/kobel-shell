@@ -13,15 +13,21 @@ use tokio::sync::oneshot;
 mod apps;
 mod audio;
 mod battery;
+mod bluetooth;
 mod exec;
 mod gnoblin;
 mod mpris;
+mod network;
+mod sysctl;
 
 pub use audio::{AudioSnapshot, AudioStream};
 pub use battery::BatterySnapshot;
 pub use gnoblin::{GnoblinSnapshot, GnoblinWindow};
 pub use apps::{AppEntry, AppsSnapshot};
 pub use mpris::{MediaSnapshot, PlayerInfo};
+pub use bluetooth::{BluetoothSnapshot, BtDevice};
+pub use network::{AccessPointInfo, NetworkSnapshot};
+pub use sysctl::{BrightnessSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot};
 
 use audio::{AudioCommand, AudioMsg};
 use gnoblin::GnoblinCommand;
@@ -36,6 +42,11 @@ pub enum ServiceEvent {
     Battery(BatterySnapshot),
     Apps(apps::AppsSnapshot),
     Media(mpris::MediaSnapshot),
+    Network(network::NetworkSnapshot),
+    Bluetooth(bluetooth::BluetoothSnapshot),
+    Brightness(sysctl::BrightnessSnapshot),
+    Power(sysctl::PowerSnapshot),
+    Settings(sysctl::SettingsSnapshot),
 }
 
 /// A request routed to the owning service. Fire-and-forget.
@@ -75,6 +86,24 @@ pub enum Command {
     ReloadScripts,
     /// gnoblin: reload one extension by uuid (org.gnoblin.Shell.ReloadExtension).
     ReloadExtension(String),
+    /// network: enable/disable Wi-Fi.
+    SetWifiEnabled(bool),
+    /// network: activate a known/open access point by ssid.
+    ConnectWifi(String),
+    /// bluetooth: power the adapter on/off.
+    SetBluetoothPowered(bool),
+    /// bluetooth: connect a device by address.
+    ConnectBtDevice(String),
+    /// bluetooth: disconnect a device by address.
+    DisconnectBtDevice(String),
+    /// brightness: set the backlight level (0.0..=1.0 of max).
+    SetBrightness(f32),
+    /// power: set the active power profile.
+    SetPowerProfile(PowerProfile),
+    /// settings: toggle the GNOME dark style.
+    SetDarkStyle(bool),
+    /// settings: toggle GNOME night light.
+    SetNightLight(bool),
 }
 
 /// A session-control verb, executed by the exec service (docs/FREYA-PLAN.md
@@ -251,6 +280,18 @@ async fn run(
                 }
                 Command::ReloadExtension(uuid) => {
                     let _ = gnoblin_tx.send(GnoblinCommand::ReloadExtension(uuid));
+                }
+                // Routed once the phase-5 service tasks land.
+                other @ (Command::SetWifiEnabled(_)
+                | Command::ConnectWifi(_)
+                | Command::SetBluetoothPowered(_)
+                | Command::ConnectBtDevice(_)
+                | Command::DisconnectBtDevice(_)
+                | Command::SetBrightness(_)
+                | Command::SetPowerProfile(_)
+                | Command::SetDarkStyle(_)
+                | Command::SetNightLight(_)) => {
+                    tracing::warn!("[services] command not yet routed: {other:?}");
                 }
             }
         }
