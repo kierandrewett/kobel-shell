@@ -33,6 +33,7 @@ use ragnarok::{EventsExecutorRunner, EventsMeasurerRunner, NodesState};
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use torin::prelude::Size2D;
+use wayland_client::protocol::wl_output::WlOutput;
 use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
@@ -98,6 +99,11 @@ pub(crate) struct FreyaLayerSurface {
     fractional: Option<WpFractionalScaleV1>,
     pub(crate) layer: LayerSurface,
     wl_surface: WlSurface,
+    /// The output this surface is bound to, if any. Recorded so the host can find
+    /// and tear down every surface for a destroyed output (see conn.rs
+    /// output_destroyed). `None` for a compositor-placed (output-less) surface. A
+    /// plain proxy handle -- dropping it sends nothing, so it needs no Drop ordering.
+    pub(crate) output: Option<WlOutput>,
 }
 
 /// Content-sizing state for a surface: it keeps a fixed logical `width` and sizes
@@ -254,6 +260,9 @@ impl FreyaLayerSurface {
             fractional: None,
             layer,
             wl_surface,
+            // Set by the host after construction (create_surface_impl) once the
+            // bound output is known; new() is output-agnostic.
+            output: None,
         };
         // Build the initial tree and mount the app (spawns animations, etc.).
         surface.process();
@@ -347,7 +356,7 @@ impl FreyaLayerSurface {
         match &self.viewport {
             Some(vp) => {
                 let (lw, lh) = self.logical_size;
-                if lw > 0 && lh > 0 {
+                if lw > 0 && lh > 0 && lw <= i32::MAX as u32 && lh <= i32::MAX as u32 {
                     vp.set_destination(lw as i32, lh as i32);
                     tracing::info!(
                         "[host] surface {:?} viewport destination {lw}x{lh} (buffer_scale=1)",
@@ -377,7 +386,13 @@ impl FreyaLayerSurface {
     /// a bar anchored to both horizontal edges) keeps the current logical size for
     /// that axis. The Host owns the `configured` flag and EGL surface creation.
     pub(crate) fn on_configure(&mut self, new_size: (u32, u32)) {
-        let (cw, ch) = new_size;
+        // Sanitize the compositor-provided size: a layer-surface axis always fits in
+        // i32, so a value beyond i32::MAX (a negative int arriving as u32, which a
+        // just-appeared output can send while its geometry is still settling) is
+        // treated as unspecified (0) so we fall back below rather than hand
+        // wp_viewport a negative destination -- a fatal protocol error (see the
+        // hotplug lifecycle work). A correct configure follows once geometry settles.
+        let (cw, ch) = (sane_axis(new_size.0), sane_axis(new_size.1));
         let width = if cw != 0 { cw } else { self.logical_size.0 };
         // A zero height axis means "you choose": for a content-sized surface fall
         // back to the height we last requested, otherwise keep the current logical
@@ -577,6 +592,15 @@ impl Drop for FreyaLayerSurface {
 /// a numerator over 120 (so scale 1.5 == 180/120).
 const SCALE_DENOM: u32 = 120;
 
+/// Sanitize a compositor-provided configure axis. Layer-surface sizes always fit in
+/// i32; a value beyond i32::MAX is a negative int arriving as u32 (a just-appeared
+/// output can send one while its logical geometry is still settling), so it is mapped
+/// to 0 ("unspecified") and on_configure falls back to the current/requested size --
+/// never passing wp_viewport a negative destination, which is a fatal protocol error.
+fn sane_axis(v: u32) -> u32 {
+    if v > i32::MAX as u32 { 0 } else { v }
+}
+
 /// Physical pixels for a logical dimension at a scale numerator over 120. Uses the
 /// protocol's round-half-away-from-zero (round(logical * num / 120)), computed in
 /// integer math so it matches the compositor exactly; floors at 1 so a zero axis
@@ -599,7 +623,20 @@ fn content_logical_height(content_phys: f32, scale: f64, max_height: u32) -> u32
 
 #[cfg(test)]
 mod tests {
-    use super::{SCALE_DENOM, content_logical_height, physical_dim};
+    use super::{SCALE_DENOM, content_logical_height, physical_dim, sane_axis};
+
+    #[test]
+    fn sane_axis_maps_out_of_i32_range_to_zero() {
+        // In-range sizes pass through unchanged.
+        assert_eq!(sane_axis(0), 0);
+        assert_eq!(sane_axis(1280), 1280);
+        assert_eq!(sane_axis(i32::MAX as u32), i32::MAX as u32);
+        // A negative int arriving as u32 (compositor bug on an unsettled output) is
+        // treated as unspecified so on_configure falls back instead of crashing.
+        assert_eq!(sane_axis(i32::MAX as u32 + 1), 0);
+        assert_eq!(sane_axis(4294967287), 0); // seen in practice: -9 as u32
+        assert_eq!(sane_axis(u32::MAX), 0);
+    }
 
     #[test]
     fn divides_physical_by_scale_and_rounds_up() {

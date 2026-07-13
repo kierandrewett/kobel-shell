@@ -19,7 +19,7 @@ mod frame;
 mod input;
 mod surface;
 
-pub use conn::{Control, Shell};
+pub use conn::{Control, OutputControl, Shell};
 pub use surface::SurfaceContexts;
 
 // Re-export the layer-shell config vocabulary so callers need not depend on sctk.
@@ -40,6 +40,71 @@ impl SurfaceId {
     pub const fn new(raw: u32) -> Self {
         Self(raw)
     }
+}
+
+/// Opaque, stable identifier for a connected output (`wl_output`). Derived from the
+/// output's protocol object id, so it stays stable for the output's lifetime and two
+/// handles to the same output compare equal. Minted by the host; [`OutputId::new`]
+/// exists so callers can build and unit-test per-output registries without a live
+/// compositor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct OutputId(pub(crate) u32);
+
+impl OutputId {
+    /// Construct an output id from its raw value (the wl_output protocol object id).
+    /// Real ids are minted by the host; this exists for unit tests.
+    pub const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// The raw wl_output protocol object id.
+    pub const fn raw(self) -> u32 {
+        self.0
+    }
+}
+
+/// An output lifecycle event delivered to the handler installed with
+/// [`Shell::on_output`]. The host fires [`OutputEvent::Added`] for every output --
+/// those present at startup AND those hotplugged at runtime -- so the app has one
+/// mount path; [`OutputEvent::SurfaceClosed`] when the compositor retires a single
+/// surface (its output may stay live); and [`OutputEvent::Removed`] once an output
+/// goes away.
+#[derive(Clone, Debug)]
+pub enum OutputEvent {
+    /// An output became available (present at startup or hotplugged). Mount the
+    /// per-output surfaces for it via [`OutputControl::create_on`].
+    Added(OutputId),
+    /// The compositor closed exactly ONE surface (wlr-layer-shell `closed`). Per the
+    /// protocol this retires a single surface and does NOT imply its output died --
+    /// the compositor MAY close a surface while the output stays live, so mutter's
+    /// close-before-global ordering is never load-bearing. The host has already
+    /// dropped that surface (its safe Drop order) and fixed keyboard focus; the app
+    /// must drop just that surface's bookkeeping (its fan-out State, keyfeed, toast
+    /// registration) WITHOUT dropping the whole output bundle. `output` identifies the
+    /// surface's bound output (`None` for a compositor-placed surface) -- identity, not
+    /// a liveness guarantee; use [`OutputControl::remaining`] for the outputs live at
+    /// handler time. A closed singleton should be recreated on the primary output (see
+    /// the shell's handler).
+    SurfaceClosed {
+        /// The output the closed surface was bound to (`None` if output-less).
+        output: Option<OutputId>,
+        /// The surface the compositor retired.
+        surface: SurfaceId,
+    },
+    /// An output was removed. The host has torn down every surface STILL bound to it
+    /// (each via its safe Drop order); `retired` lists their ids. Surfaces the
+    /// compositor pre-closed individually were already delivered via
+    /// [`OutputEvent::SurfaceClosed`] and are NOT repeated here, so `retired` is the
+    /// REMAINING set (possibly empty) -- the app drops the whole output bundle
+    /// regardless. If any retired surface was a singleton bound to this output,
+    /// rebind it to a surviving output (see [`OutputControl::remaining`]).
+    Removed {
+        /// The output that went away.
+        output: OutputId,
+        /// The ids of the surfaces still bound to the output at removal (the ones not
+        /// already retired via [`OutputEvent::SurfaceClosed`]).
+        retired: Vec<SurfaceId>,
+    },
 }
 
 /// A thread-safe handle for waking the shell's event loop from a producer thread

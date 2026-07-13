@@ -11,6 +11,7 @@
 //   * When nothing wants to redraw, no frame callbacks are outstanding and the loop
 //     blocks. sweep() runs after every dispatch (wl event or ping).
 
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::task::Waker;
 
@@ -39,7 +40,7 @@ use smithay_client_toolkit::{
 use torin::prelude::CursorPoint;
 use wayland_client::globals::registry_queue_init;
 use wayland_client::protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface};
-use wayland_client::{Connection, Dispatch, QueueHandle};
+use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::{
     self, WpFractionalScaleManagerV1,
 };
@@ -52,7 +53,9 @@ use wayland_protocols::wp::viewporter::client::wp_viewporter::{self, WpViewporte
 use crate::egl::Egl;
 use crate::frame::runner_waker;
 use crate::surface::{FreyaLayerSurface, SurfaceContexts};
-use crate::{KeyPress, LoopWaker, Result, SurfaceConfig, SurfaceId, SurfaceSize, input};
+use crate::{
+    KeyPress, LoopWaker, OutputEvent, OutputId, Result, SurfaceConfig, SurfaceId, SurfaceSize, input,
+};
 
 /// The shell host. Create it, add surfaces, then `run()` the event loop.
 pub struct Shell {
@@ -143,6 +146,8 @@ impl Shell {
             exit: false,
             key_handler: None,
             shell_tick: None,
+            output_handler: None,
+            announced_outputs: HashSet::new(),
         };
 
         Ok(Self { event_loop, host })
@@ -209,6 +214,23 @@ impl Shell {
     /// Freya tree, and can drive the shell via [`Control`] (exit, kb interactivity).
     pub fn on_key(&mut self, handler: impl FnMut(KeyPress, &mut Control<'_>) + 'static) {
         self.host.key_handler = Some(Box::new(handler));
+    }
+
+    /// Install the per-output mount handler and immediately drive it for every output
+    /// already present, then keep driving it as outputs are hotplugged/removed at
+    /// runtime. This is the single mount path for output-bound chrome (bar/dock/osd/
+    /// toasts) and singletons: [`OutputEvent::Added`] fires once per output (startup
+    /// AND hotplug), [`OutputEvent::Removed`] once an output goes away (after the host
+    /// has already torn its surfaces down). See docs/FREYA-PLAN.md sections 2.1, 6.
+    ///
+    /// Register it BEFORE [`Shell::run`]; the eager pass here mounts the startup
+    /// outputs synchronously so the caller can wire the manager against them.
+    pub fn on_output(
+        &mut self,
+        handler: impl FnMut(OutputEvent, &mut OutputControl<'_>) + 'static,
+    ) {
+        self.host.output_handler = Some(Box::new(handler));
+        self.host.announce_present_outputs();
     }
 
     /// Run the event loop until exit.
@@ -292,6 +314,48 @@ impl Control<'_> {
     }
 }
 
+/// Handle passed to the [`Shell::on_output`] handler for mounting per-output
+/// surfaces. Wraps the host so the handler can create surfaces bound to a specific
+/// output and enumerate the outputs that survive a removal.
+pub struct OutputControl<'a> {
+    host: &'a mut Host,
+    /// The output being removed (for an [`OutputEvent::Removed`]). sctk keeps the
+    /// removed proxy in its `OutputState` until the output_destroyed callback
+    /// returns, so [`OutputControl::remaining`] filters it out. `None` for Added.
+    removing: Option<wl_output::WlOutput>,
+}
+
+impl OutputControl<'_> {
+    /// Create a layer surface bound to `output`, rendering `app`; `setup` registers
+    /// the surface's app-level root contexts. The single-output analogue of
+    /// [`Shell::create_surface_on_outputs`]: mounts one output's chrome, or (re)binds
+    /// a singleton to a chosen output. Errors if `output` is no longer present.
+    pub fn create_on<C>(
+        &mut self,
+        output: OutputId,
+        config: SurfaceConfig,
+        setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
+        app: impl Fn() -> Element + 'static,
+    ) -> Result<(SurfaceId, C)> {
+        let Some(wl) = self.host.wl_output_for(output) else {
+            return Err(anyhow!("create_on: output {output:?} is no longer present"));
+        };
+        self.host.create_surface_impl(config, Some(&wl), setup, app)
+    }
+
+    /// The outputs currently present, EXCLUDING the one being removed (if this is a
+    /// Removed event). Use the first entry as the rebind target for singletons whose
+    /// host output died (the simple primary-death policy, docs/FREYA-PLAN.md 2.1).
+    pub fn remaining(&self) -> Vec<OutputId> {
+        self.host
+            .output_state
+            .outputs()
+            .filter(|o| self.removing.as_ref() != Some(o))
+            .map(|o| output_id_of(&o))
+            .collect()
+    }
+}
+
 /// The single sctk dispatch + calloop data type. Holds all surfaces and shared state.
 struct Host {
     registry_state: RegistryState,
@@ -323,6 +387,13 @@ struct Host {
     exit: bool,
     key_handler: Option<Box<dyn FnMut(KeyPress, &mut Control<'_>)>>,
     shell_tick: Option<Box<dyn FnMut(&mut Control<'_>)>>,
+    /// Per-output mount handler (see [`Shell::on_output`]). Taken via `.take()` while
+    /// it runs so the host can be handed to it as an [`OutputControl`].
+    output_handler: Option<Box<dyn FnMut(OutputEvent, &mut OutputControl<'_>)>>,
+    /// Outputs we have already fired [`OutputEvent::Added`] for. Guards against
+    /// double-mounting a startup output whose sctk `new_output` (fired on its first
+    /// `Done`) lands after the eager `on_output` announce pass.
+    announced_outputs: HashSet<OutputId>,
 }
 
 impl Host {
@@ -378,6 +449,9 @@ impl Host {
         // configure. The EGL buffer is created later, on that configure.
         let (mut surface, extra) =
             FreyaLayerSurface::new(id, layer, (init_w, init_h), self.waker.clone(), app, setup, content);
+        // Record the bound output so output_destroyed can find every surface to tear
+        // down when this output goes away (None for a compositor-placed surface).
+        surface.output = output.cloned();
 
         // Fractional scaling: attach a wp_fractional_scale_v1 (its preferred_scale
         // event routes back to this surface by the SurfaceId udata) and a wp_viewport
@@ -419,7 +493,9 @@ impl Host {
         app: impl Fn() -> Element + Clone + 'static,
     ) -> Result<Vec<(SurfaceId, C)>> {
         // OutputState::bind_all made the proxies available at registry init; no
-        // roundtrip needed. Hotplug (new/destroyed outputs at runtime) is a TODO.
+        // roundtrip needed. This mounts a fixed snapshot of the outputs present now;
+        // runtime hotplug is handled by [`Shell::on_output`] instead (which the shell
+        // uses), so this convenience path is not the lifecycle-aware one.
         let outputs: Vec<wl_output::WlOutput> = self.output_state.outputs().collect();
         if outputs.is_empty() {
             tracing::warn!(
@@ -457,6 +533,94 @@ impl Host {
             );
         }
         self.create_surface_impl(config, primary.as_ref(), setup, app)
+    }
+
+    /// Resolve an [`OutputId`] back to its live `wl_output` proxy, if still present.
+    fn wl_output_for(&self, id: OutputId) -> Option<wl_output::WlOutput> {
+        self.output_state.outputs().find(|o| output_id_of(o) == id)
+    }
+
+    /// Fire [`OutputEvent::Added`] for every output present now. Called once by
+    /// [`Shell::on_output`] so the startup outputs mount synchronously before the
+    /// loop runs; sctk's later `new_output` for those same outputs is deduped by
+    /// `announced_outputs`.
+    fn announce_present_outputs(&mut self) {
+        let present: Vec<wl_output::WlOutput> = self.output_state.outputs().collect();
+        for output in present {
+            self.announce_added(&output);
+        }
+    }
+
+    /// Mark `output` announced and fire [`OutputEvent::Added`] for it, unless it was
+    /// already announced (startup output whose `new_output` arrives after the eager
+    /// pass). Idempotent per output.
+    fn announce_added(&mut self, output: &wl_output::WlOutput) {
+        let id = output_id_of(output);
+        if !self.announced_outputs.insert(id) {
+            return;
+        }
+        tracing::info!(
+            "[host] output {id:?} added; {} output(s) present",
+            self.output_state.outputs().count()
+        );
+        self.dispatch_output(OutputEvent::Added(id), None);
+    }
+
+    /// Tear down every surface bound to `target` (already-departed output), then fire
+    /// [`OutputEvent::Removed`] so the app drops its matching bookkeeping. No-op if
+    /// the output was never announced.
+    fn destroy_output(&mut self, output: &wl_output::WlOutput) {
+        let id = output_id_of(output);
+        if !self.announced_outputs.remove(&id) {
+            return;
+        }
+        let retired = self.retire_output_surfaces(id);
+        tracing::info!(
+            "[host] output {id:?} removed; retired {} surface(s), {} output(s) remain",
+            retired.len(),
+            self.output_state.outputs().count().saturating_sub(1),
+        );
+        self.dispatch_output(OutputEvent::Removed { output: id, retired }, Some(output.clone()));
+    }
+
+    /// Remove every surface bound to `target` from `self.surfaces`, in the safe Drop
+    /// order (each `remove()` runs FreyaLayerSurface::drop: viewport/fractional
+    /// destroy, then egl_surface, then layer -> wl_surface). Fixes up `kb_focus` and
+    /// returns the retired ids. A retired surface may still have an in-flight wl frame
+    /// callback; once its wl_surface is gone the callback is orphaned server-side and
+    /// CompositorHandler::frame already guards with index_of(), so no mid-frame panic.
+    fn retire_output_surfaces(&mut self, target: OutputId) -> Vec<SurfaceId> {
+        let bindings: Vec<(SurfaceId, Option<OutputId>)> = self
+            .surfaces
+            .iter()
+            .map(|s| (s.id, s.output.as_ref().map(output_id_of)))
+            .collect();
+        let (doomed, new_focus) = retire_plan(&bindings, self.kb_focus, target);
+        if doomed.is_empty() {
+            return Vec::new();
+        }
+        let retired: Vec<SurfaceId> = doomed.iter().map(|&i| self.surfaces[i].id).collect();
+        self.kb_focus = new_focus;
+        // Remove high-to-low so the lower indices stay valid as we go.
+        for &i in doomed.iter().rev() {
+            let s = self.surfaces.remove(i);
+            tracing::info!("[host] retired surface {:?} (output {target:?} gone)", s.id);
+        }
+        retired
+    }
+
+    /// Run the output handler for one event, handing it an [`OutputControl`]. Taken
+    /// out and restored around the call (like key_handler/shell_tick) so the host can
+    /// be borrowed by the control. No-op when no handler is installed.
+    fn dispatch_output(&mut self, event: OutputEvent, removing: Option<wl_output::WlOutput>) {
+        let Some(mut handler) = self.output_handler.take() else {
+            return;
+        };
+        {
+            let mut control = OutputControl { host: self, removing };
+            handler(event, &mut control);
+        }
+        self.output_handler = Some(handler);
     }
 
     fn index_of(&self, surface: &wl_surface::WlSurface) -> Option<usize> {
@@ -708,7 +872,12 @@ impl OutputHandler for Host {
         &mut self.output_state
     }
 
-    fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
+    fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
+        // Fires on the output's first `Done`. Startup outputs were already announced
+        // eagerly by Shell::on_output, so this only mounts genuinely-new (hotplugged)
+        // outputs; announce_added dedupes via announced_outputs.
+        self.announce_added(&output);
+    }
 
     fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
 
@@ -716,25 +885,43 @@ impl OutputHandler for Host {
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _output: wl_output::WlOutput,
+        output: wl_output::WlOutput,
     ) {
+        // sctk still lists `output` in OutputState until this returns; destroy_output
+        // tears down its surfaces and notifies the app (which excludes it from
+        // OutputControl::remaining when rebinding singletons).
+        self.destroy_output(&output);
     }
 }
 
 impl LayerShellHandler for Host {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
-        if let Some(idx) =
-            self.surfaces.iter().position(|s| s.wl_surface() == layer.wl_surface())
-        {
-            tracing::info!("[host] surface {:?} closed by compositor", self.surfaces[idx].id);
-            self.surfaces.remove(idx);
-            // Fix up focus index after removal.
-            match self.kb_focus {
-                Some(f) if f == idx => self.kb_focus = None,
-                Some(f) if f > idx => self.kb_focus = Some(f - 1),
-                _ => {}
-            }
-        }
+        let Some(idx) = self.surfaces.iter().position(|s| s.wl_surface() == layer.wl_surface())
+        else {
+            return;
+        };
+        let id = self.surfaces[idx].id;
+        let output = self.surfaces[idx].output.as_ref().map(output_id_of);
+        tracing::info!("[host] surface {id:?} closed by compositor");
+        // Per wlr-layer-shell, `closed` retires exactly ONE surface. The compositor MAY
+        // close a surface while its output stays alive, so this is NOT output death --
+        // mutter's close-before-global ordering (an output's surfaces closed before its
+        // wl_output global is dropped) must not be load-bearing. Drop only this surface
+        // (FreyaLayerSurface::drop runs the documented teardown: viewport/fractional
+        // destroy, then egl_surface, then layer -> wl_surface), fix keyboard focus by
+        // id, then notify the app of the single retirement. Real output death stays
+        // solely in output_destroyed -> destroy_output -> OutputEvent::Removed.
+        // Re-resolve keyboard focus BY ID (never by a shifted index) so the removal
+        // never mis-points it -- the same id-based fixup a bulk retire uses.
+        let ids: Vec<SurfaceId> = self.surfaces.iter().map(|s| s.id).collect();
+        self.kb_focus = focus_after_single_close(&ids, self.kb_focus, idx);
+        self.surfaces.remove(idx);
+        // Fire synchronously, in this dispatch, AFTER the surface is dropped, so the app
+        // drops the closed surface's fan-out State this same turn -- never fanning a
+        // service snapshot into a dead State. removing=None: no output is going away, so
+        // OutputControl::remaining lists every current output. A singleton handler may
+        // recreate a replacement here, so re-check emptiness afterwards.
+        self.dispatch_output(OutputEvent::SurfaceClosed { output, surface: id }, None);
         if self.surfaces.is_empty() {
             self.exit = true;
         }
@@ -1020,5 +1207,164 @@ impl Dispatch<WpFractionalScaleV1, SurfaceId> for Host {
                 scale as f64 / 120.0,
             );
         }
+    }
+}
+
+/// Stable [`OutputId`] for a `wl_output`: its protocol object id. Two proxy clones of
+/// the same output share the id, and it is stable for the output's lifetime.
+fn output_id_of(output: &wl_output::WlOutput) -> OutputId {
+    OutputId(output.id().protocol_id())
+}
+
+/// Pure teardown plan for a destroyed output. Given each live surface's
+/// `(id, bound-output)` in surface order, the current keyboard-focus index, and the
+/// output going away, return the indices to remove (ascending) and the focus index
+/// that survives the removal (`None` if the focused surface is among the removed).
+/// Extracted from [`Host::retire_output_surfaces`] so the index/focus bookkeeping is
+/// unit-testable without a live compositor.
+fn retire_plan(
+    bindings: &[(SurfaceId, Option<OutputId>)],
+    focus: Option<usize>,
+    target: OutputId,
+) -> (Vec<usize>, Option<usize>) {
+    let doomed: Vec<usize> = bindings
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, out))| *out == Some(target))
+        .map(|(i, _)| i)
+        .collect();
+    let new_focus = focus.and_then(|f| {
+        if doomed.contains(&f) {
+            return None;
+        }
+        let below = doomed.iter().filter(|&&i| i < f).count();
+        Some(f - below)
+    });
+    (doomed, new_focus)
+}
+
+/// New keyboard-focus index after the single surface at `removed` is dropped from a
+/// surface list, resolved BY ID so a shifted index never mis-points. `ids` are the
+/// surface ids in order BEFORE the removal; returns the focused surface's index in
+/// the post-removal list, or `None` if the focused surface WAS the removed one. This
+/// is the exact id-based fixup LayerShellHandler::closed applies, extracted so it is
+/// unit-testable without a live compositor (companion to [`retire_plan`]).
+fn focus_after_single_close(
+    ids: &[SurfaceId],
+    focus: Option<usize>,
+    removed: usize,
+) -> Option<usize> {
+    let focused_id = focus.and_then(|i| ids.get(i)).copied();
+    focused_id.and_then(|fid| {
+        ids.iter()
+            .enumerate()
+            .filter_map(|(i, &id)| (i != removed).then_some(id))
+            .position(|id| id == fid)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{focus_after_single_close, retire_plan};
+    use crate::{OutputId, SurfaceId};
+
+    fn sid(n: u32) -> SurfaceId {
+        SurfaceId::new(n)
+    }
+    fn oid(n: u32) -> OutputId {
+        OutputId::new(n)
+    }
+
+    #[test]
+    fn retires_only_surfaces_bound_to_the_target_output() {
+        // Two outputs, two surfaces each, interleaved, plus one output-less surface.
+        let bindings = [
+            (sid(0), Some(oid(1))),
+            (sid(1), Some(oid(2))),
+            (sid(2), Some(oid(1))),
+            (sid(3), None),
+            (sid(4), Some(oid(2))),
+        ];
+        let (doomed, _) = retire_plan(&bindings, None, oid(2));
+        // Indices 1 and 4 are bound to output 2, ascending.
+        assert_eq!(doomed, vec![1, 4]);
+    }
+
+    #[test]
+    fn empty_plan_when_no_surface_bound_to_target() {
+        let bindings = [(sid(0), Some(oid(1))), (sid(1), None)];
+        let (doomed, focus) = retire_plan(&bindings, Some(0), oid(9));
+        assert!(doomed.is_empty());
+        // Nothing removed -> focus index unchanged.
+        assert_eq!(focus, Some(0));
+    }
+
+    #[test]
+    fn focus_survives_and_shifts_down_by_removed_below_it() {
+        // Focus is on index 3; indices 1 and 2 (below it) are removed -> focus shifts
+        // down by two to index 1.
+        let bindings = [
+            (sid(0), Some(oid(1))),
+            (sid(1), Some(oid(2))),
+            (sid(2), Some(oid(2))),
+            (sid(3), Some(oid(1))),
+        ];
+        let (doomed, focus) = retire_plan(&bindings, Some(3), oid(2));
+        assert_eq!(doomed, vec![1, 2]);
+        assert_eq!(focus, Some(1));
+    }
+
+    #[test]
+    fn focus_clears_when_the_focused_surface_is_retired() {
+        let bindings = [(sid(0), Some(oid(1))), (sid(1), Some(oid(2)))];
+        let (_, focus) = retire_plan(&bindings, Some(1), oid(2));
+        assert_eq!(focus, None);
+    }
+
+    #[test]
+    fn focus_above_all_removed_is_unchanged() {
+        // Focus on index 0; a later surface (index 2) is removed -> index 0 unchanged.
+        let bindings = [
+            (sid(0), Some(oid(1))),
+            (sid(1), Some(oid(1))),
+            (sid(2), Some(oid(2))),
+        ];
+        let (doomed, focus) = retire_plan(&bindings, Some(0), oid(2));
+        assert_eq!(doomed, vec![2]);
+        assert_eq!(focus, Some(0));
+    }
+
+    #[test]
+    fn single_close_clears_focus_when_the_focused_surface_is_removed() {
+        let ids = [sid(0), sid(1), sid(2)];
+        assert_eq!(focus_after_single_close(&ids, Some(1), 1), None);
+    }
+
+    #[test]
+    fn single_close_shifts_focus_down_when_a_lower_surface_is_removed() {
+        // Focus on index 2 (sid 2); index 0 removed -> sid 2 is now at index 1.
+        let ids = [sid(0), sid(1), sid(2)];
+        assert_eq!(focus_after_single_close(&ids, Some(2), 0), Some(1));
+    }
+
+    #[test]
+    fn single_close_keeps_focus_when_a_higher_surface_is_removed() {
+        // Focus on index 0 (sid 0); index 2 removed -> sid 0 stays at index 0.
+        let ids = [sid(0), sid(1), sid(2)];
+        assert_eq!(focus_after_single_close(&ids, Some(0), 2), Some(0));
+    }
+
+    #[test]
+    fn single_close_with_no_focus_stays_none() {
+        let ids = [sid(0), sid(1)];
+        assert_eq!(focus_after_single_close(&ids, None, 0), None);
+    }
+
+    #[test]
+    fn single_close_with_stale_focus_index_stays_none() {
+        // A focus index past the end (stale bookkeeping) resolves to no surface, so
+        // the fixup yields None rather than panicking or mis-pointing.
+        let ids = [sid(0), sid(1)];
+        assert_eq!(focus_after_single_close(&ids, Some(5), 0), None);
     }
 }
