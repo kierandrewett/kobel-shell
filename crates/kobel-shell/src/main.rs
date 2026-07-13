@@ -270,18 +270,23 @@ fn main() -> anyhow::Result<()> {
 
     // Dock: per-output, bottom-anchored, `gap` up. Width is computed from the pin
     // count (pins + media tile + separator + paddings/spacing via tokens); top layer,
-    // NO exclusive zone (the dock floats over tiled windows), no keyboard.
+    // no keyboard. The exclusive zone reserves gap + dock height at the bottom edge
+    // so maximized/tiled windows sit ABOVE the floating dock instead of extending
+    // under it (mirrors the bar's margin + slab pattern). This is a deliberate change
+    // from the AGS dock, which floated with no exclusive zone.
     let dock_pin_count = ui::dock::pins().len();
+    let dock_h = ui::dock::dock_height(&tokens);
     let dock_cfg = SurfaceConfig::new(
         "kobel-dock",
         SurfaceSize::Exact {
             width: ui::dock::dock_width(&tokens, dock_pin_count),
-            height: ui::dock::dock_height(&tokens),
+            height: dock_h,
         },
     )
     .layer(Layer::Top)
     .anchor(Anchor::BOTTOM)
     .margins(Margins { top: 0, right: 0, bottom: tokens.gap as i32, left: 0 })
+    .exclusive_zone(tokens.gap as i32 + dock_h as i32)
     .keyboard_interactivity(KeyboardInteractivity::None);
 
     // Toasts: per-output, top-right, below the bar (ags marginTop 58 / marginRight

@@ -17,10 +17,17 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::ServiceEvent;
 
-/// Requested icon pixel size for freedesktop theme lookups. SVGs are returned
-/// regardless; for raster themes the crate picks the nearest available size.
+/// Requested icon pixel size for the RASTER fallback theme lookup. The primary
+/// pass prefers a scalable SVG (see [`lookup_icon_name`]); this only applies to
+/// png-only themes/apps, where the crate picks the nearest available size.
 /// Matches the value apps.rs uses for desktop-entry icons.
 const ICON_SIZE: u16 = 64;
+
+/// Size requested for the SVG-preferring first pass. Large so freedesktop-icons'
+/// closest-size match ranks the theme's `scalable` dir ahead of a same-name
+/// fixed-size raster dir. Mirrors apps.rs (`force_svg` alone is directory-order
+/// dependent, so it can still return a PNG that shadows the scalable SVG).
+const SCALABLE_ICON_SIZE: u16 = 512;
 
 /// One StatusNotifierItem as the bar renders it.
 #[derive(Debug, Clone, PartialEq)]
@@ -218,20 +225,36 @@ fn resolve_named_icon(name: &str, theme_path: Option<&str>, theme: Option<&str>)
         return Some(found);
     }
 
-    // Standard freedesktop theme lookup (Inherits -> hicolor -> pixmaps handled
-    // by the crate). Same shape as apps.rs, kept local to stay in this crate's
-    // assigned files.
-    match theme {
-        Some(theme) => freedesktop_icons::lookup(name)
-            .with_size(ICON_SIZE)
-            .with_scale(1)
-            .with_theme(theme)
-            .find(),
-        None => freedesktop_icons::lookup(name)
-            .with_size(ICON_SIZE)
-            .with_scale(1)
-            .find(),
+    // Standard freedesktop theme lookup, SVG-preferring (Inherits -> hicolor ->
+    // pixmaps fallback handled by the crate). Same shape as apps.rs, kept local to
+    // stay in this crate's assigned files.
+    lookup_icon_name(name, theme)
+}
+
+/// Look up an icon NAME in the freedesktop theme, strongly preferring a scalable
+/// SVG so scaled/HiDPI sessions get a crisp vector instead of a small raster
+/// upscaled by the shell (and again by the compositor). Two passes: a large
+/// `force_svg` request accepted only if it resolved to a `.svg`, then the nearest
+/// raster at [`ICON_SIZE`] for png-only themes. Mirrors apps.rs::lookup_icon_name.
+fn lookup_icon_name(name: &str, theme: Option<&str>) -> Option<PathBuf> {
+    let build = |size: u16, force_svg: bool| {
+        let mut builder = freedesktop_icons::lookup(name).with_size(size).with_scale(1);
+        if let Some(theme) = theme {
+            builder = builder.with_theme(theme);
+        }
+        if force_svg {
+            builder = builder.force_svg();
+        }
+        builder.find()
+    };
+    // Pass 1: prefer a scalable SVG.
+    if let Some(svg) = build(SCALABLE_ICON_SIZE, true)
+        && svg.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+    {
+        return Some(svg);
     }
+    // Pass 2: nearest raster (png-only theme, or a name with no SVG anywhere).
+    build(ICON_SIZE, false)
 }
 
 /// Look for `name` inside an app-provided `IconThemePath`. Handles both the
