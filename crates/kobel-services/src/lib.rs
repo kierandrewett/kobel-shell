@@ -10,16 +10,22 @@ use std::thread::JoinHandle;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::sync::oneshot;
 
+mod apps;
 mod audio;
 mod battery;
 mod gnoblin;
+mod mpris;
 
 pub use audio::{AudioSnapshot, AudioStream};
 pub use battery::BatterySnapshot;
 pub use gnoblin::{GnoblinSnapshot, GnoblinWindow};
+pub use apps::{AppEntry, AppsSnapshot};
+pub use mpris::{MediaSnapshot, PlayerInfo};
 
 use audio::{AudioCommand, AudioMsg};
 use gnoblin::GnoblinCommand;
+use apps::AppsCommand;
+use mpris::MprisCommand;
 
 /// A state change from one of the services. Plain, thread-safe data only.
 #[derive(Debug, Clone)]
@@ -27,6 +33,8 @@ pub enum ServiceEvent {
     Gnoblin(GnoblinSnapshot),
     Audio(AudioSnapshot),
     Battery(BatterySnapshot),
+    Apps(apps::AppsSnapshot),
+    Media(mpris::MediaSnapshot),
 }
 
 /// A request routed to the owning service. Fire-and-forget.
@@ -46,6 +54,14 @@ pub enum Command {
     SetMuted(bool),
     /// audio: set a sink-input (per-app stream) volume by its index.
     SetStreamVolume { id: u32, volume: f32 },
+    /// apps: launch a desktop application by desktop id.
+    LaunchApp(String),
+    /// media: toggle play/pause on the active player.
+    MediaPlayPause,
+    /// media: next track on the active player.
+    MediaNext,
+    /// media: previous track on the active player.
+    MediaPrevious,
 }
 
 /// Entry point. `Services::spawn` starts the background threads and returns a
@@ -159,6 +175,11 @@ async fn run(
     let gnoblin = tokio::spawn(gnoblin::run(event_tx.clone(), gnoblin_rx));
     let battery = tokio::spawn(battery::run(event_tx.clone()));
 
+    let (apps_tx, apps_rx) = unbounded_channel::<AppsCommand>();
+    let apps = tokio::spawn(apps::run(event_tx.clone(), apps_rx));
+    let (mpris_tx, mpris_rx) = unbounded_channel::<MprisCommand>();
+    let mpris = tokio::spawn(mpris::run(event_tx.clone(), mpris_rx));
+
     let router = tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
@@ -186,6 +207,18 @@ async fn run(
                         volume,
                     }));
                 }
+                Command::LaunchApp(id) => {
+                    let _ = apps_tx.send(AppsCommand::Launch(id));
+                }
+                Command::MediaPlayPause => {
+                    let _ = mpris_tx.send(MprisCommand::PlayPause);
+                }
+                Command::MediaNext => {
+                    let _ = mpris_tx.send(MprisCommand::Next);
+                }
+                Command::MediaPrevious => {
+                    let _ = mpris_tx.send(MprisCommand::Previous);
+                }
             }
         }
     });
@@ -195,4 +228,6 @@ async fn run(
     gnoblin.abort();
     battery.abort();
     router.abort();
+    apps.abort();
+    mpris.abort();
 }
