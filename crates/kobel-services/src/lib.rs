@@ -18,7 +18,9 @@ mod exec;
 mod gnoblin;
 mod mpris;
 mod network;
+mod notifd;
 mod sysctl;
+mod tray;
 
 pub use audio::{AudioSnapshot, AudioStream};
 pub use battery::BatterySnapshot;
@@ -28,6 +30,8 @@ pub use mpris::{MediaSnapshot, PlayerInfo};
 pub use bluetooth::{BluetoothSnapshot, BtDevice};
 pub use network::{AccessPointInfo, NetworkSnapshot};
 pub use sysctl::{BrightnessSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot};
+pub use notifd::{NotifdSnapshot, Notification};
+pub use tray::{TrayIcon, TrayItem, TraySnapshot};
 
 use audio::{AudioCommand, AudioMsg};
 use gnoblin::GnoblinCommand;
@@ -50,6 +54,8 @@ pub enum ServiceEvent {
     Brightness(sysctl::BrightnessSnapshot),
     Power(sysctl::PowerSnapshot),
     Settings(sysctl::SettingsSnapshot),
+    Notifd(notifd::NotifdSnapshot),
+    Tray(tray::TraySnapshot),
 }
 
 /// A request routed to the owning service. Fire-and-forget.
@@ -107,6 +113,18 @@ pub enum Command {
     SetDarkStyle(bool),
     /// settings: toggle GNOME night light.
     SetNightLight(bool),
+    /// notifd: set do-not-disturb (toasts suppressed, store still fills).
+    SetDnd(bool),
+    /// notifd: dismiss one notification by id (emits NotificationClosed).
+    CloseNotification(u32),
+    /// notifd: dismiss every stored notification.
+    ClearNotifications,
+    /// notifd: invoke a notification action (emits ActionInvoked).
+    InvokeNotificationAction { id: u32, action_key: String },
+    /// tray: primary-activate an item by address (left click).
+    ActivateTrayItem(String),
+    /// tray: secondary-activate an item by address (middle click).
+    SecondaryActivateTrayItem(String),
 }
 
 /// A session-control verb, executed by the exec service (docs/FREYA-PLAN.md
@@ -320,6 +338,15 @@ async fn run(
                 }
                 Command::SetNightLight(on) => {
                     let _ = settings_tx.send(SettingsCommand::SetNightLight(on));
+                }
+                // Routed once the phase-6 notifd/tray service tasks land.
+                other @ (Command::SetDnd(_)
+                | Command::CloseNotification(_)
+                | Command::ClearNotifications
+                | Command::InvokeNotificationAction { .. }
+                | Command::ActivateTrayItem(_)
+                | Command::SecondaryActivateTrayItem(_)) => {
+                    tracing::warn!("[services] command not yet routed: {other:?}");
                 }
             }
         }
