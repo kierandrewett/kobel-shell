@@ -237,8 +237,12 @@ fn do_press(
     mut generation: State<u64>,
     bus: &ShellBus,
 ) {
-    match decide_press(*armed.peek(), action) {
+    // peek's temporary must not live across the arms (match-scrutinee temporaries
+    // survive the whole match; the arms write `armed`).
+    let armed_now = *armed.peek();
+    match decide_press(armed_now, action) {
         PressOutcome::Arm(target) => {
+            tracing::info!("[session] armed {target:?} (press again to confirm)");
             armed.set(Some(target));
             let this_gen = {
                 *generation.write() += 1;
@@ -263,6 +267,7 @@ fn do_press(
 
 /// Clear an armed confirm without firing (Esc while armed).
 fn disarm(mut armed: State<Option<Action>>, mut generation: State<u64>) {
+    tracing::info!("[session] disarmed");
     *generation.write() += 1;
     armed.set(None);
 }
@@ -283,7 +288,8 @@ fn handle_key(
         if press.repeat {
             return;
         }
-        match decide_escape(*armed.peek()) {
+        let armed_now = *armed.peek();
+        match decide_escape(armed_now) {
             EscOutcome::Disarm => disarm(armed, generation),
             EscOutcome::Close => bus.send(ShellMsg::CloseAll),
         }
