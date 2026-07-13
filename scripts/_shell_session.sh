@@ -45,6 +45,13 @@ case "$bad_reply" in
   *) echo "FAIL: expected err for unknown surface, got '$bad_reply'"; fail=1 ;;
 esac
 
+# --- dock surface creation (host mounted the kobel-dock layer surface) ---
+if grep -aq "ns=kobel-dock" "$DK/kobel.log"; then
+  echo "PASS: kobel-dock surface created"
+else
+  echo "FAIL: kobel-dock surface not created"; fail=1
+fi
+
 # --- screenshot (bar visible at top) ---
 res=$(gdbus call --session --dest org.gnome.Shell.Screenshot \
   --object-path /org/gnome/Shell/Screenshot \
