@@ -17,7 +17,10 @@ pub mod ui;
 use std::sync::mpsc;
 
 use freya_core::prelude::{IntoElement, State, WritableUtils};
-use kobel_services::{AudioSnapshot, BatterySnapshot, GnoblinSnapshot, ServiceEvent, Services};
+use kobel_services::{
+    AppsSnapshot, AudioSnapshot, BatterySnapshot, GnoblinSnapshot, MediaSnapshot, ServiceEvent,
+    Services,
+};
 use kobel_wayland::{
     Anchor, KeyboardInteractivity, Layer, Margins, Shell, SurfaceConfig, SurfaceContexts,
     SurfaceSize,
@@ -26,16 +29,19 @@ use kobel_wayland::{
 use crate::manager::{Manager, ShellBus};
 
 /// The per-surface State handles the app tick fans service snapshots into. Tokens is
-/// static, so we do not keep its handle; only the three live snapshots change.
+/// static, so we do not keep its handle; only the live snapshots change.
 struct SurfaceStates {
     gnoblin: State<GnoblinSnapshot>,
     audio: State<AudioSnapshot>,
     battery: State<BatterySnapshot>,
+    apps: State<AppsSnapshot>,
+    media: State<MediaSnapshot>,
 }
 
-/// Provide the five frozen root contexts on a surface and return the mutable snapshot
+/// Provide the seven frozen root contexts on a surface and return the mutable snapshot
 /// handles. Called once per surface at creation. The exact context set is the frozen
-/// contract in manager.rs: State<Gnoblin/Audio/Battery Snapshot>, State<Tokens>, ShellBus.
+/// contract in manager.rs, extended additively with the apps + media snapshots the dock
+/// consumes: State<Gnoblin/Audio/Battery/Apps/Media Snapshot>, State<Tokens>, ShellBus.
 fn provide_contexts(
     cx: &mut SurfaceContexts<'_>,
     bus: &ShellBus,
@@ -47,9 +53,11 @@ fn provide_contexts(
         State::create(AudioSnapshot { volume: 0.0, muted: false, streams: Vec::new() })
     });
     let battery = cx.provide(|| State::create(BatterySnapshot::default()));
+    let apps = cx.provide(|| State::create(AppsSnapshot::default()));
+    let media = cx.provide(|| State::create(MediaSnapshot::default()));
     cx.provide(|| State::create(tokens));
     cx.provide(|| bus.clone());
-    SurfaceStates { gnoblin, audio, battery }
+    SurfaceStates { gnoblin, audio, battery, apps, media }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -110,6 +118,22 @@ fn main() -> anyhow::Result<()> {
         .keyboard_interactivity(KeyboardInteractivity::None)
         .input_region_empty(true);
 
+    // Dock: per-output, bottom-anchored, `gap` up. Width is computed from the pin
+    // count (pins + media tile + separator + paddings/spacing via tokens); top layer,
+    // NO exclusive zone (the dock floats over tiled windows), no keyboard.
+    let dock_pin_count = ui::dock::pins().len();
+    let dock_cfg = SurfaceConfig::new(
+        "kobel-dock",
+        SurfaceSize::Exact {
+            width: ui::dock::dock_width(&tokens, dock_pin_count),
+            height: ui::dock::dock_height(&tokens),
+        },
+    )
+    .layer(Layer::Top)
+    .anchor(Anchor::BOTTOM)
+    .margins(Margins { top: 0, right: 0, bottom: tokens.gap as i32, left: 0 })
+    .keyboard_interactivity(KeyboardInteractivity::None);
+
     let mut states: Vec<SurfaceStates> = Vec::new();
 
     let bars = shell.create_surface_on_outputs(
@@ -125,6 +149,13 @@ fn main() -> anyhow::Result<()> {
         || ui::osd::osd().into_element(),
     )?;
     states.extend(osds.into_iter().map(|(_, s)| s));
+
+    let docks = shell.create_surface_on_outputs(
+        dock_cfg,
+        |cx| provide_contexts(cx, &bus, tokens),
+        || ui::dock::dock().into_element(),
+    )?;
+    states.extend(docks.into_iter().map(|(_, s)| s));
 
     tracing::info!("[shell] mounted {} surface(s)", states.len());
 
@@ -159,6 +190,14 @@ fn main() -> anyhow::Result<()> {
                     }
                     ServiceEvent::Battery(snapshot) => {
                         let mut handle = surface.battery;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Apps(snapshot) => {
+                        let mut handle = surface.apps;
+                        handle.set_if_modified(snapshot.clone());
+                    }
+                    ServiceEvent::Media(snapshot) => {
+                        let mut handle = surface.media;
                         handle.set_if_modified(snapshot.clone());
                     }
                 }

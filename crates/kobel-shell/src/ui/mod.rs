@@ -10,6 +10,7 @@
 //!   - [`osd::osd`] -- the display-only volume pill.
 
 pub mod bar;
+pub mod dock;
 pub mod osd;
 
 use freya_components::svg_viewer::SvgViewer;
@@ -45,6 +46,11 @@ pub const ICON_SPEAKER_MUTE: &[u8] = shell_icon!("kobel-speaker-mute-symbolic.sv
 pub const ICON_BELL: &[u8] = shell_icon!("kobel-bell-symbolic.svg");
 pub const ICON_POWER: &[u8] = shell_icon!("kobel-power-symbolic.svg");
 pub const ICON_BATTERY: &[u8] = shell_icon!("kobel-battery-symbolic.svg");
+/// Generic app glyph: placeholder for an unresolved dock pin or an app with no
+/// resolved icon file (ags/widget/Dock.tsx `kobel-app-symbolic`).
+pub const ICON_APP: &[u8] = shell_icon!("kobel-app-symbolic.svg");
+/// Media tile glyph when no player art is available (dock `kobel-music-symbolic`).
+pub const ICON_MUSIC: &[u8] = shell_icon!("kobel-music-symbolic.svg");
 
 /// Render a `currentColor` SVG icon, tinted to `tint` and laid out `size` square.
 /// The one place SVG tinting is expressed for the whole shell.
