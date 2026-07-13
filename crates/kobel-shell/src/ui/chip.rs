@@ -6,6 +6,10 @@
 //!     boilerplate every interactive tile repeats (a `State<bool>` + the two
 //!     pointer-enter/leave setters), factored so a chip/slider/button just reads
 //!     `.on()` and attaches `.hover(h)`.
+//!   - [`hover_button`] -- THE hover-lit `rect()` shell (square or row via
+//!     [`HoverShape`], background pick, hover wiring, press target; every
+//!     size/padding/radius stays the caller's own) used by bar.rs's clock/
+//!     status-pill/tray buttons and this crate's `IconButton`.
 //!   - [`Chip`] -- the quick-settings pill chip (ags `.chip`): PANEL2 pill,
 //!     radius pill, min-height `tile_h`, icon + label + optional sublabel; active
 //!     fills LEAF with INK text; hover lifts to CHIP (LEAF2 when active); an
@@ -24,10 +28,12 @@
 //! type, as `freya-components::Slider` does), so these stay design primitives
 //! decoupled from quick-settings semantics.
 //!
-//! bar.rs's StatusPill and the dock tile shells were considered for adopting
-//! [`use_hover`] too, but they live outside this assignment's paths and their
-//! per-site color logic differs enough that no behaviour-identical dedup was
-//! safe; left unchanged (see the final report).
+//! bar.rs's ClockButton/StatusPill/TrayButton and the shell's `IconButton`
+//! (ui/mod.rs) now build on [`hover_button`] -- their hover state, background
+//! pick, and press wiring were identical, just with different sizes/colors
+//! per site. FocusedTitle (a plain label, no hover) and BellButton (a
+//! non-interactive absolute-badge wrapper around `IconButton`) hand-roll
+//! nothing and were left alone. Dock tile shells stay out of scope here too.
 
 use freya_core::prelude::*;
 use torin::prelude::{Alignment, Area, Content, Size};
@@ -77,6 +83,47 @@ impl HoverExt for Rect {
         self.on_pointer_enter(move |_| enter.set(true))
             .on_pointer_leave(move |_| leave.set(false))
     }
+}
+
+/// Layout shape for [`hover_button`]'s shell: a centered square (icon
+/// buttons, tray items) or a horizontal row (clock button, status pill).
+/// Every dimension is the caller's own exact number -- no shared defaults.
+pub enum HoverShape {
+    Square { side: f32 },
+    Row { min_height: f32, padding: (f32, f32), spacing: f32 },
+}
+
+/// THE hover-lit button shell every bar icon/pill/tile hand-rolls: a fresh
+/// `rect()` laid out per [`HoverShape`], with the hover-picked background,
+/// [`Hover`] pointer wiring, and the press target already wired. Callers
+/// chain their own extras (overflow clip, secondary mouse handlers) and
+/// children; every size/padding/radius/color stays the caller's exact
+/// number -- only the layout-shape branch, background pick, and hover/press
+/// plumbing are shared.
+pub fn hover_button(
+    hover: Hover,
+    shape: HoverShape,
+    radius: f32,
+    rest_bg: Color,
+    hover_bg: Color,
+    on_press: impl Into<EventHandler<Event<PressEventData>>>,
+) -> Rect {
+    let shell = match shape {
+        HoverShape::Square { side } => {
+            rect().width(Size::px(side)).height(Size::px(side)).center()
+        }
+        HoverShape::Row { min_height, padding, spacing } => rect()
+            .horizontal()
+            .min_height(Size::px(min_height))
+            .padding(padding)
+            .spacing(spacing)
+            .cross_align(Alignment::Center),
+    };
+    shell
+        .corner_radius(radius)
+        .background(hover.pick(rest_bg, hover_bg))
+        .hover(hover)
+        .on_press(on_press)
 }
 
 // -------------------------------------------------------------------------

@@ -24,6 +24,7 @@ use kobel_services::{
     TraySnapshot,
 };
 
+use super::chip::{HoverShape, hover_button, use_hover};
 use super::notifications::badge_text;
 use super::{
     AppIcon, ICON_APP, ICON_BATTERY, ICON_BELL, ICON_MAGNIFIER, ICON_POWER, ICON_SPEAKER_MUTE,
@@ -152,7 +153,7 @@ fn clock_text() -> (String, String) {
 impl Component for ClockButton {
     fn render(&self) -> impl IntoElement {
         let bus = use_consume::<ShellBus>();
-        let mut hovered = use_state(|| false);
+        let hover = use_hover();
 
         let clock = use_hook(|| {
             let clock = State::create(clock_text());
@@ -169,23 +170,14 @@ impl Component for ClockButton {
         });
         let (time, date) = clock.read().clone();
 
-        let bg: Color = if *hovered.read() {
-            theme::PANEL2.rgb().into()
-        } else {
-            Color::TRANSPARENT
-        };
-
-        rect()
-            .horizontal()
-            .min_height(Size::px(31.0))
-            .padding((0.0, 12.0))
-            .corner_radius(theme::RADIUS_BUTTON)
-            .background(bg)
-            .cross_align(Alignment::Center)
-            .spacing(8.0)
-            .on_pointer_enter(move |_| hovered.set(true))
-            .on_pointer_leave(move |_| hovered.set(false))
-            .on_press(move |_| bus.send(ShellMsg::Toggle(SurfaceKey::Calendar)))
+        hover_button(
+            hover,
+            HoverShape::Row { min_height: 31.0, padding: (0.0, 12.0), spacing: 8.0 },
+            theme::RADIUS_BUTTON,
+            Color::TRANSPARENT,
+            theme::PANEL2.rgb().into(),
+            move |_| bus.send(ShellMsg::Toggle(SurfaceKey::Calendar)),
+        )
             .child(
                 label()
                     .text(time)
@@ -220,7 +212,7 @@ impl Component for StatusPill {
         let audio = use_consume::<State<AudioSnapshot>>();
         let battery = use_consume::<State<BatterySnapshot>>();
         let gnoblin = use_consume::<State<GnoblinSnapshot>>();
-        let mut hovered = use_state(|| false);
+        let hover = use_hover();
 
         let (muted, volume) = {
             let a = audio.read();
@@ -241,24 +233,15 @@ impl Component for StatusPill {
         };
         let tint = if connected { theme::MUT } else { theme::AMBER };
 
-        let bg: Color = if *hovered.read() {
-            theme::CHIP.rgb().into()
-        } else {
-            theme::PANEL2.rgb().into()
-        };
-
-        let mut pill = rect()
-            .horizontal()
-            .cross_align(Alignment::Center)
-            .spacing(10.0)
-            .padding((0.0, 13.0))
-            .min_height(Size::px(30.0))
-            .corner_radius(theme::RADIUS_PILL)
-            .background(bg)
-            .on_pointer_enter(move |_| hovered.set(true))
-            .on_pointer_leave(move |_| hovered.set(false))
-            .on_press(move |_| bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings)))
-            .child(icon(speaker, 16.0, tint));
+        let mut pill = hover_button(
+            hover,
+            HoverShape::Row { min_height: 30.0, padding: (0.0, 13.0), spacing: 10.0 },
+            theme::RADIUS_PILL,
+            theme::PANEL2.rgb().into(),
+            theme::CHIP.rgb().into(),
+            move |_| bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings)),
+        )
+        .child(icon(speaker, 16.0, tint));
 
         if present {
             pill = pill.child(
@@ -366,28 +349,21 @@ struct TrayButton {
 impl Component for TrayButton {
     fn render(&self) -> impl IntoElement {
         let bus = use_consume::<ShellBus>();
-        let mut hovered = use_state(|| false);
-
-        let bg: Color = if *hovered.read() {
-            theme::PANEL2.rgb().into()
-        } else {
-            Color::TRANSPARENT
-        };
+        let hover = use_hover();
 
         let address = self.item.address.clone();
         let mid_bus = bus.clone();
         let mid_address = address.clone();
 
-        rect()
-            .width(Size::px(28.0))
-            .height(Size::px(28.0))
-            .center()
-            .corner_radius(theme::RADIUS_BUTTON)
-            .background(bg)
-            .overflow(Overflow::Clip)
-            .on_pointer_enter(move |_| hovered.set(true))
-            .on_pointer_leave(move |_| hovered.set(false))
-            .on_press(move |_| bus.send(ShellMsg::Service(Command::ActivateTrayItem(address.clone()))))
+        hover_button(
+            hover,
+            HoverShape::Square { side: 28.0 },
+            theme::RADIUS_BUTTON,
+            Color::TRANSPARENT,
+            theme::PANEL2.rgb().into(),
+            move |_| bus.send(ShellMsg::Service(Command::ActivateTrayItem(address.clone()))),
+        )
+        .overflow(Overflow::Clip)
             .on_mouse_down(move |e: Event<MouseEventData>| {
                 if e.button == Some(MouseButton::Middle) {
                     mid_bus.send(ShellMsg::Service(Command::SecondaryActivateTrayItem(

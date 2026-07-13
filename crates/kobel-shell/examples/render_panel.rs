@@ -16,9 +16,9 @@
 //! `AssetCacher` root contexts, so a minimal stub `Platform` (plus a rendering
 //! ticker and animation clock so springs never panic if they run) is provided.
 //!
-//! Usage:
 //!   cargo run -p kobel-shell --example render-panel -- <panel> <out.png> <WxH>
-//! where <panel> is `quicksettings` or `calendar`, e.g.
+//! where <panel> is `bar`, `quicksettings`, or `calendar`, e.g.
+//!   cargo run -p kobel-shell --example render-panel -- bar /tmp/bar.png 1000x42
 //!   cargo run -p kobel-shell --example render-panel -- quicksettings /tmp/qs.png 365x520
 //!   cargo run -p kobel-shell --example render-panel -- calendar /tmp/cal.png 336x432
 //!
@@ -47,8 +47,8 @@ use torin::prelude::Size2D;
 
 use kobel_services::{
     AccessPointInfo, AudioSnapshot, AudioStream, BatterySnapshot, BluetoothSnapshot, BtDevice,
-    BrightnessSnapshot, GnoblinSnapshot, NetworkSnapshot, PowerProfile, PowerSnapshot,
-    SettingsSnapshot,
+    BrightnessSnapshot, GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot, PowerProfile,
+    PowerSnapshot, SettingsSnapshot, TraySnapshot,
 };
 
 use crate::manager::ShellBus;
@@ -56,6 +56,7 @@ use crate::ui::panels::{KeyFeed, OpenProgress};
 
 #[derive(Clone, Copy)]
 enum Panel {
+    Bar,
     QuickSettings,
     Calendar,
 }
@@ -137,17 +138,18 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 4 {
         eprintln!(
-            "usage: render-panel <quicksettings|calendar> <out.png> <WxH>\n\
-             e.g.   render-panel quicksettings /tmp/qs.png 365x520"
+            "usage: render-panel <bar|quicksettings|calendar> <out.png> <WxH>\n\
+             e.g.   render-panel bar /tmp/bar.png 1000x42"
         );
         std::process::exit(2);
     }
 
     let panel = match args[1].as_str() {
+        "bar" => Panel::Bar,
         "quicksettings" | "qs" => Panel::QuickSettings,
         "calendar" | "cal" => Panel::Calendar,
         other => {
-            eprintln!("unknown panel {other:?}; expected quicksettings|calendar");
+            eprintln!("unknown panel {other:?}; expected bar|quicksettings|calendar");
             std::process::exit(2);
         }
     };
@@ -169,6 +171,7 @@ fn main() {
     let (events_sender, mut events_receiver) = unbounded();
 
     let mut runner = Runner::new(move || match panel {
+        Panel::Bar => ui::bar::bar().into_element(),
         Panel::QuickSettings => ui::quick_settings::quick_settings().into_element(),
         Panel::Calendar => ui::calendar::calendar().into_element(),
     });
@@ -200,6 +203,8 @@ fn main() {
     runner.provide_root_context(|| State::create(fake_brightness()));
     runner.provide_root_context(|| State::create(fake_power()));
     runner.provide_root_context(|| State::create(fake_settings()));
+    runner.provide_root_context(|| State::create(NotifdSnapshot::default()));
+    runner.provide_root_context(|| State::create(TraySnapshot::default()));
     runner.provide_root_context(|| bus.clone());
     runner.provide_root_context(|| OpenProgress(State::create(1.0)));
     runner.provide_root_context(|| KeyFeed(State::create(None::<crate::ui::panels::KeyEvent>)));

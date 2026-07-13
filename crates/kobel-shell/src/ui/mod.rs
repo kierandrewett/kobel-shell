@@ -28,6 +28,8 @@ use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use torin::prelude::Size;
 
+use chip::{HoverShape, hover_button, use_hover};
+
 use crate::manager::{ShellBus, ShellMsg, SurfaceKey};
 use crate::theme::{self, Rgb};
 
@@ -127,28 +129,22 @@ impl Component for IconButton {
     fn render(&self) -> impl IntoElement {
         let bus = use_consume::<ShellBus>();
         let tokens = *use_consume::<State<theme::Tokens>>().read();
-        let mut hovered = use_state(|| false);
+        let hover = use_hover();
 
-        let on = *hovered.read();
-        let bg: Color = if on {
-            theme::PANEL2.rgb().into()
-        } else {
-            Color::TRANSPARENT
-        };
+        let on = hover.on();
         let tint = if on { theme::TX } else { theme::MUT };
         let ctl = tokens.ctl();
         let target = self.target;
 
-        rect()
-            .width(Size::px(ctl))
-            .height(Size::px(ctl))
-            .center()
-            .corner_radius(theme::RADIUS_BUTTON)
-            .background(bg)
-            .on_pointer_enter(move |_| hovered.set(true))
-            .on_pointer_leave(move |_| hovered.set(false))
-            .on_press(move |_| bus.send(ShellMsg::Toggle(target)))
-            .child(icon(self.icon, self.icon_size, tint))
+        hover_button(
+            hover,
+            HoverShape::Square { side: ctl },
+            theme::RADIUS_BUTTON,
+            Color::TRANSPARENT,
+            theme::PANEL2.rgb().into(),
+            move |_| bus.send(ShellMsg::Toggle(target)),
+        )
+        .child(icon(self.icon, self.icon_size, tint))
     }
 }
 
