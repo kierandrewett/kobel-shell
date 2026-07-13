@@ -66,6 +66,8 @@ INPUT_TEST=1 ./scripts/run-spike-in-gnoblin.sh   # host input gate (injected HID
                                              # notify-send round-trip, injected
                                              # keyboard/click paths, screenshots
 VIRTUAL_MONITORS="1280x800 1024x768" ./scripts/run-shell-in-gnoblin.sh  # multi-monitor
+KOBEL_TEST_HOTPLUG=1 ./scripts/run-shell-in-gnoblin.sh  # runtime output plug/unplug/replug
+KOBEL_TEST_SCALE=1.5 ./scripts/run-shell-in-gnoblin.sh  # fractional-scale buffers + viewport
 cargo run -p kobel-shell --example render-panel -- quicksettings /tmp/qs.png  # headless panel PNG
 ```
 
@@ -126,6 +128,5 @@ was drawn, not a replacement for them.
 ## Follow-ups (known, deliberate)
 
 - DBusMenu rendering for tray items (needs popup-surface design).
-- Fractional scale (gnoblin advertises it; the host uses integer buffer scale).
 - IME (`zwp_text_input_v3`) for CJK input in the launcher.
 - Calendar events remain sample data pending an EDS/ICS decision.
