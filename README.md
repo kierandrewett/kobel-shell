@@ -72,6 +72,44 @@ cargo run -p kobel-shell --example render-panel -- quicksettings /tmp/qs.png  # 
 `scripts/devkit_input.py` injects real pointer/keyboard events through Mutter's
 RemoteDesktop API -- devkit sessions only.
 
+### Rendering debug (RenderDoc)
+
+For *rendering* bugs -- wrong colours, clipping, blend/overdraw, a surface that
+paints wrong -- capture the actual GPU frame instead of a screenshot. RenderDoc
+injects into the kobel-shell binary (an EGL/GLES3 client) and records every
+Freya/Skia GL draw call for one present:
+
+```sh
+./scripts/capture-frame-in-gnoblin.sh quicksettings /tmp/kobel-shell.rdc  # capture a surface
+./scripts/capture-frame-in-gnoblin.sh                                     # default: launcher/bar chrome
+```
+
+This boots the same headless gnoblin session as the gates, runs kobel-shell under
+`renderdoccmd` injection (NOT gnome-shell -- we want Freya/Skia draws, not
+mutter's), drives a present with a `kobelctl` toggle so the trigger lands on a real
+surface, records which present/swapchain it caught, and writes the `.rdc`. It then
+opens the capture and exports one render target to `/tmp/kobel-rt.png`. Inspect
+further with `rdc` (the `renderdoc-gpu-debug` skill; run `rdc doctor` first):
+
+```sh
+rdc open /tmp/kobel-shell.rdc
+rdc info --json                     # API, GPU, resolution, frame number
+rdc stats --json                    # per-pass breakdown, top draws
+rdc draws --limit 10                # first draw calls (EIDs)
+rdc rt <EID> -o /tmp/kobel-rt.png   # export a draw's render target to PNG
+rdc close
+```
+
+GLES capture *replay* needs an `rdc` python module built with the GL replay driver.
+Where the local module is Vulkan-only (`rdc open` -> "local replay not supported"),
+the script still writes a valid `.rdc` and exports the frame's embedded backbuffer
+thumbnail via `renderdoccmd thumb`; open the `.rdc` in the RenderDoc GUI or on a
+GL-replay-capable box for the full pipeline.
+
+The screenshot gates above stay the CI correctness assertions (IPC/input/notify
+round-trips, reveal machinery); RenderDoc is the tool for diagnosing *how* a frame
+was drawn, not a replacement for them.
+
 ## gnoblin integration
 
 - All surfaces are `kobel-*` namespaced layer surfaces (window rules key on these).

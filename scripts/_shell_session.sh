@@ -215,6 +215,42 @@ gdbus call --session --dest org.gnome.Shell.Screenshot \
 cp "$DK/toast.png" /tmp/kobel-toast.png 2>/dev/null || true
 [ -s "$DK/toast.png" ] && echo "PASS: toast screenshot captured" \
   || { echo "FAIL: toast screenshot missing"; fail=1; }
+
+# --- phase 6b: toast close button works (per-card input region) ---
+# With the "Kobel Gate" toast still visible, click its close button and assert
+# notifd dismisses the notification. The close button's SCREEN coordinates are
+# derived from the toast layout constants (crates/kobel-shell/src/ui/notifications.rs
+# + the toasts_cfg in main.rs), so this stays correct if the layout numbers change:
+#   - Toasts surface: TOASTS_SURFACE_W x _H = 392 x 320, anchored TOP|RIGHT with
+#     margins top=58 right=12. So the surface origin in screen coords is
+#     (MON_W - 12 - 392, 58), where MON_W is the first virtual monitor's width.
+#   - The newest card is flush to the surface's top-right corner (the overlay root
+#     and the toast column both use cross_align End), width NCARD_W=341, padding
+#     (vertical 11, horizontal 13). The close pill (ags .nx) is 22px at the header
+#     row's right end. Hence, in surface-local coords:
+#       close_x = TOASTS_SURFACE_W - pad_h(13) - NX/2(11) = 368
+#       close_y = pad_v(11)      + NX/2(11)               = 22
+mon_first="${VIRTUAL_MONITORS:-1280x800}"; mon_first="${mon_first%% *}"; MON_W="${mon_first%%x*}"
+TOASTS_W=392; T_MARGIN_TOP=58; T_MARGIN_RIGHT=12; CARD_PAD_H=13; CARD_PAD_V=11; NX=22
+surf_x=$(( MON_W - T_MARGIN_RIGHT - TOASTS_W ))
+close_x=$(( surf_x + TOASTS_W - CARD_PAD_H - NX / 2 ))
+close_y=$(( T_MARGIN_TOP + CARD_PAD_V + NX / 2 ))
+closed_notifs() { grep -ac '\[notifd\] closed id=' "$DK/kobel.log"; }
+before_x=$(closed_notifs)
+python3 "$SCRIPTS_DIR/devkit_input.py" "click:${close_x}:${close_y}" >"$DK/inject-toast-close.log" 2>&1 \
+  || { echo "FAIL: injector (toast close) exited nonzero"; cat "$DK/inject-toast-close.log"; fail=1; }
+sleep 1
+gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/toast-closed.png" >/dev/null 2>&1
+cp "$DK/toast-closed.png" /tmp/kobel-toast-closed.png 2>/dev/null || true
+if [ "$(closed_notifs)" -gt "$before_x" ]; then
+  echo "PASS: toast close button dismissed the notification ([notifd] closed id=)"
+else
+  echo "FAIL: toast close button did not dismiss the notification (clicked ${close_x},${close_y})"
+  grep -a "\[notifd\]" "$DK/kobel.log" | tail -5
+  fail=1
+fi
 before_d=$(surface_closes drawer)
 "$CTL_BIN" toggle drawer >/dev/null 2>&1
 sleep 1
