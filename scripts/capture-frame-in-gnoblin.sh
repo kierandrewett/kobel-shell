@@ -117,9 +117,13 @@ echo "== captured $(stat -c%s "$OUTRDC") bytes -> $OUTRDC =="
 # Runs in the pristine outer env (real HOME/DISPLAY). GPU replay is headless: it needs
 # no window/Wayland, only a working replay driver for the capture's API. `rdc open`
 # starts a daemon that loads the capture; the inspection commands talk to that daemon.
+# Every rdc call is scoped to a per-run --session so this script can NEVER close or
+# reuse a default rdc session someone has open elsewhere.
+RDC_SESSION="kobel-$$"
+rdc() { command rdc --session "$RDC_SESSION" "$@"; }
 RTPNG_THUMB="${RTPNG%.png}-thumb.png"
 rdc close >/dev/null 2>&1 || true
-echo "== rdc open =="
+echo "== rdc open (session $RDC_SESSION) =="
 if rdc open "$OUTRDC" >"$DK/open.log" 2>&1; then
   cat "$DK/open.log"
   echo "== rdc info --json =="

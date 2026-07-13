@@ -92,12 +92,14 @@ opens the capture and exports one render target to `/tmp/kobel-rt.png`. Inspect
 further with `rdc` (the `renderdoc-gpu-debug` skill; run `rdc doctor` first):
 
 ```sh
-rdc open /tmp/kobel-shell.rdc
-rdc info --json                     # API, GPU, resolution, frame number
-rdc stats --json                    # per-pass breakdown, top draws
-rdc draws --limit 10                # first draw calls (EIDs)
-rdc rt <EID> -o /tmp/kobel-rt.png   # export a draw's render target to PNG
-rdc close
+# Scope every call to a session so you never disturb another open rdc session:
+S="--session kobel-debug"
+rdc $S open /tmp/kobel-shell.rdc
+rdc $S info --json                   # API, GPU, resolution, frame number
+rdc $S stats --json                  # per-pass breakdown, top draws
+rdc $S draws --limit 10              # first draw calls (EIDs)
+rdc $S rt <EID> -o /tmp/kobel-rt.png # export a draw's render target to PNG
+rdc $S close
 ```
 
 GLES capture *replay* needs an `rdc` python module built with the GL replay driver.
