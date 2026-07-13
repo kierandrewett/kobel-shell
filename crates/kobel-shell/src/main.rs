@@ -14,7 +14,7 @@ pub mod motion;
 pub mod theme;
 pub mod ui;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -26,11 +26,12 @@ use kobel_services::{
     Services, SettingsSnapshot, TraySnapshot,
 };
 use kobel_wayland::{
-    Anchor, KeyboardInteractivity, Layer, Margins, OutputControl, OutputEvent, OutputId, Shell,
-    SurfaceConfig, SurfaceContexts, SurfaceId, SurfaceSize,
+    Anchor, Control, KeyboardInteractivity, Layer, Margins, OutputControl, OutputEvent, OutputId,
+    PopupConfig, Shell, SurfaceConfig, SurfaceContexts, SurfaceId, SurfaceSize,
 };
 
 use crate::manager::{Manager, ShellBus, ShellMsg, SurfaceKey};
+use crate::ui::menu::{PopupHost, PopupInner, PopupOp};
 
 /// The per-surface State handles the app tick fans service snapshots into. Tokens is
 /// static, so we do not keep its handle; only the live snapshots change.
@@ -234,6 +235,13 @@ fn osd_config() -> SurfaceConfig {
 /// height so maximized/tiled windows sit ABOVE the floating dock.
 fn dock_config(t: &theme::Tokens) -> SurfaceConfig {
     let dock_h = ui::dock::dock_height(t);
+    // The exclusive zone reserves gap + dock height so tiled windows sit above the
+    // floating dock. KOBEL_TEST_DOCK_HITTEST=1 (devkit gate only) drops it to 0: it
+    // does NOT move or resize the dock, but mutter's RemoteDesktop virtual pointer is
+    // confined to the work area, so a reserved bottom zone is otherwise unreachable
+    // by the injector -- zeroing it lets the gate right-click a real dock tile. Never
+    // set in production.
+    let exclusive = if dock_hittest_zone() { 0 } else { t.gap as i32 + dock_h as i32 };
     SurfaceConfig::new(
         "kobel-dock",
         SurfaceSize::Exact { width: ui::dock::dock_width(t, ui::dock::pins().len()), height: dock_h },
@@ -241,8 +249,15 @@ fn dock_config(t: &theme::Tokens) -> SurfaceConfig {
     .layer(Layer::Top)
     .anchor(Anchor::BOTTOM)
     .margins(Margins { top: 0, right: 0, bottom: t.gap as i32, left: 0 })
-    .exclusive_zone(t.gap as i32 + dock_h as i32)
+    .exclusive_zone(exclusive)
     .keyboard_interactivity(KeyboardInteractivity::None)
+}
+
+/// Devkit-gate hook: `KOBEL_TEST_DOCK_HITTEST=1` zeroes the dock's exclusive zone so
+/// the RemoteDesktop injector (confined to the work area) can reach a dock tile to
+/// exercise the right-click context menu. Never set outside the gate.
+fn dock_hittest_zone() -> bool {
+    matches!(std::env::var("KOBEL_TEST_DOCK_HITTEST").as_deref(), Ok("1"))
 }
 
 /// Toasts layer config: per-output, top-right, below the bar (ags marginTop 58 /
@@ -376,15 +391,25 @@ fn mount_output_chrome(
     output: OutputId,
     bus: &ShellBus,
     tokens: theme::Tokens,
+    popups: &Rc<PopupInner>,
 ) -> anyhow::Result<OutputBundle> {
     let mut chrome = Vec::new();
 
+    // The bar opens tray DBusMenus, so it provides a PopupHost owned by itself. The
+    // owner id is only known after creation (the setup runs during it), so it is a
+    // cell filled right after -- the same shape the popup bodies use for submenus.
+    let bar_owner = Rc::new(Cell::new(None));
     let (bar_id, bar_states) = control.create_on(
         output,
         bar_config(&tokens),
-        |cx| provide_contexts(cx, bus, tokens),
+        |cx| {
+            let states = provide_contexts(cx, bus, tokens);
+            cx.provide(|| PopupHost::new(popups.clone(), bar_owner.clone()));
+            states
+        },
         || ui::bar::bar().into_element(),
     )?;
+    bar_owner.set(Some(bar_id));
     chrome.push(ChromeSurface { id: bar_id, states: bar_states, drawer_flag: None });
 
     let (osd_id, osd_states) = control.create_on(
@@ -395,12 +420,21 @@ fn mount_output_chrome(
     )?;
     chrome.push(ChromeSurface { id: osd_id, states: osd_states, drawer_flag: None });
 
+    // The dock opens its right-click context menu (PopupHost) and renders from the
+    // live, editable pin list (DockPins, seeded from disk).
+    let dock_owner = Rc::new(Cell::new(None));
     let (dock_id, dock_states) = control.create_on(
         output,
         dock_config(&tokens),
-        |cx| provide_contexts(cx, bus, tokens),
+        |cx| {
+            let states = provide_contexts(cx, bus, tokens);
+            cx.provide(|| PopupHost::new(popups.clone(), dock_owner.clone()));
+            cx.provide(|| ui::dock::DockPins(State::create(ui::dock::pins().to_vec())));
+            states
+        },
         || ui::dock::dock().into_element(),
     )?;
+    dock_owner.set(Some(dock_id));
     chrome.push(ChromeSurface { id: dock_id, states: dock_states, drawer_flag: None });
 
     let (toasts_id, (toast_states, drawer_flag)) = control.create_on(
@@ -412,6 +446,69 @@ fn mount_output_chrome(
     chrome.push(ChromeSurface { id: toasts_id, states: toast_states, drawer_flag: Some(drawer_flag) });
 
     Ok(OutputBundle { chrome })
+}
+
+/// Popup namespace + width/height bounds for a menu popup.
+const MENU_MAX_H: u32 = 520;
+
+/// Apply every queued popup op on the loop thread (the one place that owns
+/// `Control`). `Open` mints an xdg popup rendering the menu -- parented to the
+/// requesting surface (a chrome surface, or a popup for a submenu) -- provides its
+/// ShellBus/Tokens/PopupHost contexts (the popup's own PopupHost is owned by the
+/// popup, so a submenu parents correctly), sizes it Exactly from the model, and
+/// pushes it on the stack. `CloseAll` dismisses every open popup; each
+/// `close_popup` also drops its submenus, and the SurfaceClosed events clear the
+/// stack.
+fn drain_popups(
+    control: &mut Control<'_>,
+    popups: &Rc<PopupInner>,
+    popup_stack: &Rc<RefCell<Vec<SurfaceId>>>,
+    bus: &ShellBus,
+    tokens: theme::Tokens,
+) {
+    for op in popups.drain() {
+        match op {
+            PopupOp::Open { parent, anchor_rect, placement, model } => {
+                let height = model.measured_height().min(MENU_MAX_H);
+                let cfg = PopupConfig::new(
+                    "kobel-menu",
+                    anchor_rect,
+                    SurfaceSize::Exact { width: ui::menu::MENU_W as u32, height },
+                )
+                .anchor(placement.anchor)
+                .gravity(placement.gravity);
+                // The popup's own PopupHost, owner filled once its id is known.
+                let owner = Rc::new(Cell::new(None));
+                let setup_owner = owner.clone();
+                let setup_popups = popups.clone();
+                let app_model = model.clone();
+                let res = control.open_popup(
+                    parent,
+                    cfg,
+                    |cx| {
+                        cx.provide(|| bus.clone());
+                        cx.provide(|| State::create(tokens));
+                        cx.provide(|| PopupHost::new(setup_popups.clone(), setup_owner.clone()));
+                    },
+                    move || ui::menu::menu(app_model.clone()).into_element(),
+                );
+                match res {
+                    Ok((pid, ())) => {
+                        owner.set(Some(pid));
+                        popup_stack.borrow_mut().push(pid);
+                        tracing::info!("[popup] opened {pid:?} parent={parent:?}");
+                    }
+                    Err(e) => tracing::error!("[popup] open failed: {e:#}"),
+                }
+            }
+            PopupOp::CloseAll => {
+                let ids: Vec<SurfaceId> = std::mem::take(&mut *popup_stack.borrow_mut());
+                for id in ids {
+                    control.close_popup(id);
+                }
+            }
+        }
+    }
 }
 
 /// Mount ONE singleton surface on `output` and register it with the manager: the
@@ -698,6 +795,22 @@ fn main() -> anyhow::Result<()> {
         m.set_profile_anim(profile_anim);
     }
 
+    // Popup (tray/context menu) plumbing. The queue is filled by UI PopupHosts and
+    // drained by the app tick (which owns Control, so it can mint/tear down popup
+    // surfaces). The stack tracks the open popups so Esc/outside-click/CloseAll can
+    // dismiss them. All on the one UI thread (single-threaded RefCell/Cell).
+    let popups = Rc::new(PopupInner::new({
+        let waker = waker.clone();
+        Box::new(move || waker.wake())
+    }));
+    let popup_stack: Rc<RefCell<Vec<SurfaceId>>> = Rc::new(RefCell::new(Vec::new()));
+    // A manager CloseAll (dismiss layer / Esc on an OnDemand surface) also dismisses
+    // any open popup, alongside the panels (docs/FREYA-PLAN.md dismiss model).
+    manager.borrow_mut().set_close_popups({
+        let popups = popups.clone();
+        Box::new(move || popups.request_close_all())
+    });
+
     // The shared per-output registry: service fan-out list + toasts/keyfeed
     // bookkeeping, kept in sync as outputs come and go.
     let registry: Rc<RefCell<Registry>> = Rc::new(RefCell::new(Registry::default()));
@@ -712,9 +825,11 @@ fn main() -> anyhow::Result<()> {
         let bus = bus.clone();
         let registry = registry.clone();
         let manager = manager.clone();
+        let popups = popups.clone();
+        let popup_stack = popup_stack.clone();
         move |event, control| match event {
             OutputEvent::Added(output) => {
-                match mount_output_chrome(control, output, &bus, tokens) {
+                match mount_output_chrome(control, output, &bus, tokens, &popups) {
                     Ok(bundle) => {
                         let ids: Vec<SurfaceId> = bundle.chrome.iter().map(|c| c.id).collect();
                         tracing::info!("[shell] output {output:?} added: mounted chrome {ids:?}");
@@ -741,7 +856,24 @@ fn main() -> anyhow::Result<()> {
                 manager.borrow_mut().register_toasts(ids);
             }
             OutputEvent::SurfaceClosed { output, surface } => {
-                handle_surface_closed(control, output, surface, &bus, tokens, &manager, &registry);
+                // A popup dismissal (outside-click popup_done or a programmatic
+                // close_popup) arrives here too. Popups are host-owned, tracked only
+                // in popup_stack -- drop it there and stop; never route it through the
+                // chrome/singleton recreate path.
+                let was_popup = {
+                    let mut stack = popup_stack.borrow_mut();
+                    if let Some(pos) = stack.iter().position(|&s| s == surface) {
+                        stack.remove(pos);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if was_popup {
+                    tracing::info!("[popup] dismissed {surface:?}");
+                } else {
+                    handle_surface_closed(control, output, surface, &bus, tokens, &manager, &registry);
+                }
             }
             OutputEvent::Removed { output, retired } => {
                 // Drop this output's chrome bundle -- its fan-out State handles go with
@@ -802,8 +934,19 @@ fn main() -> anyhow::Result<()> {
     shell.on_key({
         let bus = bus.clone();
         let registry = registry.clone();
+        let popup_stack = popup_stack.clone();
         let mut seq: u64 = 0;
-        move |press, _control| {
+        move |press, control| {
+            // Esc dismisses the deepest open popup first (host-owned, like
+            // examples/popup.rs). The popup grab focuses its own surface, so an Esc
+            // arriving on any surface while a popup is open belongs to that popup.
+            if press.is_escape() {
+                let top = popup_stack.borrow().last().copied();
+                if let Some(pid) = top {
+                    control.close_popup(pid);
+                    return;
+                }
+            }
             let feed = registry.borrow().keyfeeds.get(&press.surface).copied();
             if let Some(mut feed) = feed {
                 seq += 1;
@@ -821,6 +964,9 @@ fn main() -> anyhow::Result<()> {
     shell.on_tick({
         let registry = registry.clone();
         let manager = manager.clone();
+        let popups = popups.clone();
+        let popup_stack = popup_stack.clone();
+        let bus = bus.clone();
         move |control| {
             {
                 let reg = registry.borrow();
@@ -879,7 +1025,11 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            if manager.borrow_mut().tick(control) {
+            let quit = manager.borrow_mut().tick(control);
+            // Apply queued popup ops AFTER the manager tick, so a CloseAll enqueued by
+            // the manager's close-popups hook is handled in the same sweep.
+            drain_popups(control, &popups, &popup_stack, &bus, tokens);
+            if quit {
                 tracing::info!("[shell] exit requested");
                 control.exit();
             }

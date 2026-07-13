@@ -16,6 +16,7 @@ pub mod dock;
 pub mod fuzzy;
 pub mod launcher;
 pub mod osd;
+pub mod menu;
 pub mod notifications;
 pub mod panels;
 pub mod quick_settings;

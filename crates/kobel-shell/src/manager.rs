@@ -295,6 +295,11 @@ pub struct Manager {
     /// Monotonic epoch for the trace's absolute-ms timestamps. Independent of the
     /// clamped spring dt, so a real stall surfaces as a large max_gap_ms.
     trace_epoch: Instant,
+    /// Additive: closes every open popup (tray/context menus). Popups are host-owned
+    /// (main.rs drives `Control::open_popup`/`close_popup`), so the manager cannot
+    /// touch them directly; this hook lets a `CloseAll` dismiss any open popup
+    /// alongside the panels. `None` in tests and until main.rs installs it.
+    close_popups: Option<Box<dyn Fn()>>,
     quit: bool,
 }
 
@@ -311,8 +316,15 @@ impl Manager {
             reduced_motion: false,
             profile: false,
             trace_epoch: Instant::now(),
+            close_popups: None,
             quit: false,
         }
+    }
+
+    /// Install the host-side hook that dismisses every open popup. Called once by
+    /// main.rs; a `CloseAll` then closes any tray/context menu alongside the panels.
+    pub fn set_close_popups(&mut self, close_popups: Box<dyn Fn()>) {
+        self.close_popups = Some(close_popups);
     }
 
     /// Register one warm-mapped on-demand surface, called once per surface at
@@ -557,6 +569,10 @@ impl Manager {
     }
 
     fn close_all(&mut self, host: &mut impl RevealHost) {
+        // Dismiss any open popup (tray/context menu) alongside the panels.
+        if let Some(close_popups) = &self.close_popups {
+            close_popups();
+        }
         match self.open {
             Some(cur) => self.close(cur, host),
             None => tracing::debug!("[manager] close-all: nothing open"),

@@ -21,10 +21,11 @@ use torin::prelude::{Alignment, Content, Position, Size};
 
 use kobel_services::{
     AudioSnapshot, BatterySnapshot, Command, GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot,
-    TrayIcon, TrayItem, TraySnapshot,
+    TrayIcon, TrayItem, TrayMenu, TrayMenuItem, TrayMenuItemKind, TraySnapshot, TrayToggleKind,
 };
 
 use super::chip::{HoverShape, hover_button, use_hover};
+use super::menu::{MenuGlyph, MenuModel, MenuRow, PopupHost, PopupPlacement};
 use super::notifications::badge_text;
 use super::{
     AppIcon, ICON_APP, ICON_BATTERY, ICON_BELL, ICON_MAGNIFIER, ICON_POWER, ICON_SPEAKER_MUTE,
@@ -362,11 +363,18 @@ struct TrayButton {
 impl Component for TrayButton {
     fn render(&self) -> impl IntoElement {
         let bus = use_consume::<ShellBus>();
+        let popup = use_consume::<PopupHost>();
         let hover = use_hover();
 
         let address = self.item.address.clone();
         let mid_bus = bus.clone();
         let mid_address = address.clone();
+
+        // Right-click opens the item's DBusMenu (when it has one). Left-click still
+        // activates; middle-click secondary-activates -- the AGS tray gesture set.
+        let menu_bus = bus.clone();
+        let menu_address = address.clone();
+        let menu = self.item.menu.clone();
 
         hover_button(
             hover,
@@ -384,7 +392,82 @@ impl Component for TrayButton {
                     )));
                 }
             })
+            .on_secondary_down(move |e: Event<PressEventData>| {
+                let Some(menu) = menu.as_ref() else {
+                    return;
+                };
+                // Ask the item to refresh its menu just before we show it, per the
+                // com.canonical.dbusmenu AboutToShow contract.
+                menu_bus.send(ShellMsg::Service(Command::TrayMenuAboutToShow {
+                    address: menu_address.clone(),
+                }));
+                let model = tray_menu_model(&menu_address, menu, &menu_bus);
+                let anchor = press_anchor(&e);
+                // The bar sits at the top, so the menu grows downward from the click.
+                popup.open(anchor, PopupPlacement::below(), model);
+            })
             .child(tray_glyph(&self.item.icon))
+    }
+}
+
+/// The 1x1 anchor rectangle at a right-click's surface-local position. The
+/// compositor slides/flips the popup to keep it on-screen.
+fn press_anchor(e: &Event<PressEventData>) -> (i32, i32, i32, i32) {
+    match &**e {
+        PressEventData::Mouse(m) => (m.global_location.x as i32, m.global_location.y as i32, 1, 1),
+        _ => (0, 0, 1, 1),
+    }
+}
+
+/// Convert an item's [`TrayMenu`] into the shared [`MenuModel`]. Each activatable
+/// leaf fires a `TrayMenuClicked` (by id) then the menu closes itself.
+fn tray_menu_model(address: &str, menu: &TrayMenu, bus: &ShellBus) -> MenuModel {
+    MenuModel::new(tray_rows(address, &menu.items, bus))
+}
+
+/// Convert a level of DBusMenu items, recursing into submenus. Hidden items are
+/// dropped; separators and toggles map onto the shared row model.
+fn tray_rows(address: &str, items: &[TrayMenuItem], bus: &ShellBus) -> Vec<MenuRow> {
+    items
+        .iter()
+        .filter(|it| it.visible)
+        .map(|it| tray_row(address, it, bus))
+        .collect()
+}
+
+/// Convert one DBusMenu item into a [`MenuRow`].
+fn tray_row(address: &str, item: &TrayMenuItem, bus: &ShellBus) -> MenuRow {
+    if item.kind == TrayMenuItemKind::Separator {
+        return MenuRow::Separator;
+    }
+    if !item.children.is_empty() {
+        return MenuRow::Submenu {
+            label: item.label.clone(),
+            enabled: item.enabled,
+            model: MenuModel::new(tray_rows(address, &item.children, bus)),
+        };
+    }
+    let glyph = match item.toggle {
+        Some(t) => match t.kind {
+            TrayToggleKind::Check => MenuGlyph::Check(t.on),
+            TrayToggleKind::Radio => MenuGlyph::Radio(t.on),
+        },
+        None => MenuGlyph::None,
+    };
+    let bus = bus.clone();
+    let address = address.to_string();
+    let item_id = item.id;
+    MenuRow::Item {
+        label: item.label.clone(),
+        glyph,
+        enabled: item.enabled,
+        danger: false,
+        on_activate: EventHandler::new(move |_: ()| {
+            bus.send(ShellMsg::Service(Command::TrayMenuClicked {
+                address: address.clone(),
+                item_id,
+            }));
+        }),
     }
 }
 

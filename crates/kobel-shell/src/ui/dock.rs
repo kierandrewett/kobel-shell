@@ -26,6 +26,7 @@ use torin::prelude::{Alignment, Position, Size};
 
 use kobel_services::{AppsSnapshot, Command, GnoblinSnapshot, GnoblinWindow, MediaSnapshot};
 
+use super::menu::{MenuGlyph, MenuModel, MenuRow, PopupHost, PopupPlacement};
 use super::{AppIcon, ICON_APP, ICON_MUSIC, icon};
 use crate::manager::{ShellBus, ShellMsg};
 use crate::motion::{self, use_spring};
@@ -108,6 +109,33 @@ fn load_pins() -> Vec<String> {
         return pins;
     }
     DEFAULT_PINS.iter().map(|id| id.to_string()).collect()
+}
+
+/// Additive per-dock root context: the live, mutable pin list the dock renders
+/// from. Seeded from [`pins`] at surface creation (so the initial set matches the
+/// width main.rs computed), then edited in-session by the context menu's Pin/Unpin
+/// row. A newtype (not a bare `State<Vec<String>>`) so it never collides with the
+/// frozen snapshot contexts and reads as intent at the consume site.
+#[derive(Clone, Copy, PartialEq)]
+pub struct DockPins(pub State<Vec<String>>);
+
+/// Persist the pin list to `dock.json` (the writer counterpart of [`load_pins`]).
+/// Best-effort: an IO failure is logged, never fatal. The on-disk change takes
+/// effect for the whole dock (width included) on the next launch; in-session the
+/// edited [`DockPins`] state re-renders the tiles immediately.
+pub fn save_pins(pins: &[String]) {
+    let Some(path) = config_path() else {
+        tracing::warn!("[dock] cannot locate dock.json to save pins");
+        return;
+    };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let body = serde_json::json!({ "pins": pins }).to_string();
+    match std::fs::write(&path, body) {
+        Ok(()) => tracing::info!("[dock] saved {} pin(s) to {}", pins.len(), path.display()),
+        Err(e) => tracing::warn!("[dock] failed to save pins to {}: {e}", path.display()),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,26 +310,31 @@ impl Component for DockTile {
         let tokens = *use_consume::<State<Tokens>>().read();
         let apps = use_consume::<State<AppsSnapshot>>();
         let gnoblin = use_consume::<State<GnoblinSnapshot>>();
+        let popup = use_consume::<PopupHost>();
+        let dock_pins = use_consume::<DockPins>();
         let mut hovered = use_state(|| false);
 
         let pin_id = self.pin_id.clone();
 
         // Resolve the pin -> desktop entry (exact, then loose last-component).
-        let (resolved, launch_id, icon_path) = {
+        let (resolved, launch_id, icon_path, app_name) = {
             let snap = apps.read();
             match snap.by_id(&pin_id) {
-                Some(app) => (true, app.id.clone(), app.icon.clone()),
-                None => (false, pin_id.clone(), None),
+                Some(app) => (true, app.id.clone(), app.icon.clone(), app.name.clone()),
+                None => (false, pin_id.clone(), None, pin_id.clone()),
             }
         };
 
-        // Windows of this app: loose app_id match, for the dots + click model.
-        let (total, focused_idx, win_ids) = {
+        // Windows of this app: loose app_id match, for the dots, the click model
+        // and the context menu's window list.
+        let (total, focused_idx, win_ids, windows) = {
             let snap = gnoblin.read();
             let ws = windows_for(&pin_id, &snap.windows);
             let focused = ws.iter().position(|w| w.focused);
             let ids: Vec<String> = ws.iter().map(|w| w.id.clone()).collect();
-            (ids.len(), focused, ids)
+            let list: Vec<(String, String)> =
+                ws.iter().map(|w| (w.id.clone(), w.title.clone())).collect();
+            (ids.len(), focused, ids, list)
         };
 
         // Icon content: the resolved icon (falling back to a glyph) or, for an
@@ -329,7 +362,14 @@ impl Component for DockTile {
         let mid_bus = bus.clone();
         let mid_launch = launch_id.clone();
         let wheel_bus = bus.clone();
-        let wheel_ids = win_ids;
+        let wheel_ids = win_ids.clone();
+
+        // Right-click context menu: Pin/Unpin, window list, Quit (docs/FREYA-PLAN.md
+        // dock right-click model). Anchored at the click, growing up out of the dock.
+        let menu_bus = bus.clone();
+        let menu_pin = pin_id.clone();
+        let menu_windows = windows;
+        let menu_ids = win_ids;
 
         let mut tile = rect()
             .width(Size::px(tokens.icon))
@@ -355,6 +395,20 @@ impl Component for DockTile {
                     wheel_bus.send(ShellMsg::Service(cmd));
                 }
             })
+            .on_secondary_down(move |e: Event<PressEventData>| {
+                let anchor = tile_anchor(&e);
+                tracing::info!("[dock] context menu requested for {menu_pin} at {anchor:?}");
+                let model = dock_menu_model(
+                    &menu_pin,
+                    &app_name,
+                    &menu_windows,
+                    &menu_ids,
+                    focused_idx,
+                    dock_pins,
+                    &menu_bus,
+                );
+                popup.open(anchor, PopupPlacement::above(), model);
+            })
             .child(content);
 
         // Dots are an absolute overlay only when the app owns windows.
@@ -362,11 +416,93 @@ impl Component for DockTile {
             tile = tile.child(dots_overlay(total, focused_idx, tokens));
         }
 
-        // TODO(phase-later): right-click context menu (window list + Quit). A
-        // layer-surface popup escaping the ~54px dock needs its own surface
-        // design; deferred out of this phase.
         tile
     }
+}
+
+/// The 1x1 anchor rectangle at a right-click's dock-surface-local position. The
+/// compositor slides/flips the popup to keep it on-screen.
+fn tile_anchor(e: &Event<PressEventData>) -> (i32, i32, i32, i32) {
+    match &**e {
+        PressEventData::Mouse(m) => (m.global_location.x as i32, m.global_location.y as i32, 1, 1),
+        _ => (0, 0, 1, 1),
+    }
+}
+
+/// Build the dock tile's right-click context menu (docs/FREYA-PLAN.md dock model):
+/// an Unpin row (persists to dock.json + re-renders live), a window-list section
+/// that activates a window on click (the focused one carries a radio dot), and a
+/// danger Quit row.
+///
+/// GAP: `org.gnoblin.Shell` exposes no close/quit verb (only Activate/Minimize/
+/// Reload...). Rather than reintroduce a `pkill`, Quit MINIMIZES every window of the
+/// app -- the honest closest existing command. A true quit needs a new gnoblin
+/// method plus a `Command` variant, owned by kobel-services.
+fn dock_menu_model(
+    pin_id: &str,
+    app_name: &str,
+    windows: &[(String, String)],
+    win_ids: &[String],
+    focused: Option<usize>,
+    dock_pins: DockPins,
+    bus: &ShellBus,
+) -> MenuModel {
+    let mut rows: Vec<MenuRow> = Vec::new();
+
+    // Dock tiles are always pinned, so Pin/Unpin unpins: drop the id, persist, and
+    // mutate the live DockPins so the tile disappears this session too.
+    let unpin_pin = pin_id.to_string();
+    rows.push(MenuRow::Item {
+        label: format!("Unpin {app_name}"),
+        glyph: MenuGlyph::None,
+        enabled: true,
+        danger: false,
+        on_activate: EventHandler::new(move |_: ()| {
+            let mut state = dock_pins.0;
+            let mut list = state.read().clone();
+            list.retain(|p| p != &unpin_pin);
+            save_pins(&list);
+            state.set(list);
+        }),
+    });
+
+    // Window list: activate on click; the focused window carries a radio dot.
+    if !windows.is_empty() {
+        rows.push(MenuRow::Separator);
+        for (i, (id, title)) in windows.iter().enumerate() {
+            let label =
+                if title.trim().is_empty() { format!("Window {}", i + 1) } else { title.clone() };
+            let bus = bus.clone();
+            let id = id.clone();
+            rows.push(MenuRow::Item {
+                label,
+                glyph: MenuGlyph::Radio(focused == Some(i)),
+                enabled: true,
+                danger: false,
+                on_activate: EventHandler::new(move |_: ()| {
+                    bus.send(ShellMsg::Service(Command::ActivateWindow(id.clone())));
+                }),
+            });
+        }
+    }
+
+    // Quit (danger). See the GAP note above: this minimizes every window.
+    rows.push(MenuRow::Separator);
+    let quit_ids = win_ids.to_vec();
+    let quit_bus = bus.clone();
+    rows.push(MenuRow::Item {
+        label: "Quit".to_string(),
+        glyph: MenuGlyph::None,
+        enabled: !quit_ids.is_empty(),
+        danger: true,
+        on_activate: EventHandler::new(move |_: ()| {
+            for id in &quit_ids {
+                quit_bus.send(ShellMsg::Service(Command::MinimizeWindow(id.clone())));
+            }
+        }),
+    });
+
+    MenuModel::new(rows)
 }
 
 /// The placeholder body for an unresolved pin: a generic glyph over the source
@@ -515,9 +651,12 @@ fn media_progress(progress: f64, tile: f32) -> Element {
 /// before the media widget.
 pub fn dock() -> impl IntoElement {
     let tokens = *use_consume::<State<Tokens>>().read();
+    // Render from the live pin list (seeded from disk, edited by the context menu's
+    // Unpin row) rather than the static startup list.
+    let pins = use_consume::<DockPins>().0.read().clone();
 
     let mut children: Vec<Element> = Vec::new();
-    for (i, id) in pins().iter().enumerate() {
+    for (i, id) in pins.iter().enumerate() {
         if i == 4 {
             children.push(separator());
         }
