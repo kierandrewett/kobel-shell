@@ -38,6 +38,8 @@ pub(crate) enum GnoblinCommand {
     SetFeature { name: String, on: bool },
     Activate(String),
     Minimize(String),
+    ReloadScripts,
+    ReloadExtension(String),
 }
 
 #[proxy(
@@ -53,6 +55,8 @@ trait Shell {
     // ListWindows returns aa{sv}: an array of dicts with camelCase keys, matching
     // the .ts `deep_unpack() as [GnoblinWindow[]]` + `w.appId`/`w.focused` access.
     fn list_windows(&self) -> zbus::Result<Vec<HashMap<String, OwnedValue>>>;
+    fn reload_scripts(&self) -> zbus::Result<()>;
+    fn reload_extension(&self, uuid: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn windows_changed(&self) -> zbus::Result<()>;
@@ -210,6 +214,8 @@ async fn handle_command(proxy: Option<&ShellProxy<'_>>, cmd: GnoblinCommand) {
         GnoblinCommand::SetFeature { name, on } => proxy.set_feature(&name, on).await,
         GnoblinCommand::Activate(id) => proxy.activate_window(&id).await,
         GnoblinCommand::Minimize(id) => proxy.minimize_window(&id).await,
+        GnoblinCommand::ReloadScripts => proxy.reload_scripts().await,
+        GnoblinCommand::ReloadExtension(uuid) => proxy.reload_extension(&uuid).await,
     };
     if let Err(e) = result {
         tracing::warn!("[gnoblin] command failed: {e}");

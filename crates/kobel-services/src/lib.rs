@@ -13,6 +13,7 @@ use tokio::sync::oneshot;
 mod apps;
 mod audio;
 mod battery;
+mod exec;
 mod gnoblin;
 mod mpris;
 
@@ -242,13 +243,14 @@ async fn run(
                 Command::MediaPrevious => {
                     let _ = mpris_tx.send(MprisCommand::Previous);
                 }
-                // Routed once the exec service task lands (phase 4).
-                other @ (Command::Session(_)
-                | Command::OpenUri(_)
-                | Command::CopyText(_)
-                | Command::ReloadScripts
-                | Command::ReloadExtension(_)) => {
-                    tracing::warn!("[services] command not yet routed: {other:?}");
+                Command::Session(verb) => exec::session(verb),
+                Command::OpenUri(uri) => exec::open_uri(&uri),
+                Command::CopyText(text) => exec::copy_text(text),
+                Command::ReloadScripts => {
+                    let _ = gnoblin_tx.send(GnoblinCommand::ReloadScripts);
+                }
+                Command::ReloadExtension(uuid) => {
+                    let _ = gnoblin_tx.send(GnoblinCommand::ReloadExtension(uuid));
                 }
             }
         }
