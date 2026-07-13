@@ -34,11 +34,14 @@ else
 fi
 toggle_reply="$("$CTL_BIN" toggle launcher 2>&1)"
 sleep 1
-if [ "$toggle_reply" = "ok" ] && grep -aq "\[manager\] toggle launcher" "$DK/kobel.log"; then
-  echo "PASS: kobelctl toggle launcher -> ok + manager log"
+if [ "$toggle_reply" = "ok" ] && grep -aq "\[manager\] opened launcher" "$DK/kobel.log"; then
+  echo "PASS: kobelctl toggle launcher -> ok + manager reveal log"
 else
-  echo "FAIL: toggle reply='$toggle_reply', manager log line missing"; fail=1
+  echo "FAIL: toggle reply='$toggle_reply', manager reveal log missing"; fail=1
 fi
+# Restore a known-closed baseline before the dedicated reveal capture below.
+"$CTL_BIN" toggle launcher >/dev/null 2>&1
+sleep 1
 bad_reply="$("$CTL_BIN" toggle nonsense 2>&1)"
 case "$bad_reply" in
   err*) echo "PASS: unknown surface rejected ($bad_reply)" ;;
@@ -63,6 +66,29 @@ case "$res" in "(true,"*) ;; *) echo "FAIL: screenshot call failed"; fail=1;; es
 kill -0 "$AP" 2>/dev/null && echo "== kobel-shell alive ==" || { echo "== kobel-shell DIED =="; tail -10 "$DK/kobel.log"; fail=1; }
 echo "== kobel log =="
 grep -aE "\[(shell|manager|ipc|host|conn|egl)\]|error|panic|WARN" "$DK/kobel.log" | head -30
+
+# --- reveal machinery end to end (this wave): toggle reveals the launcher, capture it
+#     while open, toggle hides it; assert the manager reveal/hide logs (FREYA-PLAN 2.4). ---
+open_reply="$("$CTL_BIN" toggle launcher 2>&1)"
+sleep 1
+shot=$(gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/open.png" 2>&1 | head -1)
+if [ "$open_reply" = "ok" ] && grep -aq "\[manager\] opened launcher" "$DK/kobel.log"; then
+  echo "PASS: reveal -> [manager] opened launcher"
+else
+  echo "FAIL: reveal open_reply='$open_reply', opened-launcher log missing"; fail=1
+fi
+case "$shot" in "(true,"*) ;; *) echo "FAIL: open screenshot call failed ($shot)"; fail=1;; esac
+[ -s "$DK/open.png" ] && echo "PASS: open launcher screenshot captured" || { echo "FAIL: open screenshot missing/empty"; fail=1; }
+cp "$DK/open.png" /tmp/kobel-reveal-open.png 2>/dev/null || true
+close_reply="$("$CTL_BIN" toggle launcher 2>&1)"
+sleep 1
+if [ "$close_reply" = "ok" ] && grep -aq "\[manager\] closed launcher" "$DK/kobel.log"; then
+  echo "PASS: hide -> [manager] closed launcher"
+else
+  echo "FAIL: hide close_reply='$close_reply', closed-launcher log missing"; fail=1
+fi
 
 # Clean shutdown via IPC: wait on the child (kill -0 can see a zombie) and require
 # exit status 0, watchdogged so a lost quit surfaces as FAIL instead of a hang.
