@@ -83,16 +83,35 @@ pub(crate) struct FreyaLayerSurface {
     wl_surface: WlSurface,
 }
 
+/// Handle for registering app-level root contexts before a surface mounts.
+///
+/// Passed to the `setup` closure of [`crate::Shell::create_surface_on_outputs`];
+/// each [`SurfaceContexts::provide`] registers a value resolvable in the surface's
+/// UI via `use_consume::<T>()` and returns the created handle so the host thread can
+/// keep writing into it (e.g. a `State<Snapshot>` fanned service updates into).
+pub struct SurfaceContexts<'a> {
+    runner: &'a mut Runner,
+}
+
+impl SurfaceContexts<'_> {
+    /// Provide a root context. `factory` runs inside the runner's root scope, so
+    /// `State::create(...)` and other context-dependent constructors are valid here.
+    pub fn provide<T: Clone + 'static>(&mut self, factory: impl FnOnce() -> T) -> T {
+        self.runner.provide_root_context(factory)
+    }
+}
+
 impl FreyaLayerSurface {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub(crate) fn new<C>(
         id: SurfaceId,
         layer: LayerSurface,
         initial_logical: (u32, u32),
         scale: i32,
         waker: Waker,
         app: impl Fn() -> Element + 'static,
-    ) -> Self {
+        setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
+    ) -> (Self, C) {
         let scale = scale.max(1);
         let wl_surface = layer.wl_surface().clone();
         let physical = ((initial_logical.0 as i32 * scale).max(1), (initial_logical.1 as i32 * scale).max(1));
@@ -164,6 +183,12 @@ impl FreyaLayerSurface {
         runner.provide_root_context(|| tree.accessibility_generator.clone());
         runner.provide_root_context(|| font_collection.clone());
 
+        // App-level root contexts (ShellBus, service snapshots, theme tokens) are
+        // registered here, after the host-owned contexts and before the first mount,
+        // so the surface's UI resolves them on its initial render. The returned
+        // handles let the host thread fan updates into each surface.
+        let extra = setup(&mut SurfaceContexts { runner: &mut runner });
+
         let mut surface = Self {
             id,
             runner,
@@ -194,7 +219,7 @@ impl FreyaLayerSurface {
         };
         // Build the initial tree and mount the app (spawns animations, etc.).
         surface.process();
-        surface
+        (surface, extra)
     }
 
     pub(crate) fn wl_surface(&self) -> &WlSurface {

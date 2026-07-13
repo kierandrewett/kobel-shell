@@ -20,6 +20,7 @@ mod input;
 mod surface;
 
 pub use conn::{Control, Shell};
+pub use surface::SurfaceContexts;
 
 // Re-export the layer-shell config vocabulary so callers need not depend on sctk.
 pub use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
@@ -31,6 +32,23 @@ pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 /// Opaque identifier for a created layer surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceId(pub(crate) u32);
+
+/// A thread-safe handle for waking the shell's event loop from a producer thread
+/// (service fan-out, IPC listener). Waking schedules the app tick (see
+/// [`Shell::on_tick`]) plus a sweep on the loop thread.
+#[derive(Clone)]
+pub struct LoopWaker(calloop::ping::Ping);
+
+impl LoopWaker {
+    pub(crate) fn new(ping: calloop::ping::Ping) -> Self {
+        Self(ping)
+    }
+
+    /// Wake the loop. Safe to call from any thread.
+    pub fn wake(&self) {
+        self.0.ping();
+    }
+}
 
 /// Edge margins in surface-local logical pixels, matching the wlr-layer-shell order.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -80,6 +98,9 @@ pub struct SurfaceConfig {
     pub keyboard_interactivity: KeyboardInteractivity,
     /// Size behaviour.
     pub size: SurfaceSize,
+    /// When true, the surface is given an empty wl input region at creation, making
+    /// it click-through (display-only). Used by the OSD (docs/FREYA-PLAN.md 2.4).
+    pub input_region_empty: bool,
 }
 
 impl SurfaceConfig {
@@ -93,6 +114,7 @@ impl SurfaceConfig {
             exclusive_zone: 0,
             keyboard_interactivity: KeyboardInteractivity::None,
             size,
+            input_region_empty: false,
         }
     }
 
@@ -118,6 +140,11 @@ impl SurfaceConfig {
 
     pub fn keyboard_interactivity(mut self, mode: KeyboardInteractivity) -> Self {
         self.keyboard_interactivity = mode;
+        self
+    }
+
+    pub fn input_region_empty(mut self, empty: bool) -> Self {
+        self.input_region_empty = empty;
         self
     }
 }

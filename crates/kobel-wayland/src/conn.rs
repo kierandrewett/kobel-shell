@@ -20,7 +20,7 @@ use calloop::ping::{Ping, make_ping};
 use calloop_wayland_source::WaylandSource;
 use freya_core::integration::{KeyboardEventName, PlatformEvent};
 use freya_core::prelude::Element;
-use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
+use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::seat::keyboard::{
@@ -43,8 +43,8 @@ use wayland_client::{Connection, QueueHandle};
 
 use crate::egl::Egl;
 use crate::frame::runner_waker;
-use crate::surface::FreyaLayerSurface;
-use crate::{KeyPress, Result, SurfaceConfig, SurfaceId, SurfaceSize, input};
+use crate::surface::{FreyaLayerSurface, SurfaceContexts};
+use crate::{KeyPress, LoopWaker, Result, SurfaceConfig, SurfaceId, SurfaceSize, input};
 
 /// The shell host. Create it, add surfaces, then `run()` the event loop.
 pub struct Shell {
@@ -119,18 +119,50 @@ impl Shell {
             _conn: conn,
             exit: false,
             key_handler: None,
+            shell_tick: None,
         };
 
         Ok(Self { event_loop, host })
     }
 
-    /// Create a layer surface rendering `app`. Returns its id.
+    /// Create a layer surface rendering `app`, not bound to a specific output.
+    /// Returns its id. Prefer [`Shell::create_surface_on_outputs`] for per-output
+    /// chrome (bar/osd); this is for compositor-placed or singleton surfaces.
     pub fn create_surface(
         &mut self,
         config: SurfaceConfig,
         app: impl Fn() -> Element + 'static,
     ) -> Result<SurfaceId> {
-        self.host.create_surface(config, app)
+        self.host.create_surface_impl(config, None, |_| (), app).map(|(id, ())| id)
+    }
+
+    /// Create one copy of a surface per connected output, binding each to its output.
+    /// `app` builds the (identical) UI for every output; `setup` registers each
+    /// surface's app-level root contexts and is called once per output, its result
+    /// collected so the caller can fan updates into every surface. Returns one
+    /// `(SurfaceId, C)` per output (or a single compositor-placed surface if the
+    /// compositor advertised no outputs).
+    pub fn create_surface_on_outputs<C: 'static>(
+        &mut self,
+        config: SurfaceConfig,
+        setup: impl FnMut(&mut SurfaceContexts<'_>) -> C,
+        app: impl Fn() -> Element + Clone + 'static,
+    ) -> Result<Vec<(SurfaceId, C)>> {
+        self.host.create_surface_on_outputs(config, setup, app)
+    }
+
+    /// Install the app tick: a callback run at the start of every sweep (and whenever
+    /// [`Shell::waker`] is woken from another thread), before the surfaces are pumped,
+    /// so any root-context writes it makes are picked up in the same frame. Use it to
+    /// drain the ShellBus / service snapshots and to drive the shell via [`Control`].
+    pub fn on_tick(&mut self, handler: impl FnMut(&mut Control<'_>) + 'static) {
+        self.host.shell_tick = Some(Box::new(handler));
+    }
+
+    /// A thread-safe handle for waking the loop (thus running the app tick) from a
+    /// producer thread (service fan-out, IPC listener).
+    pub fn waker(&self) -> LoopWaker {
+        LoopWaker::new(self.host.runner_ping.clone())
     }
 
     /// Install an app-level key handler. It runs on every key *press* (and host-side
@@ -201,14 +233,17 @@ struct Host {
 
     exit: bool,
     key_handler: Option<Box<dyn FnMut(KeyPress, &mut Control<'_>)>>,
+    shell_tick: Option<Box<dyn FnMut(&mut Control<'_>)>>,
 }
 
 impl Host {
-    fn create_surface(
+    fn create_surface_impl<C>(
         &mut self,
         config: SurfaceConfig,
+        output: Option<&wl_output::WlOutput>,
+        setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
         app: impl Fn() -> Element + 'static,
-    ) -> Result<SurfaceId> {
+    ) -> Result<(SurfaceId, C)> {
         let (init_w, init_h) = match config.size {
             SurfaceSize::Exact { width, height } => (width, height),
             SurfaceSize::ContentSized { .. } => {
@@ -227,24 +262,65 @@ impl Host {
             wl_surface,
             config.layer,
             Some(config.namespace.clone()),
-            None,
+            output,
         );
         layer.set_anchor(config.anchor);
         layer.set_margin(config.margins.top, config.margins.right, config.margins.bottom, config.margins.left);
         layer.set_exclusive_zone(config.exclusive_zone);
         layer.set_keyboard_interactivity(config.keyboard_interactivity);
         layer.set_size(init_w, init_h);
+
+        // Empty input region -> the surface is click-through (OSD, display-only). A
+        // region with no rectangles added is empty; set_input_region copies it at
+        // request time, so dropping the Region before the commit is fine. Input region
+        // is sticky surface state, so later frame commits keep it.
+        if config.input_region_empty {
+            match Region::new(&self.compositor_state) {
+                Ok(region) => layer.wl_surface().set_input_region(Some(region.wl_region())),
+                Err(e) => tracing::warn!("[host] empty input region unavailable: {e}"),
+            }
+        }
+
         // Initial commit with no buffer -> compositor replies with a configure.
         layer.commit();
 
-        let surface =
-            FreyaLayerSurface::new(id, layer, (init_w, init_h), 1, self.waker.clone(), app);
+        let (surface, extra) =
+            FreyaLayerSurface::new(id, layer, (init_w, init_h), 1, self.waker.clone(), app, setup);
         self.surfaces.push(surface);
         tracing::info!(
-            "[host] created surface {id:?} ns={} size={init_w}x{init_h}",
-            config.namespace
+            "[host] created surface {id:?} ns={} size={init_w}x{init_h} on_output={}",
+            config.namespace,
+            output.is_some(),
         );
-        Ok(id)
+        Ok((id, extra))
+    }
+
+    fn create_surface_on_outputs<C>(
+        &mut self,
+        config: SurfaceConfig,
+        mut setup: impl FnMut(&mut SurfaceContexts<'_>) -> C,
+        app: impl Fn() -> Element + Clone + 'static,
+    ) -> Result<Vec<(SurfaceId, C)>> {
+        // OutputState::bind_all made the proxies available at registry init; no
+        // roundtrip needed. Hotplug (new/destroyed outputs at runtime) is a TODO.
+        let outputs: Vec<wl_output::WlOutput> = self.output_state.outputs().collect();
+        if outputs.is_empty() {
+            tracing::warn!(
+                "[host] no outputs advertised; creating one compositor-placed '{}' surface",
+                config.namespace
+            );
+            return Ok(vec![self.create_surface_impl(config, None, &mut setup, app)?]);
+        }
+        let mut created = Vec::with_capacity(outputs.len());
+        for output in &outputs {
+            created.push(self.create_surface_impl(
+                config.clone(),
+                Some(output),
+                &mut setup,
+                app.clone(),
+            )?);
+        }
+        Ok(created)
     }
 
     fn index_of(&self, surface: &wl_surface::WlSurface) -> Option<usize> {
@@ -253,6 +329,14 @@ impl Host {
 
     /// One pass over all surfaces: pump runners, kickstart renders, re-arm if busy.
     fn sweep(&mut self) {
+        // App tick first: drain the ShellBus / service snapshots and let the shell
+        // drive itself (exit, kb interactivity). Running before the surface pump means
+        // any root-context writes it makes are picked up by process() this same sweep.
+        if let Some(mut tick) = self.shell_tick.take() {
+            let mut control = Control { exit: &mut self.exit, surfaces: &mut self.surfaces };
+            tick(&mut control);
+            self.shell_tick = Some(tick);
+        }
         let mut rearm = false;
         for idx in 0..self.surfaces.len() {
             rearm |= self.surfaces[idx].process();
