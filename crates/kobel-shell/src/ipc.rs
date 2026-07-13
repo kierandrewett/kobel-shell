@@ -14,9 +14,13 @@ use std::thread;
 
 use crate::manager::{ShellBus, ShellMsg, SurfaceKey};
 
-/// The control socket path: `$XDG_RUNTIME_DIR/kobel-shell.sock` (falling back to
-/// `/tmp` when the runtime dir is unset).
+/// The control socket path: `$KOBEL_SHELL_SOCKET` when set (devkit/test isolation),
+/// else `$XDG_RUNTIME_DIR/kobel-shell.sock` (falling back to `/tmp`). Keep in sync
+/// with the copy in bin/kobelctl.rs (bins cannot import the shell's modules).
 pub fn socket_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("KOBEL_SHELL_SOCKET") {
+        return PathBuf::from(path);
+    }
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/tmp"));

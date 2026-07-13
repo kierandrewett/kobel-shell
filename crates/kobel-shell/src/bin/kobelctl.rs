@@ -14,7 +14,11 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+// Keep in sync with ipc::socket_path (bins cannot import the shell's modules).
 fn socket_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("KOBEL_SHELL_SOCKET") {
+        return PathBuf::from(path);
+    }
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/tmp"));

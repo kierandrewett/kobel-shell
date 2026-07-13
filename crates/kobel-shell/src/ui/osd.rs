@@ -10,6 +10,9 @@
 //! mixer is deliberately excluded) reveals the pill. It is display-only: no
 //! handlers, and the host gives the surface an empty input region (click-through).
 
+use std::time::Duration;
+
+use async_io::Timer;
 use freya_core::prelude::*;
 use torin::prelude::{Alignment, Size};
 
@@ -25,6 +28,13 @@ pub fn osd() -> impl IntoElement {
     let audio = use_consume::<State<AudioSnapshot>>();
     let mut opacity = use_spring(0.0);
     let mut seeded = use_state(|| false);
+    // Auto-hide retrigger guard: every reveal bumps `generation`, and the hide
+    // task spawned for that reveal only springs opacity back to 0 if its
+    // captured generation is still current 1400ms later. A newer reveal bumps
+    // the counter again, so an in-flight hide task from a stale reveal becomes
+    // a no-op instead of racing the fresh one -- retrigger-resets-timer, per
+    // the AGS OSD.
+    let mut generation = use_state(|| 0u64);
 
     let (volume, muted) = {
         let a = audio.read();
@@ -42,8 +52,19 @@ pub fn osd() -> impl IntoElement {
             return;
         }
         opacity.to(1.0, motion::PANEL_OPACITY);
-        // TODO(async-timer): restart a 1400ms auto-hide (opacity.to(0.0, ...)).
-        // Blocked on a freya-task wall-clock timer -- see the module TODO below.
+
+        // (Re)start the 1400ms auto-hide timer for this reveal.
+        let this_generation = {
+            let mut generation_ref = generation.write();
+            *generation_ref += 1;
+            *generation_ref
+        };
+        spawn(async move {
+            Timer::after(Duration::from_millis(1400)).await;
+            if *generation.peek() == this_generation {
+                opacity.to(0.0, motion::PANEL_CLOSE);
+            }
+        });
     });
 
     // Volume is normalized (1.0 == 100%); AGS caps the display at 100%.

@@ -11,6 +11,9 @@
 //! ships gnoblin/audio/battery only, so there is no network/tray state to read
 //! yet (see the module TODOs).
 
+use std::time::Duration;
+
+use async_io::Timer;
 use freya_core::prelude::*;
 use torin::prelude::{Alignment, Content, Size};
 
@@ -124,21 +127,44 @@ impl Component for FocusedTitle {
 /// Centered clock+date button -> Calendar. `HH:MM` in the tabular data face plus
 /// a short date (ags: `%H:%M` + `%a %-d %b`).
 ///
-/// NOTE: the time is read from the wall clock at render, so it is exact on every
-/// redraw (input, hover, service snapshot). A guaranteed periodic self-refresh
-/// (AGS polls every 10s) needs a freya-task wall-clock timer -- see the module
-/// TODO on the missing async timer dependency.
+/// The wall clock is read on a scope-tied freya task (`spawn`, mirroring the
+/// driver-task pattern `freya-animation`'s `hook.rs` uses to advance animated
+/// values), never at render time: a `State<(String, String)>` holds the
+/// formatted `(time, date)`, seeded once and refreshed every 10s via
+/// `async_io::Timer::after` (matching the AGS poll interval), each tick
+/// requesting a redraw through `Platform`. This guarantees HH:MM stays correct
+/// even when nothing else (input, hover, service snapshot) redraws the bar.
 #[derive(PartialEq)]
 struct ClockButton;
+
+/// Format the wall clock as `(HH:MM, short date)`.
+fn clock_text() -> (String, String) {
+    let now = chrono::Local::now();
+    (
+        now.format("%H:%M").to_string(),
+        now.format("%a %-d %b").to_string(),
+    )
+}
 
 impl Component for ClockButton {
     fn render(&self) -> impl IntoElement {
         let bus = use_consume::<ShellBus>();
         let mut hovered = use_state(|| false);
 
-        let now = chrono::Local::now();
-        let time = now.format("%H:%M").to_string();
-        let date = now.format("%a %-d %b").to_string();
+        let clock = use_hook(|| {
+            let clock = State::create(clock_text());
+            let mut clock_writer = clock;
+            let platform = Platform::get();
+            spawn(async move {
+                loop {
+                    Timer::after(Duration::from_secs(10)).await;
+                    *clock_writer.write() = clock_text();
+                    platform.send(UserEvent::RequestRedraw);
+                }
+            });
+            clock
+        });
+        let (time, date) = clock.read().clone();
 
         let bg: Color = if *hovered.read() {
             theme::PANEL2.rgb().into()
