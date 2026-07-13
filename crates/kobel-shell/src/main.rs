@@ -23,10 +23,10 @@ use kobel_services::{
 };
 use kobel_wayland::{
     Anchor, KeyboardInteractivity, Layer, Margins, Shell, SurfaceConfig, SurfaceContexts,
-    SurfaceSize,
+    SurfaceId, SurfaceSize,
 };
 
-use crate::manager::{Manager, ShellBus};
+use crate::manager::{Manager, ShellBus, ShellMsg, SurfaceKey};
 
 /// The per-surface State handles the app tick fans service snapshots into. Tokens is
 /// static, so we do not keep its handle; only the live snapshots change.
@@ -58,6 +58,82 @@ fn provide_contexts(
     cx.provide(|| State::create(tokens));
     cx.provide(|| bus.clone());
     SurfaceStates { gnoblin, audio, battery, apps, media }
+}
+
+/// Provide the frozen root contexts plus the additive per-surface OpenProgress (the
+/// reveal opacity the manager animates). Returns the snapshot handles for the service
+/// fan-out and the OpenProgress inner State<f32> the manager writes each animated
+/// frame.
+fn provide_panel_contexts(
+    cx: &mut SurfaceContexts<'_>,
+    bus: &ShellBus,
+    tokens: theme::Tokens,
+) -> (SurfaceStates, State<f32>) {
+    let states = provide_contexts(cx, bus, tokens);
+    let progress = cx.provide(|| ui::panels::OpenProgress(State::create(0.0)));
+    (states, progress.0)
+}
+
+/// Keyboard mode a surface takes while open: Exclusive grabs every key (launcher and
+/// session are keyboard-first), OnDemand shares focus (quicksettings/calendar/drawer).
+/// Ports the AGS per-surface keyboard-interactivity (docs/FREYA-PLAN.md 6).
+fn kb_open(key: SurfaceKey) -> KeyboardInteractivity {
+    match key {
+        SurfaceKey::Launcher | SurfaceKey::Session => KeyboardInteractivity::Exclusive,
+        SurfaceKey::QuickSettings | SurfaceKey::Calendar | SurfaceKey::Drawer => {
+            KeyboardInteractivity::OnDemand
+        }
+    }
+}
+
+/// Layer config for one on-demand surface, ported from docs/FREYA-PLAN.md section 6.
+/// All start closed: keyboard None + empty input region (the manager flips both on
+/// reveal). Widths come from theme tokens; heights are fixed placeholders for this
+/// wave (the real surfaces size to content later). An axis anchored to both opposite
+/// edges uses size 0 so the compositor fills it (as the bar does for width).
+fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
+    let panel_top = t.panel_top() as i32;
+    let edge = t.edge as i32;
+    let base = |ns: &str, size: SurfaceSize| {
+        SurfaceConfig::new(ns, size)
+            .layer(Layer::Top)
+            .keyboard_interactivity(KeyboardInteractivity::None)
+            .input_region_empty(true)
+    };
+    match key {
+        // TOP, margin-top 56 (sits below the bar); centered on the primary output.
+        SurfaceKey::Launcher => base(
+            "kobel-launcher",
+            SurfaceSize::Exact { width: t.launcher_w as u32, height: 480 },
+        )
+        .anchor(Anchor::TOP)
+        .margins(Margins { top: 56, right: 0, bottom: 0, left: 0 }),
+        // TOP+RIGHT.
+        SurfaceKey::QuickSettings => base(
+            "kobel-qs",
+            SurfaceSize::Exact { width: t.panel_w as u32, height: 520 },
+        )
+        .anchor(Anchor::TOP | Anchor::RIGHT)
+        .margins(Margins { top: panel_top, right: edge, bottom: 0, left: 0 }),
+        // TOP (centered).
+        SurfaceKey::Calendar => base(
+            "kobel-calendar",
+            SurfaceSize::Exact { width: t.calendar_w as u32, height: 360 },
+        )
+        .anchor(Anchor::TOP)
+        .margins(Margins { top: panel_top, right: 0, bottom: 0, left: 0 }),
+        // TOP+RIGHT+BOTTOM, margin-right 12: full-height right rail (height filled by
+        // the top+bottom anchor, so the height axis is 0).
+        SurfaceKey::Drawer => base(
+            "kobel-drawer",
+            SurfaceSize::Exact { width: t.panel_w as u32, height: 0 },
+        )
+        .anchor(Anchor::TOP | Anchor::RIGHT | Anchor::BOTTOM)
+        .margins(Margins { top: panel_top, right: 12, bottom: t.gap as i32, left: 0 }),
+        // All edges: full-screen (both axes filled, so size is 0x0).
+        SurfaceKey::Session => base("kobel-session", SurfaceSize::Exact { width: 0, height: 0 })
+            .anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT),
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -157,6 +233,42 @@ fn main() -> anyhow::Result<()> {
     )?;
     states.extend(docks.into_iter().map(|(_, s)| s));
 
+    // On-demand singletons + dismiss layer (docs/FREYA-PLAN.md 2.4, 6). Each is
+    // created once and stays mapped forever (the warm-open trick): closed = opacity 0
+    // + empty input region + keyboard None; the manager reveals them on demand.
+    //
+    // The dismiss layer is created FIRST so it sits beneath the panels: an open panel
+    // receives its own clicks, while a click outside falls through to the dismiss
+    // layer (which closes everything). Its input region stays empty until a surface
+    // opens. Per the frozen contract it gets the same base contexts as every surface.
+    let dismiss_cfg = SurfaceConfig::new("kobel-dismiss", SurfaceSize::Exact { width: 0, height: 0 })
+        .layer(Layer::Top)
+        .anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT)
+        .keyboard_interactivity(KeyboardInteractivity::None)
+        .input_region_empty(true);
+    let (dismiss_id, dismiss_states) = shell.create_singleton_surface(
+        dismiss_cfg,
+        |cx| provide_contexts(cx, &bus, tokens),
+        || ui::panels::dismiss().into_element(),
+    )?;
+    states.push(dismiss_states);
+
+    // The five on-demand surfaces. Each provides the frozen contexts plus its
+    // additive OpenProgress; we keep (key, id, kb-when-open, progress) to build the
+    // reveal registry once the manager exists.
+    let mut reveal_regs: Vec<(SurfaceKey, SurfaceId, KeyboardInteractivity, State<f32>)> =
+        Vec::new();
+    for key in SurfaceKey::ALL {
+        let cfg = panel_config(key, &tokens);
+        let (id, (surface_states, progress)) = shell.create_singleton_surface(
+            cfg,
+            |cx| provide_panel_contexts(cx, &bus, tokens),
+            move || ui::panels::panel(key).into_element(),
+        )?;
+        states.push(surface_states);
+        reveal_regs.push((key, id, kb_open(key), progress));
+    }
+
     tracing::info!("[shell] mounted {} surface(s)", states.len());
 
     // Services fan-out: runs on the services thread, pushes each snapshot UI-ward and
@@ -173,6 +285,31 @@ fn main() -> anyhow::Result<()> {
     // The manager owns the services handle (keeping it alive for the loop's lifetime)
     // and drains the bus.
     let mut manager = Manager::new(bus_rx, services);
+    manager.set_dismiss(dismiss_id);
+    for (key, id, kb, progress) in reveal_regs {
+        manager.register_reveal(
+            key,
+            id,
+            kb,
+            Box::new(move |value: f32| {
+                let mut handle = progress;
+                handle.set_if_modified(value);
+            }),
+        );
+    }
+
+    // Esc closes any open on-demand surface. The host key handler only fires while one
+    // of our surfaces holds keyboard focus (i.e. something is open with
+    // Exclusive/OnDemand), so routing every Escape to CloseAll is naturally gated to
+    // "a surface is open".
+    shell.on_key({
+        let bus = bus.clone();
+        move |press, _control| {
+            if press.is_escape() {
+                bus.send(ShellMsg::CloseAll);
+            }
+        }
+    });
 
     // App tick: drain service snapshots into every surface's State, then drain the bus.
     // Runs on the UI thread at the start of each sweep, before surfaces are pumped.
@@ -203,7 +340,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        if manager.drain() {
+        if manager.tick(control) {
             tracing::info!("[shell] exit requested");
             control.exit();
         }

@@ -11,7 +11,9 @@
 
 pub mod bar;
 pub mod dock;
+pub mod fuzzy;
 pub mod osd;
+pub mod panels;
 
 use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
