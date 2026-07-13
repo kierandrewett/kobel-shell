@@ -297,11 +297,12 @@ fn main() -> anyhow::Result<()> {
     .keyboard_interactivity(KeyboardInteractivity::None);
 
     // Toasts: per-output, top-right, below the bar (ags marginTop 58 / marginRight
-    // 12). Top layer, no keyboard, NO exclusive zone. Input region EMPTY: a fixed
-    // surface with a full region would eat clicks over its whole rect even with no
-    // visible toast, so toasts are display-only this phase (dismiss/actions live in
-    // the drawer). TODO: flip the region dynamically with toast visibility so toast
-    // close buttons work (needs a UI -> manager visibility bridge).
+    // 12). Top layer, no keyboard, NO exclusive zone. The surface starts with an
+    // EMPTY input region (fully click-through); the Toasts component reports each
+    // visible card's measured bounds and the manager sets the input region to the
+    // union of those card rects only, so the toast close/action buttons are live
+    // while the gaps -- and the whole surface when no toast shows -- stay
+    // click-through (see ShellMsg::ToastsRegion + Manager::register_toasts).
     let toasts_cfg = SurfaceConfig::new(
         "kobel-toasts",
         SurfaceSize::Exact {
@@ -338,17 +339,20 @@ fn main() -> anyhow::Result<()> {
     )?;
     states.extend(docks.into_iter().map(|(_, s)| s));
 
-    // Toasts per-output. Collect each surface's DrawerOpen flag so the drawer's
-    // reveal callback can suppress toasts while the drawer is open.
+    // Toasts per-output. Collect each surface's DrawerOpen flag (so the drawer's
+    // reveal callback can suppress toasts while the drawer is open) and its id (so
+    // the manager can apply each ToastsRegion to every output's overlay).
     let mut toast_drawer_flags: Vec<State<bool>> = Vec::new();
+    let mut toast_ids: Vec<SurfaceId> = Vec::new();
     let toasts = shell.create_surface_on_outputs(
         toasts_cfg,
         |cx| provide_toast_contexts(cx, &bus, tokens),
         || ui::notifications::toasts().into_element(),
     )?;
-    for (_, (surface_states, drawer_open)) in toasts {
+    for (id, (surface_states, drawer_open)) in toasts {
         states.push(surface_states);
         toast_drawer_flags.push(drawer_open);
+        toast_ids.push(id);
     }
 
     // On-demand singletons + dismiss layer (docs/FREYA-PLAN.md 2.4, 6). Each is
@@ -418,6 +422,7 @@ fn main() -> anyhow::Result<()> {
     manager.set_reduced_motion(reduced_motion);
     manager.set_profile_anim(profile_anim);
     manager.set_dismiss(dismiss_id);
+    manager.register_toasts(toast_ids);
     for (key, id, kb, progress) in reveal_regs {
         // The drawer's reveal callback also mirrors its open state into every toasts
         // surface's DrawerOpen flag, so toasts suppress while the drawer is open.

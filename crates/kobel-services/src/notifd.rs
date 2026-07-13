@@ -662,6 +662,7 @@ async fn handle_command(
         }
         NotifdCommand::Close(id) => {
             if store.lock().close(id) {
+                tracing::info!("[notifd] closed id={id}");
                 if let Some(emitter) = emitter {
                     let _ = emitter.notification_closed(id, REASON_DISMISSED).await;
                 }

@@ -228,22 +228,42 @@ impl Control<'_> {
     /// (whole surface) at runtime, committing the change. The reveal manager uses
     /// this so a closed on-demand surface stays mapped but click-through, and the
     /// dismiss layer only catches clicks while a surface is open
-    /// (docs/FREYA-PLAN.md 2.4).
+    /// (docs/FREYA-PLAN.md 2.4). Empty delegates to [`set_input_region_rects`] with
+    /// no rectangles; full restores the default whole-surface region (`None`).
     pub fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
+        if empty {
+            self.set_input_region_rects(id, &[]);
+            return;
+        }
         let Some(s) = self.surfaces.iter().find(|s| s.id == id) else {
             return;
         };
-        if empty {
-            match Region::new(self.compositor) {
-                Ok(region) => s.layer.wl_surface().set_input_region(Some(region.wl_region())),
-                Err(e) => {
-                    tracing::warn!("[host] empty input region unavailable: {e}");
-                    return;
+        // None restores the default whole-surface input region.
+        s.layer.wl_surface().set_input_region(None);
+        s.layer.commit();
+    }
+
+    /// Set a surface's wl input region to the union of the given surface-local
+    /// rectangles (x, y, width, height), committing the change. An empty slice
+    /// builds an empty region -> the whole surface is click-through, so the gaps
+    /// between rectangles always pass clicks through (the toasts overlay reports
+    /// only its visible card rects here, never the whole surface). Input region is
+    /// sticky surface state, so later frame commits keep it.
+    pub fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]) {
+        let Some(s) = self.surfaces.iter().find(|s| s.id == id) else {
+            return;
+        };
+        match Region::new(self.compositor) {
+            Ok(region) => {
+                for &(x, y, w, h) in rects {
+                    region.add(x, y, w, h);
                 }
+                s.layer.wl_surface().set_input_region(Some(region.wl_region()));
             }
-        } else {
-            // None restores the default whole-surface input region.
-            s.layer.wl_surface().set_input_region(None);
+            Err(e) => {
+                tracing::warn!("[host] input region unavailable: {e}");
+                return;
+            }
         }
         s.layer.commit();
     }

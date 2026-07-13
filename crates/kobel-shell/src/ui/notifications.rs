@@ -166,6 +166,14 @@ impl Component for Toasts {
         let tick = use_state(|| 0u64);
         let base = use_hook(Instant::now);
 
+        // Interactive input-region bridge: each ToastCard writes its measured
+        // surface-local bounds into `card_rects` (keyed by id); we union the visible
+        // cards below and push them to the manager over the bus, which sets the
+        // toasts surfaces' wl input region so the cards (close + action buttons)
+        // become clickable again while the gaps stay click-through.
+        let bus = use_consume::<ShellBus>();
+        let card_rects = use_state(HashMap::<u32, (i32, i32, i32, i32)>::new);
+
         let serving = notifd.read().serving;
         let dnd = notifd.read().dnd;
         let suppressed = dnd || *drawer_open.0.read();
@@ -259,12 +267,39 @@ impl Component for Toasts {
                 Some(
                     rect()
                         .key(lt.id)
-                        .child(ToastCard { n: n.clone(), phase: lt.phase })
+                        .child(ToastCard { n: n.clone(), phase: lt.phase, rects: card_rects })
                         .into_element(),
                 )
             })
             .collect();
         drop(snap);
+
+        // Assemble the wl input region: the union of the CURRENTLY VISIBLE toast card
+        // rects ONLY (surface-local), so the gaps between cards -- and the whole
+        // surface when there are no toasts -- stay click-through. Suppression (dnd or
+        // drawer open) yields an empty region: the drawer adopts the toasts.
+        let live_ids: Vec<u32> = live.iter().map(|lt| lt.id).collect();
+        let region: Vec<(i32, i32, i32, i32)> = if suppressed {
+            Vec::new()
+        } else {
+            let map = card_rects.read();
+            live_ids.iter().filter_map(|id| map.get(id).copied()).collect()
+        };
+        // Publish on change only (deps dedup vs the last-sent region), and prune
+        // bounds for unmounted toasts so `card_rects` never grows without bound.
+        use_side_effect_with_deps(
+            &(region.clone(), live_ids.clone()),
+            move |(region, live_ids): &(Vec<(i32, i32, i32, i32)>, Vec<u32>)| {
+                let mut card_rects = card_rects;
+                let alive: HashSet<u32> = live_ids.iter().copied().collect();
+                // Hoist the peek() borrow out before write() (State gotcha).
+                let stale = card_rects.peek().keys().any(|id| !alive.contains(id));
+                if stale {
+                    card_rects.write().retain(|id, _| alive.contains(id));
+                }
+                bus.send(ShellMsg::ToastsRegion(region.clone()));
+            },
+        );
 
         let column = rect()
             .vertical()
@@ -287,11 +322,14 @@ impl Component for Toasts {
 }
 
 /// One toast: the translucent card plus its enter/exit spring. Keyed by id so the
-/// spring state stays with the right notification across reorders.
+/// spring state stays with the right notification across reorders. `rects` is the
+/// parent's shared surface-local bounds map: each card writes its own measured rect
+/// keyed by id so [`Toasts`] can assemble the per-card input region.
 #[derive(PartialEq)]
 struct ToastCard {
     n: Notification,
     phase: ToastPhase,
+    rects: State<HashMap<u32, (i32, i32, i32, i32)>>,
 }
 
 impl Component for ToastCard {
@@ -309,12 +347,40 @@ impl Component for ToastCard {
         });
 
         let t = slide.value();
-        // offset_x shifts the wrapper's CHILD (the panel), not the wrapper itself,
-        // so the whole card translates without reflowing the column.
+        let id = self.n.id;
+        let mut rects = self.rects;
+        // offset_x shifts the wrapper's CHILD (the inner panel), not the wrapper
+        // itself, so the whole card translates without reflowing the column. We
+        // measure that inner child, NOT the stable outer wrapper: torin's offset_x
+        // translates descendants and notifies their layout references, so on_sized
+        // here reports the card's ACTUAL moving surface-local rect (an invisible
+        // input strip would otherwise linger where the wrapper sits during the
+        // slide). The parent unions these into the input region; per-frame updates
+        // during the slide are correct, and the parent dedups unchanged values.
         rect()
             .offset_x((1.0 - t) * TOAST_SLIDE)
             .opacity(t)
-            .child(notif_card(&self.n, true, false, Size::px(NCARD_W)))
+            .child(
+                rect()
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        // Wayland regions take integer rects: floor the top-left and
+                        // ceil the bottom-right so the integer rect fully COVERS the
+                        // fractional (spring-translated) card bounds instead of
+                        // under-covering an edge.
+                        let a = e.area;
+                        let left = a.origin.x.floor() as i32;
+                        let top = a.origin.y.floor() as i32;
+                        let right = (a.origin.x + a.size.width).ceil() as i32;
+                        let bottom = (a.origin.y + a.size.height).ceil() as i32;
+                        let next = (left, top, right - left, bottom - top);
+                        // Hoist the peek() borrow out before write() (State gotcha).
+                        let prev = rects.peek().get(&id).copied();
+                        if prev != Some(next) {
+                            rects.write().insert(id, next);
+                        }
+                    })
+                    .child(notif_card(&self.n, true, true, Size::px(NCARD_W))),
+            )
     }
 }
 
@@ -447,11 +513,13 @@ impl Component for DrawerCard {
 // ---------------------------------------------------------------------------
 
 /// The shared notification card body (ags `Card`): a 30px icon tile, the
-/// summary/time/body text column, and (drawer only) a close button + action
-/// buttons. Toasts are display-only this phase -- their surface has an empty
-/// input region (see main.rs), so rendering interactive controls on them would
-/// show dead affordances. `translucent` selects the toast backing (the one
-/// sanctioned translucency) vs the opaque drawer PANEL.
+/// summary/time/body text column, and (when `interactive`) a close button + action
+/// buttons. Both toasts and drawer cards are interactive: the toasts surface gets a
+/// per-card wl input region (the Toasts component reports each card's measured
+/// bounds; main.rs registers the surfaces and the manager applies the region), so
+/// the close/action buttons are live while the gaps stay click-through.
+/// `translucent` selects the toast backing (the one sanctioned translucency) vs the
+/// opaque drawer PANEL.
 fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Size) -> Element {
     let (bg, pad_h, shadow): (Color, f32, (f32, f32, f32, f32, (u8, u8, u8, u8))) = if translucent
     {
@@ -520,6 +588,11 @@ fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Siz
 
     let mut row = rect()
         .horizontal()
+        // Content::Flex is REQUIRED so the flex(1) text column reserves room for the
+        // fixed icon tile and (interactive) close button instead of eating the whole
+        // row -- without it the close button overflows off the card's right edge
+        // (same Torin rule as the summary/time row above).
+        .content(Content::Flex)
         .width(Size::fill())
         .cross_align(Alignment::Start)
         .spacing(10.0)

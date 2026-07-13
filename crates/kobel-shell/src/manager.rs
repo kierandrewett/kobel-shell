@@ -67,6 +67,12 @@ pub enum ShellMsg {
     Service(Command),
     /// Quit the shell cleanly.
     Quit,
+    /// Additive: set the interactive wl input region on every toasts surface to the
+    /// union of the currently-visible toast card rects (surface-local x, y, w, h).
+    /// Empty = fully click-through (no live toasts). The union of card rects ONLY --
+    /// never the whole surface -- so the gaps between cards stay click-through. Sent
+    /// by the Toasts component whenever its visible card layout changes.
+    ToastsRegion(Vec<(i32, i32, i32, i32)>),
 }
 
 /// Cloneable handle provided as a root context on every surface.
@@ -120,6 +126,10 @@ impl CommandSink for ServicesHandle {
 pub trait RevealHost {
     fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity);
     fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool);
+    /// Set the surface's input region to the union of the given surface-local
+    /// rectangles (empty slice = fully click-through). Used to make only the visible
+    /// toast cards interactive while the gaps between them stay click-through.
+    fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]);
 }
 
 impl RevealHost for Control<'_> {
@@ -129,6 +139,10 @@ impl RevealHost for Control<'_> {
 
     fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
         Control::set_input_region_empty(self, id, empty);
+    }
+
+    fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]) {
+        Control::set_input_region_rects(self, id, rects);
     }
 }
 
@@ -268,6 +282,9 @@ pub struct Manager {
     /// The full-screen dismiss layer: click-through until a surface opens, then it
     /// catches the next click and closes everything.
     dismiss: Option<SurfaceId>,
+    /// The per-output toasts overlay surfaces. Each [`ShellMsg::ToastsRegion`] is
+    /// applied to all of them so every output's overlay tracks its visible cards.
+    toasts: Vec<SurfaceId>,
     /// Wall clock for the reveal springs' integration timestep.
     last_tick: Instant,
     /// Reduced-motion accessibility flag: reveal springs snap 0/1 instantly.
@@ -289,6 +306,7 @@ impl Manager {
             reveals: HashMap::new(),
             open: None,
             dismiss: None,
+            toasts: Vec::new(),
             last_tick: Instant::now(),
             reduced_motion: false,
             profile: false,
@@ -326,6 +344,22 @@ impl Manager {
     /// Register the full-screen dismiss layer surface.
     pub fn set_dismiss(&mut self, id: SurfaceId) {
         self.dismiss = Some(id);
+    }
+
+    /// Register the per-output toasts overlay surfaces (one per output). Each
+    /// [`ShellMsg::ToastsRegion`] is applied to all of them, so every output's
+    /// overlay tracks its own visible toast cards.
+    pub fn register_toasts(&mut self, ids: Vec<SurfaceId>) {
+        self.toasts = ids;
+    }
+
+    /// Apply the toast input region (surface-local card rects) to every registered
+    /// toasts surface. An empty slice makes them fully click-through (no live
+    /// toasts), so the gaps between cards always pass clicks through.
+    fn apply_toasts_region(&self, rects: &[(i32, i32, i32, i32)], host: &mut impl RevealHost) {
+        for &id in &self.toasts {
+            host.set_input_region_rects(id, rects);
+        }
     }
 
     /// Enable the reduced-motion reveal path: opacity springs snap to 0/1 instead of
@@ -401,6 +435,7 @@ impl Manager {
                     tracing::info!("[manager] quit");
                     self.quit = true;
                 }
+                ShellMsg::ToastsRegion(rects) => self.apply_toasts_region(&rects, host),
             }
         }
         if self.any_active() {
@@ -478,6 +513,7 @@ impl Manager {
         let profile = self.profile;
         let now = if profile { self.now_ms() } else { 0.0 };
         let mut started_trace = None;
+        let mut close_id = None;
         let did_close = match self.reveals.get_mut(&key) {
             Some(r) if r.target_open || r.active => {
                 r.target_open = false;
@@ -492,12 +528,22 @@ impl Manager {
                     started_trace = Some(t.clone());
                     r.trace = Some(t);
                 }
+                close_id = Some(r.id);
                 true
             }
             _ => false,
         };
         if self.open == Some(key) {
             self.open = None;
+        }
+        // Drop keyboard-interactivity to None IMMEDIATELY, before the fade plays: an
+        // Exclusive surface (launcher/session) that held keyboard focus through the
+        // whole close fade would swallow every key while invisible, and a rapid
+        // switch would misroute the first presses to the outgoing surface. The input
+        // region restore stays gated on settle (in advance), so the surface still
+        // fades out visibly while already deaf to the keyboard.
+        if let Some(id) = close_id {
+            host.set_keyboard_interactivity(id, KeyboardInteractivity::None);
         }
         self.sync_dismiss(host);
         if did_close {
@@ -506,8 +552,8 @@ impl Manager {
         if let Some(t) = started_trace {
             Self::log_trace_event(key, &t, "close_start", now);
         }
-        // Keyboard None + empty input region are restored on settle (in advance),
-        // not here, so they hold through the whole close fade.
+        // The empty input region is restored on settle (in advance), not here, so it
+        // holds through the whole close fade (keyboard None was already dropped above).
     }
 
     fn close_all(&mut self, host: &mut impl RevealHost) {
@@ -565,8 +611,10 @@ impl Manager {
                 }
             }
             if settled && !r.target_open {
+                // Keyboard was already dropped to None in close(); only the
+                // click-through input region is restored here, gated on settle so the
+                // fade stays visible and the surface never eats keys mid-fade.
                 host.set_input_region_empty(r.id, true);
-                host.set_keyboard_interactivity(r.id, KeyboardInteractivity::None);
             }
         }
     }
@@ -592,6 +640,7 @@ mod tests {
     struct FakeHost {
         kb: Vec<(SurfaceId, KeyboardInteractivity)>,
         region: Vec<(SurfaceId, bool)>,
+        rects: Vec<(SurfaceId, Vec<(i32, i32, i32, i32)>)>,
     }
     impl RevealHost for FakeHost {
         fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
@@ -599,6 +648,9 @@ mod tests {
         }
         fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
             self.region.push((id, empty));
+        }
+        fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]) {
+            self.rects.push((id, rects.to_vec()));
         }
     }
 
@@ -796,5 +848,117 @@ mod tests {
         let t = RevealTrace::begin(1, TraceDir::Close, false, 5.0);
         assert_eq!(t.elapsed_ms(5.0), 1.0);
         assert_eq!(t.sample_hz(5.0), 0);
+    }
+
+    #[test]
+    fn close_drops_keyboard_immediately_before_settle() {
+        // Review HIGH: an Exclusive surface must lose keyboard-interactivity the
+        // instant it starts closing -- before the fade settles -- so it cannot
+        // swallow keys while still visible but on its way out. The input region,
+        // by contrast, is only restored on settle so the fade stays visible.
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        let launcher = SurfaceId::new(1);
+        manager.register_reveal(
+            SurfaceKey::Launcher,
+            launcher,
+            KeyboardInteractivity::Exclusive,
+            Box::new(|_| {}),
+        );
+        manager.set_dismiss(SurfaceId::new(0));
+        let mut host = FakeHost::default();
+
+        bus.send(ShellMsg::Toggle(SurfaceKey::Launcher));
+        manager.tick(&mut host);
+        manager.advance(1.0, &mut host); // settle open
+        host.kb.clear();
+        host.region.clear();
+
+        // Begin closing. The kb drop must land during this tick, not on settle.
+        bus.send(ShellMsg::Toggle(SurfaceKey::Launcher));
+        manager.tick(&mut host);
+        assert!(
+            host.kb.contains(&(launcher, KeyboardInteractivity::None)),
+            "keyboard drops to None immediately in close(), not deferred to settle"
+        );
+        assert!(
+            !host.region.contains(&(launcher, true)),
+            "input region is NOT restored yet -- it holds through the fade"
+        );
+        // The interruptible spring is still running (fade has not settled).
+        manager.advance(0.001, &mut host);
+        assert!(manager.any_active(), "close fade still running after a tiny step");
+    }
+
+    #[test]
+    fn displaced_surface_drops_keyboard_before_new_surface_grabs_it() {
+        // Rapid switch: opening QuickSettings while the launcher is open must drop
+        // the launcher's keyboard to None BEFORE QuickSettings takes its own mode,
+        // so the first presses never misroute to the outgoing Exclusive surface.
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        let launcher = SurfaceId::new(1);
+        let qs = SurfaceId::new(2);
+        manager.register_reveal(
+            SurfaceKey::Launcher,
+            launcher,
+            KeyboardInteractivity::Exclusive,
+            Box::new(|_| {}),
+        );
+        manager.register_reveal(
+            SurfaceKey::QuickSettings,
+            qs,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
+        manager.set_dismiss(SurfaceId::new(0));
+        let mut host = FakeHost::default();
+
+        bus.send(ShellMsg::Toggle(SurfaceKey::Launcher));
+        manager.tick(&mut host);
+        manager.advance(1.0, &mut host); // settle open
+        host.kb.clear();
+
+        bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings));
+        manager.tick(&mut host);
+
+        let launcher_none = host
+            .kb
+            .iter()
+            .position(|&(i, m)| i == launcher && m == KeyboardInteractivity::None);
+        let qs_mode = host
+            .kb
+            .iter()
+            .position(|&(i, m)| i == qs && m == KeyboardInteractivity::OnDemand);
+        assert!(launcher_none.is_some(), "displaced launcher drops to kb None");
+        assert!(qs_mode.is_some(), "QuickSettings takes its OnDemand keyboard mode");
+        assert!(
+            launcher_none < qs_mode,
+            "launcher kb None must be applied BEFORE QuickSettings grabs the keyboard"
+        );
+    }
+
+    #[test]
+    fn toasts_region_applies_to_every_toast_surface() {
+        // A ToastsRegion message updates the wl input region of every registered
+        // toasts surface (one per output). An empty region == fully click-through.
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        let t0 = SurfaceId::new(10);
+        let t1 = SurfaceId::new(11);
+        manager.register_toasts(vec![t0, t1]);
+        let mut host = FakeHost::default();
+
+        let cards = vec![(5, 6, 100, 40), (5, 60, 100, 40)];
+        bus.send(ShellMsg::ToastsRegion(cards.clone()));
+        manager.tick(&mut host);
+        assert!(host.rects.contains(&(t0, cards.clone())), "output 0 gets the card rects");
+        assert!(host.rects.contains(&(t1, cards.clone())), "output 1 gets the card rects");
+
+        host.rects.clear();
+        bus.send(ShellMsg::ToastsRegion(Vec::new()));
+        manager.tick(&mut host);
+        assert!(host.rects.contains(&(t0, Vec::new())), "no toasts -> empty (click-through) region");
+        assert!(host.rects.contains(&(t1, Vec::new())));
     }
 }
