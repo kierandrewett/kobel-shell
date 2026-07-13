@@ -47,7 +47,7 @@ pub(crate) enum GnoblinCommand {
     default_service = "org.gnoblin.Shell",
     default_path = "/org/gnoblin/Shell"
 )]
-trait Shell {
+pub(crate) trait Shell {
     fn reload(&self) -> zbus::Result<()>;
     fn set_feature(&self, name: &str, on: bool) -> zbus::Result<()>;
     fn activate_window(&self, id: &str) -> zbus::Result<()>;

@@ -19,6 +19,17 @@ tracing = { workspace = true }
 freedesktop-desktop-entry = "0.8"
 # Icon theme lookup (apps.rs): theme -> Inherits -> hicolor -> /usr/share/pixmaps.
 freedesktop-icons = "0.4"
+# SNI tray host (tray.rs): async StatusNotifierWatcher/host + item cache. The
+# default `data` feature keeps the merged item map we read on every event.
+# Uses zbus 5, unified with our workspace pin.
+system-tray = "0.8"
+# Notification persistence (notifd.rs): serialize the stored notifications to
+# disk. Workspace serde already enables the derive feature.
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Notification store lock (notifd.rs): parking_lot guards return without an
+# unwrap path (rs-parking-lot rule) and are never held across an await.
+parking_lot = "0.12"
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
