@@ -84,6 +84,50 @@ else
   echo "FAIL: dismiss click did not close the launcher"; fail=1
 fi
 
+# --- phase 4: launcher typing (KeyFeed -> query -> fuzzy results) + session nav ---
+"$CTL_BIN" toggle launcher >/dev/null 2>&1
+sleep 1
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:s" "key:e" "key:t" "key:t" >"$DK/inject-type.log" 2>&1 \
+  || { echo "FAIL: injector (typing) exited nonzero"; cat "$DK/inject-type.log"; fail=1; }
+sleep 1
+gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/launcher-query.png" >/dev/null 2>&1
+cp "$DK/launcher-query.png" /tmp/kobel-launcher-query.png 2>/dev/null || true
+[ -s "$DK/launcher-query.png" ] && echo "PASS: launcher query screenshot captured" \
+  || { echo "FAIL: launcher query screenshot missing"; fail=1; }
+before=$(closes)
+# Esc #1 clears the query (stays open), Esc #2 closes.
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:Escape" "wait:400" "key:Escape" >"$DK/inject-esc2.log" 2>&1 \
+  || { echo "FAIL: injector (esc2) exited nonzero"; cat "$DK/inject-esc2.log"; fail=1; }
+sleep 1
+if [ "$(closes)" -gt "$before" ]; then
+  echo "PASS: launcher clear-then-close Esc semantics"
+else
+  echo "FAIL: double-Esc did not close the launcher"; fail=1
+fi
+session_closes() { grep -ac '\[manager\] closed session' "$DK/kobel.log"; }
+before_s=$(session_closes)
+"$CTL_BIN" toggle session >/dev/null 2>&1
+sleep 1
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:Right" "key:Right" >"$DK/inject-sess.log" 2>&1 \
+  || { echo "FAIL: injector (session nav) exited nonzero"; cat "$DK/inject-sess.log"; fail=1; }
+sleep 1
+gdbus call --session --dest org.gnome.Shell.Screenshot \
+  --object-path /org/gnome/Shell/Screenshot \
+  --method org.gnome.Shell.Screenshot.Screenshot false false "$DK/session-open.png" >/dev/null 2>&1
+cp "$DK/session-open.png" /tmp/kobel-session-open.png 2>/dev/null || true
+[ -s "$DK/session-open.png" ] && echo "PASS: session screenshot captured" \
+  || { echo "FAIL: session screenshot missing"; fail=1; }
+python3 "$SCRIPTS_DIR/devkit_input.py" "key:Escape" >"$DK/inject-sess-esc.log" 2>&1 \
+  || { echo "FAIL: injector (session esc) exited nonzero"; fail=1; }
+sleep 1
+if [ "$(session_closes)" -gt "$before_s" ]; then
+  echo "PASS: session Esc closed"
+else
+  echo "FAIL: session Esc did not close"; fail=1
+fi
+
 # --- screenshot (bar visible at top) ---
 res=$(gdbus call --session --dest org.gnome.Shell.Screenshot \
   --object-path /org/gnome/Shell/Screenshot \
