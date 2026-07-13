@@ -151,6 +151,22 @@ impl Shell {
         self.host.create_surface_on_outputs(config, setup, app)
     }
 
+    /// Create a singleton (non-per-output) surface bound to the primary output.
+    ///
+    /// wlr-layer-shell lets the compositor place an output-less surface, but a
+    /// singleton (launcher, quicksettings, ...) must land on the user's active
+    /// screen, so we bind it to the primary (first-advertised) output. Falls back
+    /// to compositor placement when no outputs are advertised (multi-output
+    /// follow-focus is a TODO). See docs/FREYA-PLAN.md sections 2.1, 6.
+    pub fn create_singleton_surface<C>(
+        &mut self,
+        config: SurfaceConfig,
+        setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
+        app: impl Fn() -> Element + 'static,
+    ) -> Result<(SurfaceId, C)> {
+        self.host.create_singleton_surface(config, setup, app)
+    }
+
     /// Install the app tick: a callback run at the start of every sweep (and whenever
     /// [`Shell::waker`] is woken from another thread), before the surfaces are pumped,
     /// so any root-context writes it makes are picked up in the same frame. Use it to
@@ -191,6 +207,7 @@ impl Shell {
 pub struct Control<'a> {
     exit: &'a mut bool,
     surfaces: &'a mut Vec<FreyaLayerSurface>,
+    compositor: &'a CompositorState,
 }
 
 impl Control<'_> {
@@ -205,6 +222,30 @@ impl Control<'_> {
             s.layer.set_keyboard_interactivity(mode);
             s.layer.commit();
         }
+    }
+
+    /// Swap a surface's wl input region between empty (click-through) and full
+    /// (whole surface) at runtime, committing the change. The reveal manager uses
+    /// this so a closed on-demand surface stays mapped but click-through, and the
+    /// dismiss layer only catches clicks while a surface is open
+    /// (docs/FREYA-PLAN.md 2.4).
+    pub fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
+        let Some(s) = self.surfaces.iter().find(|s| s.id == id) else {
+            return;
+        };
+        if empty {
+            match Region::new(self.compositor) {
+                Ok(region) => s.layer.wl_surface().set_input_region(Some(region.wl_region())),
+                Err(e) => {
+                    tracing::warn!("[host] empty input region unavailable: {e}");
+                    return;
+                }
+            }
+        } else {
+            // None restores the default whole-surface input region.
+            s.layer.wl_surface().set_input_region(None);
+        }
+        s.layer.commit();
     }
 }
 
@@ -323,6 +364,25 @@ impl Host {
         Ok(created)
     }
 
+    fn create_singleton_surface<C>(
+        &mut self,
+        config: SurfaceConfig,
+        setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
+        app: impl Fn() -> Element + 'static,
+    ) -> Result<(SurfaceId, C)> {
+        // Bind to the primary (first-advertised) output so the singleton lands on
+        // the user's active screen instead of wherever the compositor defaults an
+        // output-less layer surface.
+        let primary = self.output_state.outputs().next();
+        if primary.is_none() {
+            tracing::warn!(
+                "[host] no outputs advertised; placing singleton '{}' via compositor",
+                config.namespace
+            );
+        }
+        self.create_surface_impl(config, primary.as_ref(), setup, app)
+    }
+
     fn index_of(&self, surface: &wl_surface::WlSurface) -> Option<usize> {
         self.surfaces.iter().position(|s| s.wl_surface() == surface)
     }
@@ -333,7 +393,11 @@ impl Host {
         // drive itself (exit, kb interactivity). Running before the surface pump means
         // any root-context writes it makes are picked up by process() this same sweep.
         if let Some(mut tick) = self.shell_tick.take() {
-            let mut control = Control { exit: &mut self.exit, surfaces: &mut self.surfaces };
+            let mut control = Control {
+                exit: &mut self.exit,
+                surfaces: &mut self.surfaces,
+                compositor: &self.compositor_state,
+            };
             tick(&mut control);
             self.shell_tick = Some(tick);
         }
@@ -445,7 +509,11 @@ impl Host {
 
         if let Some(mut handler) = self.key_handler.take() {
             let press = KeyPress { key, code, modifiers, repeat, surface: sid };
-            let mut control = Control { exit: &mut self.exit, surfaces: &mut self.surfaces };
+            let mut control = Control {
+                exit: &mut self.exit,
+                surfaces: &mut self.surfaces,
+                compositor: &self.compositor_state,
+            };
             handler(press, &mut control);
             self.key_handler = Some(handler);
         }

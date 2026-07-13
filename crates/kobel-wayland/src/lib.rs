@@ -33,6 +33,15 @@ pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceId(pub(crate) u32);
 
+impl SurfaceId {
+    /// Construct a surface id from its raw value. Real ids are minted by the host
+    /// when a surface is created; this exists so callers can build and unit-test
+    /// surface registries keyed by id without a live compositor.
+    pub const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
 /// A thread-safe handle for waking the shell's event loop from a producer thread
 /// (service fan-out, IPC listener). Waking schedules the app tick (see
 /// [`Shell::on_tick`]) plus a sweep on the loop thread.
@@ -173,4 +182,12 @@ pub struct KeyPress {
     pub repeat: bool,
     /// Which surface currently holds keyboard focus.
     pub surface: SurfaceId,
+}
+
+impl KeyPress {
+    /// True when this press is the Escape key, regardless of keyboard layout.
+    /// Lets shells act on Escape without depending on `keyboard-types` directly.
+    pub fn is_escape(&self) -> bool {
+        self.key == keyboard_types::Key::Named(keyboard_types::NamedKey::Escape)
+    }
 }
