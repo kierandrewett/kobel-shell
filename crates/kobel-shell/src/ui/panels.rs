@@ -23,6 +23,28 @@ use crate::theme;
 #[derive(Clone, Copy, PartialEq)]
 pub struct OpenProgress(pub State<f32>);
 
+/// Additive root context for keyboard-Exclusive surfaces (launcher, session):
+/// the host's key stream, routed by main.rs to whichever exclusive surface is
+/// open. `seq` increments per event so consumers can detect delivery of
+/// repeated identical presses. `None` until the first key arrives.
+#[derive(Clone, Copy, PartialEq)]
+pub struct KeyFeed(pub State<Option<KeyEvent>>);
+
+/// One delivered key press (host [`kobel_wayland::KeyPress`] plus a sequence
+/// number). Compared by `seq` alone: two events are "equal" only if they are
+/// the same delivery, which is exactly what change-detection wants.
+#[derive(Clone)]
+pub struct KeyEvent {
+    pub seq: u64,
+    pub press: kobel_wayland::KeyPress,
+}
+
+impl PartialEq for KeyEvent {
+    fn eq(&self, other: &Self) -> bool {
+        self.seq == other.seq
+    }
+}
+
 /// The shared placeholder panel body for `key`: a sheet (PANEL fill, sheet radius)
 /// labelled with the surface name, faded by the surface's [`OpenProgress`].
 pub fn panel(key: SurfaceKey) -> impl IntoElement {

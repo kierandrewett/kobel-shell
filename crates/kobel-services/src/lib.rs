@@ -62,6 +62,29 @@ pub enum Command {
     MediaNext,
     /// media: previous track on the active player.
     MediaPrevious,
+    /// exec: run a session verb (lock/logout/restart/shutdown/suspend). The
+    /// SERVICE spawns the underlying command; UI components never run processes.
+    Session(SessionVerb),
+    /// exec: open a URI with the default handler (xdg-open).
+    OpenUri(String),
+    /// exec: copy text to the Wayland clipboard (wl-copy).
+    CopyText(String),
+    /// gnoblin: reload user scripts (org.gnoblin.Shell.ReloadScripts). Typed --
+    /// the launcher's `:` command rows map to these variants, never raw argv.
+    ReloadScripts,
+    /// gnoblin: reload one extension by uuid (org.gnoblin.Shell.ReloadExtension).
+    ReloadExtension(String),
+}
+
+/// A session-control verb, executed by the exec service (docs/FREYA-PLAN.md
+/// section 5: loginctl / gnome-session-quit / systemctl).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionVerb {
+    Lock,
+    Logout,
+    Restart,
+    Shutdown,
+    Suspend,
 }
 
 /// Entry point. `Services::spawn` starts the background threads and returns a
@@ -218,6 +241,14 @@ async fn run(
                 }
                 Command::MediaPrevious => {
                     let _ = mpris_tx.send(MprisCommand::Previous);
+                }
+                // Routed once the exec service task lands (phase 4).
+                other @ (Command::Session(_)
+                | Command::OpenUri(_)
+                | Command::CopyText(_)
+                | Command::ReloadScripts
+                | Command::ReloadExtension(_)) => {
+                    tracing::warn!("[services] command not yet routed: {other:?}");
                 }
             }
         }
