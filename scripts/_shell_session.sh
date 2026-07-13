@@ -356,10 +356,12 @@ mode_id, mw, mh, refresh, pref, supported, mprops = cur
 print(f"supported_scales={[round(s,4) for s in supported]}")
 chosen = next((s for s in supported if abs(s - DESIRED) < 1e-3), None)
 if chosen is None:
-    non_one = [s for s in supported if abs(s - 1.0) > 1e-3]
-    if not non_one:
-        print("NO-NON-1-SCALE"); sys.exit(3)
-    chosen = min(non_one, key=lambda s: abs(s - DESIRED))
+    # Genuinely FRACTIONAL fallbacks only: an integer non-1 scale (2.0) would let
+    # the integer buffer_scale path falsely pass a fractional test.
+    fractional = [s for s in supported if abs(s - round(s)) > 1e-3]
+    if not fractional:
+        print("NO-FRACTIONAL-SCALE"); sys.exit(3)
+    chosen = min(fractional, key=lambda s: abs(s - DESIRED))
 # Persistent config (method=2) so it sticks for the rest of the pass (headless has
 # no confirm dialog, so a temporary config would auto-revert).
 logical = [(0, 0, float(chosen), 0, True, [(connector, mode_id, {})])]
@@ -406,7 +408,7 @@ for ln in lines:
     if (pw, ph) != (ew, eh):
         print(f"MISMATCH num={num} logical {lw}x{lh} physical {pw}x{ph} expected {ew}x{eh}")
         bad += 1
-    if num != 120:
+    if num % 120 != 0:
         nonone.append((num, lw, lh, pw, ph))
 print(f"RECEIVED={1 if nonone else 0}")
 print(f"SIZING={'bad' if bad else 'ok'}")
@@ -419,9 +421,9 @@ PY
   recv="$(printf '%s\n' "$verify_out" | sed -n 's/^RECEIVED=//p' | tail -1)"
   sizing="$(printf '%s\n' "$verify_out" | sed -n 's/^SIZING=//p' | tail -1)"
   if [ "$recv" = 1 ]; then
-    echo "PASS: host received a non-1 preferred fractional scale"
+    echo "PASS: host received a genuinely fractional preferred scale (num % 120 != 0)"
   else
-    echo "FAIL: host never received a non-1 fractional preferred_scale"; fail=1
+    echo "FAIL: host never received a fractional (non-integer) preferred_scale"; fail=1
   fi
   if [ "$sizing" = ok ]; then
     echo "PASS: physical buffer dims == round(logical*scale) for every logged frame"
@@ -432,6 +434,212 @@ PY
     echo "PASS: wp_viewport destination drives the mapping (buffer_scale stays 1)"
   else
     echo "FAIL: no viewport destination log (viewport mapping not active)"; fail=1
+  fi
+fi
+
+# --- output hotplug (opt-in via KOBEL_TEST_HOTPLUG=1) ---
+# mutter's org.gnome.Mutter.ScreenCast RecordVirtual, driven by a PipeWire consumer
+# that negotiates a concrete video format, creates a REAL runtime wl_output (the
+# MetaVirtualMonitor is instantiated on format negotiation -- see the report notes).
+# kobel-wayland's new_output then mounts per-output chrome (bar/osd/dock/toasts) for
+# it; stopping the stream drops the monitor -> the wl_output goes away -> the host
+# tears that chrome down and the shell drops its bookkeeping. Off by default to keep
+# the gate fast (this block is byte-for-byte skipped unless KOBEL_TEST_HOTPLUG=1).
+#
+# The helper is generated here (self-contained test tooling; it reuses the same
+# RemoteDesktop/ScreenCast plumbing as devkit_input.py). It holds the virtual output
+# until SIGTERM, printing [virt] UP / [virt] DOWN markers this script polls on.
+if [ "${KOBEL_TEST_HOTPLUG:-}" = 1 ]; then
+  echo "== output hotplug pass (KOBEL_TEST_HOTPLUG=1) =="
+  cat >"$DK/virt_monitor.py" <<'PYEOF'
+#!/usr/bin/env python3
+import signal
+import subprocess
+import sys
+import time
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+SC_DEST = "org.gnome.Mutter.ScreenCast"
+SC_PATH = "/org/gnome/Mutter/ScreenCast"
+SC_IFACE = "org.gnome.Mutter.ScreenCast"
+SC_SESSION_IFACE = "org.gnome.Mutter.ScreenCast.Session"
+SC_STREAM_IFACE = "org.gnome.Mutter.ScreenCast.Stream"
+
+
+def log(m):
+    print(f"[virt] {m}", flush=True)
+
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+
+def call(dest, path, iface, method, params, rt):
+    t = GLib.VariantType.new(rt) if rt else None
+    return bus.call_sync(dest, path, iface, method, params, t, Gio.DBusCallFlags.NONE, 15000, None)
+
+
+def main():
+    w = int(sys.argv[1]) if len(sys.argv) > 1 else 1024
+    h = int(sys.argv[2]) if len(sys.argv) > 2 else 768
+
+    # Wait for the ScreenCast API to be available (shell just booted).
+    session = None
+    for _ in range(60):
+        try:
+            res = call(SC_DEST, SC_PATH, SC_IFACE, "CreateSession",
+                       GLib.Variant("(a{sv})", ({},)), "(o)")
+            session = res.unpack()[0]
+            break
+        except GLib.Error as e:
+            last = e
+            time.sleep(0.5)
+    if session is None:
+        log(f"CreateSession failed: {last}")
+        sys.exit(1)
+    log(f"session {session}")
+
+    res = call(SC_DEST, session, SC_SESSION_IFACE, "RecordVirtual",
+               GLib.Variant("(a{sv})", ({},)), "(o)")
+    stream = res.unpack()[0]
+    log(f"stream {stream}")
+
+    node = {"id": None}
+    loop = GLib.MainLoop()
+
+    def on_signal(_c, _s, _p, _i, sig, params):
+        if sig == "PipeWireStreamAdded":
+            node["id"] = params.unpack()[0]
+            log(f"node_id {node['id']}")
+            loop.quit()
+
+    bus.signal_subscribe(None, SC_STREAM_IFACE, "PipeWireStreamAdded", stream, None,
+                         Gio.DBusSignalFlags.NONE, on_signal)
+    call(SC_DEST, session, SC_SESSION_IFACE, "Start", None, "()")
+    log("session started")
+    GLib.timeout_add(8000, lambda: (loop.quit(), False)[1])
+    loop.run()
+
+    gst = None
+    if node["id"] is not None:
+        # A PipeWire consumer negotiates a concrete format at the requested size,
+        # which triggers mutter ensure_virtual_monitor -> MetaVirtualMonitor -> a real
+        # wl_output. Constrain size only; let pipewiresrc pick a mutter-offered format.
+        gst = subprocess.Popen(
+            ["gst-launch-1.0", "-q", "pipewiresrc", f"path={node['id']}", "!",
+             f"video/x-raw,width={w},height={h}", "!", "fakesink", "sync=false"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        log(f"gst consumer pid {gst.pid} node {node['id']} @ {w}x{h}")
+    else:
+        log("NO node_id -- stream never announced a pipewire node")
+
+    log(f"UP {w}x{h}")
+    stop = GLib.MainLoop()
+    signal.signal(signal.SIGTERM, lambda *_: stop.quit())
+    signal.signal(signal.SIGINT, lambda *_: stop.quit())
+    stop.run()
+
+    log("stopping")
+    if gst is not None:
+        gst.terminate()
+        try:
+            gst.wait(timeout=3)
+        except Exception:
+            gst.kill()
+    try:
+        call(SC_DEST, session, SC_SESSION_IFACE, "Stop", None, "()")
+    except GLib.Error as e:
+        log(f"Stop failed (ignored): {e}")
+    log("DOWN")
+
+
+if __name__ == "__main__":
+    main()
+PYEOF
+
+  added() { grep -ac "\[host\] output .* added" "$DK/kobel.log"; }
+  removed() { grep -ac "\[host\] output .* removed" "$DK/kobel.log"; }
+  ns_count() { grep -ac "created surface .* ns=$1" "$DK/kobel.log"; }
+  gdbus wait --session --timeout 15 org.gnome.Mutter.ScreenCast 2>/dev/null || true
+
+  base_add=$(added)
+  python3 "$DK/virt_monitor.py" 1024 768 >"$DK/virt.log" 2>&1 &
+  VMP=$!
+  for _ in $(seq 1 40); do grep -aq "\[virt\] UP" "$DK/virt.log" && break; sleep 0.3; done
+  sleep 2
+  echo "-- virt.log --"; cat "$DK/virt.log"
+  new_add=$(added)
+  if [ "$new_add" -gt "$base_add" ] \
+     && grep -aq "\[shell\] output .* added: mounted chrome" "$DK/kobel.log"; then
+    echo "PASS: hotplug added a wl_output and the shell mounted its chrome ($base_add->$new_add)"
+  else
+    echo "FAIL: hotplug add produced no new output/chrome"; fail=1
+    grep -aE "\[host\] output|\[shell\] output" "$DK/kobel.log" | tail -8
+  fi
+  # Each per-output surface (bar/osd/dock/toasts) must now exist on BOTH outputs.
+  for ns in kobel-bar kobel-osd kobel-dock kobel-toasts; do
+    n=$(ns_count "$ns")
+    if [ "$n" -ge 2 ]; then
+      echo "PASS: $ns mounted on the hotplugged output too ($n total)"
+    else
+      echo "FAIL: $ns not remounted for the new output ($n total)"; fail=1
+    fi
+  done
+
+  # Destroy the stream/output and assert a clean teardown.
+  base_rm=$(removed)
+  kill -TERM "$VMP" 2>/dev/null
+  for _ in $(seq 1 20); do grep -aq "\[virt\] DOWN" "$DK/virt.log" && break; sleep 0.3; done
+  sleep 2
+  new_rm=$(removed)
+  if [ "$new_rm" -gt "$base_rm" ] \
+     && grep -aq "\[host\] output .* removed; retired" "$DK/kobel.log" \
+     && grep -aq "\[shell\] output .* removed: dropped chrome bookkeeping" "$DK/kobel.log"; then
+    echo "PASS: hotplug remove tore down the output's chrome cleanly ($base_rm->$new_rm)"
+  else
+    echo "FAIL: hotplug remove teardown logs missing"; fail=1
+  fi
+  if kill -0 "$AP" 2>/dev/null && ! grep -aqE "panic|PANIC" "$DK/kobel.log"; then
+    echo "PASS: shell alive with no panic across the hotplug cycle"
+  else
+    echo "FAIL: shell died or panicked during hotplug"; fail=1; tail -20 "$DK/kobel.log"
+  fi
+  # Replug: create the virtual output AGAIN and assert its chrome is restored (the
+  # review MEDIUM was "replugging a monitor never restores its chrome"). A replugged
+  # monitor is a fresh wl_output, so this rides the same Added mount path.
+  replug_add=$(added)
+  # Snapshot ALL four namespace creation counts: cumulative >= checks would already
+  # pass from the first plug, so each must INCREMENT across the replug.
+  rb_bar=$(ns_count kobel-bar); rb_dock=$(ns_count kobel-dock)
+  rb_osd=$(ns_count kobel-osd); rb_toasts=$(ns_count kobel-toasts)
+  python3 "$DK/virt_monitor.py" 1024 768 >"$DK/virt2.log" 2>&1 &
+  VMP2=$!
+  for _ in $(seq 1 40); do grep -aq "\[virt\] UP" "$DK/virt2.log" && break; sleep 0.3; done
+  sleep 2
+  if [ "$(added)" -gt "$replug_add" ] \
+     && [ "$(ns_count kobel-bar)" -gt "$rb_bar" ] \
+     && [ "$(ns_count kobel-dock)" -gt "$rb_dock" ] \
+     && [ "$(ns_count kobel-osd)" -gt "$rb_osd" ] \
+     && [ "$(ns_count kobel-toasts)" -gt "$rb_toasts" ]; then
+    echo "PASS: replug restored the output's chrome (all four namespaces re-mounted)"
+  else
+    echo "FAIL: replug did not restore chrome (bar $rb_bar->$(ns_count kobel-bar) dock $rb_dock->$(ns_count kobel-dock) osd $rb_osd->$(ns_count kobel-osd) toasts $rb_toasts->$(ns_count kobel-toasts))"; fail=1; cat "$DK/virt2.log"
+  fi
+  kill -TERM "$VMP2" 2>/dev/null
+  for _ in $(seq 1 20); do grep -aq "\[virt\] DOWN" "$DK/virt2.log" && break; sleep 0.3; done
+  sleep 2
+  # IPC must still work after the hotplug cycle: ping, then a full toggle round-trip.
+  hp_ping="$("$CTL_BIN" ping 2>&1)"
+  before_hp=$(closes)
+  "$CTL_BIN" toggle launcher >/dev/null 2>&1; sleep 1
+  "$CTL_BIN" toggle launcher >/dev/null 2>&1; sleep 1
+  if [ "$hp_ping" = "ok" ] && [ "$(closes)" -gt "$before_hp" ]; then
+    echo "PASS: kobelctl ping + toggle still work after hotplug"
+  else
+    echo "FAIL: IPC broken after hotplug (ping='$hp_ping')"; fail=1
   fi
 fi
 
