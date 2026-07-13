@@ -1189,14 +1189,12 @@ dependencies = [
  "khronos-egl",
  "ragnarok",
  "smithay-client-toolkit",
- "thiserror 2.0.18",
  "torin",
  "tracing",
  "tracing-subscriber",
  "wayland-backend",
  "wayland-client",
  "wayland-egl",
- "wayland-protocols",
 ]
 
 [[package]]

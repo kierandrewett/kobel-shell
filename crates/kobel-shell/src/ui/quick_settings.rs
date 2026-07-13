@@ -190,6 +190,15 @@ impl Component for QuickSettings {
         let mut slide = use_spring(0.0);
         // Viewport width, captured for the slide offsets (default = sheet inner).
         let mut vw = use_state(|| tokens.panel_w - 2.0 * SHEET_PAD);
+        // Per-layer content heights, measured via on_sized. The two drill layers are
+        // ABSOLUTE (out of flow), so the clipped viewport cannot derive its height
+        // from them -- it is driven explicitly by `vh`, a spring that tracks the
+        // ACTIVE layer's content height so the sheet hugs it and animates across
+        // drills (MOTION.height). Seeded at a rough root height; the first measure
+        // corrects it while the sheet is still closed (opacity 0).
+        let mut root_h = use_state(|| 0.0f32);
+        let mut drill_h = use_state(|| 0.0f32);
+        let mut vh = use_spring(320.0);
 
         let in_drill = drill.read().is_some();
 
@@ -199,6 +208,13 @@ impl Component for QuickSettings {
             if open {
                 drill.set(None);
                 slide.jump(0.0);
+                // Reopen instantly hugged to the root content (peek copies out, so no
+                // read-guard survives the spring write); if unmeasured, let the height
+                // effect below spring it in.
+                let rh = *root_h.peek();
+                if rh > 0.0 {
+                    vh.jump(rh);
+                }
             }
         });
 
@@ -208,6 +224,16 @@ impl Component for QuickSettings {
                 slide.to(1.0, motion::DRILL);
             } else {
                 slide.to(0.0, motion::DRILL_BACK);
+            }
+        });
+
+        // Hug the active layer: retarget the viewport height whenever the active
+        // layer's measured content height changes (drill open/close, or a live
+        // content update such as the wifi list refreshing).
+        let target_h = if in_drill { *drill_h.read() } else { *root_h.read() };
+        use_side_effect_with_deps(&target_h, move |&t| {
+            if t > 0.0 {
+                vh.to(t, motion::HEIGHT);
             }
         });
 
@@ -253,7 +279,9 @@ impl Component for QuickSettings {
         let root_layer = rect()
             .position(Position::new_absolute().top(0.0).left(root_left))
             .width(Size::px(w))
-            .height(Size::fill())
+            // Auto height (content); measured so `vh` can hug it. Not fill -- fill
+            // would take the viewport's animated height and defeat the measurement.
+            .on_sized(move |e: Event<SizedEventData>| root_h.set(e.area.height()))
             .child(root_view(
                 &bus,
                 &tokens,
@@ -271,12 +299,16 @@ impl Component for QuickSettings {
         let drill_layer = rect()
             .position(Position::new_absolute().top(0.0).left(drill_left))
             .width(Size::px(w))
-            .height(Size::fill())
+            // Auto height (content), measured even while off-screen so a drill opens
+            // straight to its hugged height.
+            .on_sized(move |e: Event<SizedEventData>| drill_h.set(e.area.height()))
             .child(drill_view(*shown.read(), &bus, &net, &bt, &audio, drill));
 
         let viewport = rect()
             .width(Size::fill())
-            .height(Size::fill())
+            // Explicit spring height -> the sheet hugs the active layer and animates
+            // height across drills. Clip trims the sliding layers during transitions.
+            .height(Size::px(vh.value()))
             .overflow(Overflow::Clip)
             .on_sized(move |e: Event<SizedEventData>| vw.set(e.area.width()))
             .child(root_layer)
@@ -284,14 +316,17 @@ impl Component for QuickSettings {
 
         let sheet = rect()
             .width(Size::fill())
-            .height(Size::fill())
+            // Auto height: hugs the viewport (its explicit spring height) + padding.
             .background(theme::PANEL.rgb())
             .corner_radius(theme::RADIUS_SHEET)
             .padding(SHEET_PAD)
             .overflow(Overflow::Clip)
             .child(viewport);
 
-        rect().expanded().opacity(opacity).child(sheet)
+        // Fill the (content-sized) surface width; AUTO height so the surface hugs the
+        // sheet (host reads ROOT content height). `.expanded()` would fill height and
+        // defeat content sizing.
+        rect().width(Size::fill()).opacity(opacity).child(sheet)
     }
 }
 
@@ -442,33 +477,35 @@ fn top_row(bus: &ShellBus, tokens: &theme::Tokens, battery: &BatterySnapshot) ->
         row = row.child(rect().width(Size::flex(1.0)));
     }
 
-    row.child(IconAction {
-        icon: ICON_LEAF,
-        size: ctl,
-        icon_size: 16.0,
-        tint: theme::LEAF,
-        hover_tint: theme::LEAF2,
-        on_press: cmd(bus, Command::Reload),
-    })
-    .child(IconAction {
-        icon: ICON_LOCK,
-        size: ctl,
-        icon_size: 16.0,
-        tint: theme::MUT,
-        hover_tint: theme::TX,
-        on_press: cmd(bus, Command::Session(SessionVerb::Lock)),
-    })
-    .child(IconAction {
-        icon: ICON_POWER,
-        size: ctl,
-        icon_size: 16.0,
-        tint: theme::MUT,
-        hover_tint: theme::ROSE,
-        on_press: {
+    row.child(
+        // scss `.rbtn.leaf image` (main.scss:355-357) keeps the reload glyph
+        // $leaf even on hover, overriding `.rbtn:hover`'s $tx -- so both tints
+        // are LEAF, not LEAF/LEAF2.
+        IconAction::new(ICON_LEAF, ctl, 16.0, theme::LEAF, theme::LEAF, cmd(bus, Command::Reload))
+            .rest_bg(theme::CHIP)
+            .radius(theme::RADIUS_PILL),
+    )
+    .child(
+        IconAction::new(
+            ICON_LOCK,
+            ctl,
+            16.0,
+            theme::MUT,
+            theme::TX,
+            cmd(bus, Command::Session(SessionVerb::Lock)),
+        )
+        .rest_bg(theme::CHIP)
+        .radius(theme::RADIUS_PILL),
+    )
+    .child(
+        IconAction::new(ICON_POWER, ctl, 16.0, theme::MUT, theme::ROSE, {
             let bus = bus.clone();
             EventHandler::new(move |_| bus.send(ShellMsg::Toggle(SurfaceKey::Session)))
-        },
-    })
+        })
+        .rest_bg(theme::CHIP)
+        .radius(theme::RADIUS_PILL)
+        .danger(true),
+    )
     .into_element()
 }
 
@@ -568,14 +605,14 @@ fn sliders(
                 audio.volume.clamp(0.0, 1.0) as f64,
                 set_volume(bus),
             )))
-            .child(IconAction {
-                icon: super::ICON_CHEVRON_RIGHT,
-                size: CHEV_W,
-                icon_size: 16.0,
-                tint: theme::MUT,
-                hover_tint: theme::TX,
-                on_press: open_drill(DrillKind::Mix),
-            }),
+            .child(IconAction::new(
+                super::ICON_CHEVRON_RIGHT,
+                CHEV_W,
+                16.0,
+                theme::MUT,
+                theme::TX,
+                open_drill(DrillKind::Mix),
+            )),
     );
 
     // Brightness row (hidden when no backlight); a spacer keeps the rail aligned.
@@ -623,14 +660,14 @@ fn drill_view(
     mut drill: State<Option<DrillKind>>,
 ) -> Element {
     // Header: back button, title, and a right-side power/enabled switch.
-    let back = IconAction {
-        icon: ICON_CHEVRON_LEFT,
-        size: HEADER_H,
-        icon_size: 16.0,
-        tint: theme::MUT,
-        hover_tint: theme::TX,
-        on_press: EventHandler::new(move |_| drill.set(None)),
-    };
+    let back = IconAction::new(
+        ICON_CHEVRON_LEFT,
+        HEADER_H,
+        16.0,
+        theme::MUT,
+        theme::TX,
+        EventHandler::new(move |_| drill.set(None)),
+    );
 
     let mut header = rect()
         .horizontal()
@@ -689,17 +726,23 @@ fn wifi_list(bus: &ShellBus, net: &NetworkSnapshot) -> Element {
     let mut list = rect().vertical().width(Size::fill()).spacing(2.0);
     for ap in net.aps.iter().take(6) {
         let on = active == Some(ap.ssid.as_str());
-        list = list.child(DrillRow {
-            icon: ICON_WIFI,
-            name: ap.ssid.clone(),
-            trailing: if on {
-                RowTrailing::Check
-            } else {
-                RowTrailing::Text(wifi_row_state(false, ap.strength))
-            },
-            active: on,
-            on_press: cmd(bus, Command::ConnectWifi(ap.ssid.clone())),
-        });
+        list = list.child(
+            DrillRow {
+                icon: ICON_WIFI,
+                name: ap.ssid.clone(),
+                trailing: if on {
+                    RowTrailing::Check
+                } else {
+                    RowTrailing::Text(wifi_row_state(false, ap.strength))
+                },
+                active: on,
+                on_press: cmd(bus, Command::ConnectWifi(ap.ssid.clone())),
+                key: DiffKey::None,
+            }
+            // Key by ssid: APs re-sort/dedupe across scans, so stateful row
+            // reconciliation must track the network, not the list index.
+            .key(ap.ssid.clone()),
+        );
     }
     list.into_element()
 }
@@ -708,13 +751,19 @@ fn wifi_list(bus: &ShellBus, net: &NetworkSnapshot) -> Element {
 fn bt_list(bus: &ShellBus, bt: &BluetoothSnapshot) -> Element {
     let mut list = rect().vertical().width(Size::fill()).spacing(2.0);
     for dev in bt.devices.iter().take(6) {
-        list = list.child(DrillRow {
-            icon: ICON_BLUETOOTH,
-            name: dev.alias.clone(),
-            trailing: RowTrailing::Text(bt_row_state(dev.connected, dev.paired).to_string()),
-            active: dev.connected,
-            on_press: cmd(bus, bt_row_command(dev.connected, &dev.address)),
-        });
+        list = list.child(
+            DrillRow {
+                icon: ICON_BLUETOOTH,
+                name: dev.alias.clone(),
+                trailing: RowTrailing::Text(bt_row_state(dev.connected, dev.paired).to_string()),
+                active: dev.connected,
+                on_press: cmd(bus, bt_row_command(dev.connected, &dev.address)),
+                key: DiffKey::None,
+            }
+            // Key by address: devices re-sort as they connect/pair, so stateful
+            // row reconciliation must track the device, not the list index.
+            .key(dev.address.clone()),
+        );
     }
     list.into_element()
 }
@@ -722,24 +771,32 @@ fn bt_list(bus: &ShellBus, bt: &BluetoothSnapshot) -> Element {
 /// Per-app mixer (ags MixList): default sink + up to five streams, mini sliders.
 fn mix_list(bus: &ShellBus, audio: &AudioSnapshot) -> Element {
     let mut list = rect().vertical().width(Size::fill()).spacing(2.0);
-    list = list.child(mix_row(
-        ICON_SPEAKER_WAVE,
-        "Output".to_string(),
-        audio.volume.clamp(0.0, 1.0) as f64,
-        set_volume(bus),
-    ));
+    // Output is the invariant first row (fixed sentinel key); the per-app
+    // streams below re-sort/appear/vanish, so each keys by its stream id.
+    list = list.child(
+        mix_row(
+            ICON_SPEAKER_WAVE,
+            "Output".to_string(),
+            audio.volume.clamp(0.0, 1.0) as f64,
+            set_volume(bus),
+        )
+        .key("mix-output"),
+    );
     for stream in audio.streams.iter().take(5) {
         let id = stream.id;
         let bus = bus.clone();
         let on_change = EventHandler::new(move |v: f64| {
             bus.send(ShellMsg::Service(Command::SetStreamVolume { id, volume: v as f32 }));
         });
-        list = list.child(mix_row(
-            ICON_MUSIC,
-            stream.name.clone(),
-            stream.volume.clamp(0.0, 1.0) as f64,
-            on_change,
-        ));
+        list = list.child(
+            mix_row(
+                ICON_MUSIC,
+                stream.name.clone(),
+                stream.volume.clamp(0.0, 1.0) as f64,
+                on_change,
+            )
+            .key(id),
+        );
     }
     list.into_element()
 }
@@ -750,7 +807,7 @@ fn mix_row(
     title: String,
     value: f64,
     on_change: EventHandler<f64>,
-) -> Element {
+) -> Rect {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -777,7 +834,6 @@ fn mix_row(
                 .width(Size::px(72.0)),
         )
         .child(rect().width(Size::flex(1.0)).content(Content::Flex).child(KSlider::compact(value, on_change)))
-        .into_element()
 }
 
 /// Trailing content of a drill row: a text state ("Paired", "80%") or a LEAF
@@ -797,6 +853,14 @@ struct DrillRow {
     trailing: RowTrailing,
     active: bool,
     on_press: EventHandler<()>,
+    /// Stable identity for list reconciliation (ssid/address); `.key()` sets it.
+    key: DiffKey,
+}
+
+impl KeyExt for DrillRow {
+    fn write_key(&mut self) -> &mut DiffKey {
+        &mut self.key
+    }
 }
 
 impl Component for DrillRow {
@@ -842,6 +906,10 @@ impl Component for DrillRow {
                     .width(Size::flex(1.0)),
             )
             .child(trailing)
+    }
+
+    fn render_key(&self) -> DiffKey {
+        self.key.clone().or(self.default_key())
     }
 }
 

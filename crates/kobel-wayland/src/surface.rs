@@ -69,6 +69,11 @@ pub(crate) struct FreyaLayerSurface {
     logical_size: (u32, u32),
     physical_size: (i32, i32),
 
+    /// Set for content-sized surfaces: fixed logical width + max height (the
+    /// measurement viewport) plus the last logical height we asked the compositor
+    /// for (the resize-request loop guard). `None` for `Exact` surfaces.
+    content: Option<ContentSized>,
+
     // --- state flags ---
     pub(crate) configured: bool,
     pub(crate) frame_pending: bool,
@@ -81,6 +86,17 @@ pub(crate) struct FreyaLayerSurface {
     pub(crate) egl_surface: Option<LayerEglSurface>,
     pub(crate) layer: LayerSurface,
     wl_surface: WlSurface,
+}
+
+/// Content-sizing state for a surface: it keeps a fixed logical `width` and sizes
+/// its height to its Freya content, bounded by `max_height`. The tree is measured
+/// at `(width, max_height)` (the viewport), the root content extent is read back,
+/// and a new surface size is requested only when the measured height changed;
+/// `last_requested_h` is that guard (and the zero-axis fallback for configure).
+struct ContentSized {
+    width: u32,
+    max_height: u32,
+    last_requested_h: u32,
 }
 
 /// Handle for registering app-level root contexts before a surface mounts.
@@ -111,6 +127,7 @@ impl FreyaLayerSurface {
         waker: Waker,
         app: impl Fn() -> Element + 'static,
         setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
+        content: Option<(u32, u32)>,
     ) -> (Self, C) {
         let scale = scale.max(1);
         let wl_surface = layer.wl_surface().clone();
@@ -208,6 +225,8 @@ impl FreyaLayerSurface {
             scale,
             logical_size: initial_logical,
             physical_size: physical,
+            content: content
+                .map(|(width, max_height)| ContentSized { width, max_height, last_requested_h: 0 }),
             configured: false,
             frame_pending: false,
             layout_dirty: true,
@@ -271,7 +290,16 @@ impl FreyaLayerSurface {
     pub(crate) fn on_configure(&mut self, new_size: (u32, u32)) {
         let (cw, ch) = new_size;
         let width = if cw != 0 { cw } else { self.logical_size.0 };
-        let height = if ch != 0 { ch } else { self.logical_size.1 };
+        // A zero height axis means "you choose": for a content-sized surface fall
+        // back to the height we last requested, otherwise keep the current logical
+        // height (a bar/drawer whose height is compositor-filled).
+        let height = if ch != 0 {
+            ch
+        } else if let Some(c) = &self.content {
+            c.last_requested_h.max(1)
+        } else {
+            self.logical_size.1
+        };
         self.set_logical_size(width, height);
     }
 
@@ -328,23 +356,74 @@ impl FreyaLayerSurface {
         ready
     }
 
-    /// Run Torin layout if dirty. Cheap no-op otherwise. Called just before render.
-    pub(crate) fn measure_if_dirty(&mut self) {
-        if !self.layout_dirty {
-            return;
+    /// Run Torin layout if dirty (a cheap no-op otherwise), then, for a content-sized
+    /// surface, read the root content height and return the surface size to request
+    /// when it differs from the last requested one (the caller does the
+    /// `set_size + commit`, without touching the EGL buffer). Returns `None` for an
+    /// `Exact` surface or when no new size is needed.
+    ///
+    /// A content-sized surface is ALWAYS measured at its fixed `(width, max_height)`
+    /// viewport -- never at the currently configured buffer size -- so a compositor
+    /// configure can never cap future growth and there is no measure/configure loop.
+    #[must_use]
+    pub(crate) fn measure_if_dirty(&mut self) -> Option<(u32, u32)> {
+        if self.layout_dirty {
+            let size = self.measure_size();
+            self.tree.measure_layout(
+                size,
+                &mut self.font_collection,
+                &self.font_manager,
+                &self.events_sender,
+                self.scale as f64,
+                &self.default_fonts,
+            );
+            self.platform.root_size.set_if_modified(size);
+            self.layout_dirty = false;
         }
-        let (pw, ph) = self.physical_size;
-        let size = Size2D::new(pw as f32, ph as f32);
-        self.tree.measure_layout(
-            size,
-            &mut self.font_collection,
-            &self.font_manager,
-            &self.events_sender,
-            self.scale as f64,
-            &self.default_fonts,
-        );
-        self.platform.root_size.set_if_modified(size);
-        self.layout_dirty = false;
+        self.poll_content_request()
+    }
+
+    /// The physical size Torin measures at: the fixed content viewport for a
+    /// content-sized surface, otherwise the currently configured buffer size.
+    fn measure_size(&self) -> Size2D {
+        match &self.content {
+            Some(c) => Size2D::new(
+                (c.width as i32 * self.scale).max(1) as f32,
+                (c.max_height as i32 * self.scale).max(1) as f32,
+            ),
+            None => {
+                let (pw, ph) = self.physical_size;
+                Size2D::new(pw as f32, ph as f32)
+            }
+        }
+    }
+
+    /// Whether this surface sizes itself to its content.
+    pub(crate) fn is_content_sized(&self) -> bool {
+        self.content.is_some()
+    }
+
+    /// Read the freshly measured root content extent and, for a content-sized
+    /// surface, decide the new surface size to request. The synthetic Torin root is
+    /// hard-coded to `Size::Fill` (freya-core's TreeAdapterFreya), so its `area` is
+    /// always the whole viewport; the measured CONTENT extent is its `inner_sizes`
+    /// (the vertical stack accumulates child heights there). Physical -> logical is
+    /// rounded up so the last row is never clipped, then clamped to `[1, max_height]`.
+    fn poll_content_request(&mut self) -> Option<(u32, u32)> {
+        let (width, max_height) = match &self.content {
+            Some(c) => (c.width, c.max_height),
+            None => return None,
+        };
+        let content_phys =
+            self.tree.layout.get(&NodeId::ROOT).map(|n| n.inner_sizes.height).unwrap_or(0.0);
+        let logical_h = content_logical_height(content_phys, self.scale, max_height);
+        let c = self.content.as_mut().expect("content present");
+        if logical_h != c.last_requested_h {
+            c.last_requested_h = logical_h;
+            Some((width, logical_h))
+        } else {
+            None
+        }
     }
 
     /// Paint the current tree onto `canvas`. The tree must already be measured.
@@ -384,5 +463,50 @@ impl FreyaLayerSurface {
                 self.id, stats.fps, stats.last_frame_ms
             );
         }
+    }
+}
+
+/// Convert a measured physical content height into the logical surface height to
+/// request for a content-sized surface. Rounds UP (so a fractional last row is
+/// never clipped) and clamps to `[1, max_height]` (never a zero-height surface,
+/// never taller than the configured viewport bound).
+fn content_logical_height(content_phys: f32, scale: i32, max_height: u32) -> u32 {
+    let scale = scale.max(1) as f32;
+    ((content_phys / scale).ceil() as i64).clamp(1, max_height as i64) as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::content_logical_height;
+
+    #[test]
+    fn divides_physical_by_scale_and_rounds_up() {
+        // 420px content at scale 1 -> 420 logical.
+        assert_eq!(content_logical_height(420.0, 1, 700), 420);
+        // A fractional extent rounds up so the last row is never clipped.
+        assert_eq!(content_logical_height(420.2, 1, 700), 421);
+        // HiDPI: physical is scale x logical, so divide back down.
+        assert_eq!(content_logical_height(840.0, 2, 700), 420);
+        assert_eq!(content_logical_height(841.0, 2, 700), 421);
+    }
+
+    #[test]
+    fn clamps_to_max_height_ceiling() {
+        // Content taller than the bound is capped (the surface scrolls instead).
+        assert_eq!(content_logical_height(900.0, 1, 640), 640);
+        assert_eq!(content_logical_height(1400.0, 2, 640), 640);
+    }
+
+    #[test]
+    fn never_requests_a_zero_height_surface() {
+        // Empty/unmeasured content floors at 1px, not 0.
+        assert_eq!(content_logical_height(0.0, 1, 520), 1);
+        assert_eq!(content_logical_height(0.4, 1, 520), 1);
+    }
+
+    #[test]
+    fn guards_a_nonpositive_scale() {
+        // A bogus scale is treated as 1 rather than dividing by zero.
+        assert_eq!(content_logical_height(300.0, 0, 700), 300);
     }
 }

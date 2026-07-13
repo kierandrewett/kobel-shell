@@ -82,12 +82,13 @@ pub enum SurfaceSize {
     /// opposite edges to let the compositor fill it (e.g. a full-width bar is
     /// `Exact { width: 0, height: 120 }` with `Anchor::TOP | LEFT | RIGHT`).
     Exact { width: u32, height: u32 },
-    /// Content-sized: the surface should size itself to its Freya content, bounded
-    /// by the given maxima. NOT YET IMPLEMENTED in the Phase 0/1 host -- it needs an
-    /// initial off-screen measure pass before the first commit, so creating a surface
-    /// with this variant currently returns an error. Kept in the API so callers can
-    /// express the intent (fixed bar vs content-sized) today.
-    ContentSized { max_width: u32, max_height: u32 },
+    /// Content-sized: the surface keeps a fixed logical `width` and sizes its height
+    /// to its Freya content, bounded by `max_height` (the measurement viewport and
+    /// the clamp ceiling). The host measures the tree at `(width, max_height)` after
+    /// each layout-dirty frame, reads the root content height, and requests a new
+    /// surface size only when it changed; it keeps rendering into the currently
+    /// configured buffer until the compositor's next configure honours the request.
+    ContentSized { width: u32, max_height: u32 },
 }
 
 /// Configuration for one layer surface.

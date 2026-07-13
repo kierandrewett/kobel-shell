@@ -143,9 +143,10 @@ fn kb_open(key: SurfaceKey) -> KeyboardInteractivity {
 
 /// Layer config for one on-demand surface, ported from docs/FREYA-PLAN.md section 6.
 /// All start closed: keyboard None + empty input region (the manager flips both on
-/// reveal). Widths come from theme tokens; heights are fixed placeholders for this
-/// wave (the real surfaces size to content later). An axis anchored to both opposite
-/// edges uses size 0 so the compositor fills it (as the bar does for width).
+/// reveal). Widths come from theme tokens. Launcher/quicksettings/calendar are
+/// content-sized (the host measures their sheet and hugs it, bounded by the
+/// max_height); the drawer stays a fixed full-height rail (see its arm). An axis
+/// anchored to both opposite edges uses size 0 so the compositor fills it.
 fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
     let panel_top = t.panel_top() as i32;
     let edge = t.edge as i32;
@@ -159,30 +160,36 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
         // TOP, margin-top 56 (sits below the bar); centered on the primary output.
         SurfaceKey::Launcher => base(
             "kobel-launcher",
-            SurfaceSize::Exact { width: t.launcher_w as u32, height: 480 },
+            // Content-sized: hugs the sheet (field + results/empty state + footer),
+            // bounded at 700px so a long results list scrolls rather than overflows.
+            SurfaceSize::ContentSized { width: t.launcher_w as u32, max_height: 700 },
         )
         .anchor(Anchor::TOP)
         .margins(Margins { top: 56, right: 0, bottom: 0, left: 0 }),
         // TOP+RIGHT.
         SurfaceKey::QuickSettings => base(
             "kobel-qs",
-            SurfaceSize::Exact { width: t.panel_w as u32, height: 520 },
+            // Content-sized: hugs the sheet; the height changes at runtime as drills
+            // (wifi/bt/mixer) open, which the host re-measures. Bounded at 640px.
+            SurfaceSize::ContentSized { width: t.panel_w as u32, max_height: 640 },
         )
         .anchor(Anchor::TOP | Anchor::RIGHT)
         .margins(Margins { top: panel_top, right: edge, bottom: 0, left: 0 }),
         // TOP (centered).
         SurfaceKey::Calendar => base(
             "kobel-calendar",
-            // Height fits the six-week grid + events card with headroom for a
-            // two-event day (measured sheet content ~372px for one event, ~422px
-            // for two); the phase-1 host has no ContentSized, so this is fixed.
-            SurfaceSize::Exact { width: t.calendar_w as u32, height: 432 },
+            // Content-sized: hugs the six-week grid + events card, which grows with
+            // the selected day's event count. Bounded at 520px.
+            SurfaceSize::ContentSized { width: t.calendar_w as u32, max_height: 520 },
         )
         .anchor(Anchor::TOP)
         .margins(Margins { top: panel_top, right: 0, bottom: 0, left: 0 }),
         // TOP+RIGHT+BOTTOM full-height right rail (ags marginRight=12 only): the top
         // and bottom anchors fill the height axis (size 0), and the compositor already
         // seats it below the bar's exclusive zone, so only the right inset is set.
+        // Deliberately NOT content-sized: top+bottom anchoring already pins it to the
+        // full screen height, so the height axis is compositor-filled (size 0) and
+        // content sizing would fight that anchoring. It stays a fixed full-height rail.
         SurfaceKey::Drawer => base(
             "kobel-drawer",
             SurfaceSize::Exact { width: t.panel_w as u32, height: 0 },
@@ -260,7 +267,7 @@ fn main() -> anyhow::Result<()> {
         .keyboard_interactivity(KeyboardInteractivity::None);
 
     // OSD: per-output, bottom-anchored, 72px up, fixed ~230x44, display-only (empty
-    // input region -> click-through). ContentSized isn't supported by the phase-1 host.
+    // input region -> click-through). Fixed size: a transient volume/brightness pill.
     let osd_cfg = SurfaceConfig::new("kobel-osd", SurfaceSize::Exact { width: 230, height: 44 })
         .layer(Layer::Top)
         .anchor(Anchor::BOTTOM)

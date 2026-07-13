@@ -928,7 +928,10 @@ impl Component for Launcher {
             .child(body)
             .child(footer());
 
-        rect().expanded().opacity(opacity).child(sheet)
+        // Fill the (content-sized) surface width, but AUTO height so the surface hugs
+        // the sheet (host reads ROOT content height). `.expanded()` would fill height
+        // and defeat content sizing.
+        rect().width(Size::fill()).opacity(opacity).child(sheet)
     }
 }
 

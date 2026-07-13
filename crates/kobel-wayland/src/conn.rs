@@ -285,12 +285,14 @@ impl Host {
         setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
         app: impl Fn() -> Element + 'static,
     ) -> Result<(SurfaceId, C)> {
-        let (init_w, init_h) = match config.size {
-            SurfaceSize::Exact { width, height } => (width, height),
-            SurfaceSize::ContentSized { .. } => {
-                return Err(anyhow!(
-                    "SurfaceSize::ContentSized is not supported by the Phase 0/1 host yet; use SurfaceSize::Exact"
-                ));
+        // Exact uses the configured size directly. ContentSized starts at
+        // (width, max_height) -- the tallest it can ever be -- then, once the tree is
+        // built below, measures its content and requests the real height before the
+        // first commit, so the very first configure already carries a hugged size.
+        let (init_w, init_h, content) = match config.size {
+            SurfaceSize::Exact { width, height } => (width, height, None),
+            SurfaceSize::ContentSized { width, max_height } => {
+                (width, max_height, Some((width, max_height)))
             }
         };
 
@@ -322,15 +324,26 @@ impl Host {
             }
         }
 
-        // Initial commit with no buffer -> compositor replies with a configure.
-        layer.commit();
+        // Build the Freya runtime first: new() mounts the app and builds the tree,
+        // so a content-sized surface can measure its content and request the right
+        // height before the initial (buffer-less) commit that triggers the first
+        // configure. The EGL buffer is created later, on that configure.
+        let (mut surface, extra) =
+            FreyaLayerSurface::new(id, layer, (init_w, init_h), 1, self.waker.clone(), app, setup, content);
+        if surface.is_content_sized() {
+            if let Some((w, h)) = surface.measure_if_dirty() {
+                surface.layer.set_size(w, h);
+            }
+        }
 
-        let (surface, extra) =
-            FreyaLayerSurface::new(id, layer, (init_w, init_h), 1, self.waker.clone(), app, setup);
+        // Initial commit with no buffer -> compositor replies with a configure.
+        surface.layer.commit();
+
         self.surfaces.push(surface);
         tracing::info!(
-            "[host] created surface {id:?} ns={} size={init_w}x{init_h} on_output={}",
+            "[host] created surface {id:?} ns={} size={init_w}x{init_h} content_sized={} on_output={}",
             config.namespace,
+            content.is_some(),
             output.is_some(),
         );
         Ok((id, extra))
@@ -435,7 +448,16 @@ impl Host {
             }
         }
 
-        s.measure_if_dirty();
+        // Measure at the fixed content viewport (content-sized) or the configured
+        // buffer (exact). If content-sizing asks for a new surface size, honour the
+        // layer-shell rule: set_size + commit now, but keep rendering into the
+        // currently configured EGL buffer (pw x ph, unchanged) until the compositor's
+        // next configure resizes it. Guarded against loops by measure_if_dirty only
+        // requesting when the measured height actually changed.
+        if let Some((w, h)) = s.measure_if_dirty() {
+            s.layer.set_size(w, h);
+            s.layer.commit();
+        }
 
         let mut sk_surface = match egl.wrap_frame(pw, ph) {
             Ok(surface) => surface,

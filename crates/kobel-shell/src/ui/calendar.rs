@@ -64,8 +64,6 @@ const DOT: f32 = 3.0;
 const DOT_BOTTOM: f32 = 2.0;
 /// Event icon chip edge (scss `.evic` 26x26).
 const EV_CHIP: f32 = 26.0;
-/// Colored event-chip fill (scss `.evic { background-color: #628933 }`).
-const EV_CHIP_FILL: (u8, u8, u8) = (0x62, 0x89, 0x33);
 /// Rising-edge threshold on the reveal opacity: recompute today the instant the
 /// manager starts springing the surface open. Closed publishes a bit-exact 0.0
 /// (manager snaps to target on settle), so any positive value is an open edge.
@@ -220,9 +218,10 @@ pub fn calendar() -> impl IntoElement {
         .child(grid(vy, vm, today, sel, &events, selected))
         .child(events_card(sel, &events));
 
-    // Full-surface overlay: the sheet sits top-aligned and fills the calendar_w
-    // surface width. The whole overlay fades with the reveal opacity.
-    rect().expanded().opacity(opacity).child(sheet)
+    // Fill the (content-sized) surface width; AUTO height so the surface hugs the
+    // top-aligned sheet (host reads ROOT content height). `.expanded()` would fill
+    // the height and defeat content sizing.
+    rect().width(Size::fill()).opacity(opacity).child(sheet)
 }
 
 /// Hero block: weekday sublabel (MUT 11.5) + full date (19 / 650). scss `.calhero`.
@@ -603,7 +602,9 @@ fn event_row(e: &Ev, last: bool) -> impl IntoElement {
         .height(Size::px(EV_CHIP))
         .center()
         .corner_radius(8.0)
-        .background(EV_CHIP_FILL)
+        .background(theme::EVENT_CHIP.rgb())
+        // Pure white glyph, not TX: scss `.evrow .evic image { color: #fff }`
+        // (main.scss:946) is literal white on the colored chip, not $tx.
         .child(icon(e.icon, 14.0, theme::Rgb(255, 255, 255)));
 
     let meta = rect()

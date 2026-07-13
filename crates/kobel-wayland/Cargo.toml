@@ -27,7 +27,6 @@ wayland-client = { workspace = true }
 # client_system selects the libwayland backend so wl_surface ObjectIds expose the
 # C wl_proxy pointer that wayland-egl (WlEglSurface) requires.
 wayland-backend = { workspace = true, features = ["client_system"] }
-wayland-protocols = { workspace = true }
 wayland-egl = { workspace = true }
 khronos-egl = { workspace = true }
 calloop = { workspace = true }
@@ -36,7 +35,6 @@ keyboard-types = { workspace = true }
 futures-channel = { workspace = true }
 futures-util = "0.3"
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
