@@ -9,10 +9,34 @@
 
 use std::{
     ops::Deref,
+    sync::atomic::{AtomicBool, Ordering},
     time::Instant,
 };
 
 use freya_core::prelude::*;
+
+// -------------------------------------------------------------------------
+// Reduced motion (accessibility)
+// -------------------------------------------------------------------------
+//
+// Read once at startup from KOBEL_REDUCED_MOTION and installed by main.rs. The
+// use_spring hook consults this so EVERY UI spring settles instantly instead of
+// animating (dock cycle, toast slide, osd opacity, QS drill). The manager reveal
+// springs take their own injected flag (they integrate SpringSim directly, off the
+// hook path). DESIGN.md: ambient motion pauses under prefers-reduced-motion and
+// springs settle instantly.
+
+static REDUCED_MOTION: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable the reduced-motion path process-wide. Called once at startup.
+pub fn set_reduced_motion(on: bool) {
+    REDUCED_MOTION.store(on, Ordering::Relaxed);
+}
+
+/// True when springs should settle instantly instead of animating.
+pub fn reduced_motion() -> bool {
+    REDUCED_MOTION.load(Ordering::Relaxed)
+}
 
 // -------------------------------------------------------------------------
 // Pure math core (no freya deps)
@@ -118,6 +142,15 @@ impl SpringSim {
     pub fn settled(&self, eps: f32) -> bool {
         (self.x - self.target).abs() < eps && self.v.abs() < eps
     }
+
+    /// Settle instantly at `value`: x = target = value, v = 0. The pure core of
+    /// the reduced-motion path, shared by [`UseSpring::jump`] and the manager's
+    /// reveal snap, so both take the exact same "no motion" semantics.
+    pub fn snap(&mut self, value: f32) {
+        self.x = value;
+        self.v = 0.0;
+        self.target = value;
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -178,6 +211,11 @@ impl UseSpring {
     /// an in-flight animation continues smoothly from where it is. An optional new
     /// spec changes the curve for the remaining motion.
     pub fn to(&mut self, target: f32, spec: SpringSpec) {
+        if reduced_motion() {
+            // Accessibility: no animation, settle straight onto the target.
+            self.jump(target);
+            return;
+        }
         *self.spec.write() = spec;
         self.sim.write().target = target;
         self.ensure_running();
@@ -186,6 +224,10 @@ impl UseSpring {
     /// Add an impulse to the current velocity (badge pop, bell shake). Does not
     /// touch position or target.
     pub fn kick(&mut self, velocity: f32) {
+        if reduced_motion() {
+            // Reduced motion freezes ambient impulses (badge pop, bell shake).
+            return;
+        }
         self.sim.write().v += velocity;
         self.ensure_running();
     }
@@ -196,13 +238,12 @@ impl UseSpring {
         if let Some(task) = self.task.write().take() {
             task.cancel();
         }
-        {
-            let mut sim = self.sim.write();
-            sim.x = value;
-            sim.v = 0.0;
-            sim.target = value;
-        }
+        self.sim.write().snap(value);
         *self.value.write() = value;
+        // A jump writes State without the driver task, so nothing has asked the host
+        // to repaint. Request a redraw so async callers (e.g. the OSD hide timer under
+        // reduced motion) wake the loop instead of stalling on an unrelated event.
+        Platform::get().send(UserEvent::RequestRedraw);
     }
 
     /// Spawn the driver task if the spring is in motion and not already running.
@@ -429,5 +470,39 @@ mod tests {
             one.v,
             two.v
         );
+    }
+
+    #[test]
+    fn snap_settles_immediately() {
+        // Put a spring mid-flight, then snap() -> instant settle at a new value with
+        // zero residual velocity. This is the reduced-motion path (UseSpring::jump
+        // and the manager reveal snap both go through it).
+        let mut s = SpringSim::new(0.0);
+        s.target = 1.0;
+        s.step(0.05, PANEL_OPEN);
+        assert!(!s.settled(SETTLE_EPS), "sanity: spring is mid-flight");
+
+        s.snap(0.7);
+        assert!(s.settled(SETTLE_EPS), "snap must settle immediately");
+        assert_eq!(s.x, 0.7);
+        assert_eq!(s.v, 0.0);
+        assert_eq!(s.target, 0.7);
+
+        // And it stays put: the next integration step produces no motion.
+        s.step(FRAME, PANEL_OPEN);
+        assert_eq!(s.x, 0.7, "snapped spring must not drift");
+        assert_eq!(s.v, 0.0);
+    }
+
+    #[test]
+    fn reduced_motion_flag_round_trips() {
+        // The process-wide gate the use_spring hook reads. Restore whatever it was
+        // so a parallel test run stays independent (only the hook path reads it).
+        let prev = reduced_motion();
+        set_reduced_motion(true);
+        assert!(reduced_motion());
+        set_reduced_motion(false);
+        assert!(!reduced_motion());
+        set_reduced_motion(prev);
     }
 }

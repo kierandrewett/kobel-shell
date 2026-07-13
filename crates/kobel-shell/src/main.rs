@@ -203,6 +203,21 @@ fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    // Accessibility + profiling flags, read once at startup. KOBEL_REDUCED_MOTION
+    // makes every spring settle instantly (DESIGN.md accessibility contract);
+    // KOBEL_PROFILE_ANIM turns on the reveal-spring trace + KOBEL_MOTION settle lines
+    // (ports ags/lib/surface.ts). Plumbed into the motion global (UI spring hooks)
+    // and the manager (reveal springs) below.
+    let reduced_motion = matches!(std::env::var("KOBEL_REDUCED_MOTION").as_deref(), Ok("1"));
+    let profile_anim = matches!(std::env::var("KOBEL_PROFILE_ANIM").as_deref(), Ok("1"));
+    motion::set_reduced_motion(reduced_motion);
+    if reduced_motion {
+        tracing::info!("[motion] reduced motion enabled: springs settle instantly");
+    }
+    if profile_anim {
+        tracing::info!("[trace] anim profiling enabled (KOBEL_PROFILE_ANIM=1)");
+    }
+
     // The bus every surface + IPC uses to reach the manager.
     let (bus, bus_rx) = ShellBus::new();
     // Service snapshots flow UI-ward over this channel; the app tick drains it.
@@ -388,6 +403,8 @@ fn main() -> anyhow::Result<()> {
     // The manager owns the services handle (keeping it alive for the loop's lifetime)
     // and drains the bus.
     let mut manager = Manager::new(bus_rx, services);
+    manager.set_reduced_motion(reduced_motion);
+    manager.set_profile_anim(profile_anim);
     manager.set_dismiss(dismiss_id);
     for (key, id, kb, progress) in reveal_regs {
         // The drawer's reveal callback also mirrors its open state into every toasts

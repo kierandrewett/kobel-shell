@@ -140,6 +140,91 @@ impl RevealHost for Control<'_> {
 /// next step and the spring would stall at rest.
 const FRAME_DT: Duration = Duration::from_micros(16_667);
 
+// Profiling trace (KOBEL_PROFILE_ANIM). Ports ags/lib/surface.ts beginTrace/
+// recordTrace: the manager integrates the reveal springs, so it sees every sample.
+// The accumulator is pure (no freya, no clock) -- fed absolute monotonic timestamps
+// in ms, tracking the sample count and the max inter-sample gap, so the math is
+// unit-testable and a real stall shows up as a large max_gap_ms.
+
+/// Direction of a reveal transition, for the profiling trace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TraceDir {
+    Open,
+    Close,
+}
+
+impl TraceDir {
+    fn as_str(self) -> &'static str {
+        match self {
+            TraceDir::Open => "open",
+            TraceDir::Close => "close",
+        }
+    }
+}
+
+/// Pure per-transition profiling accumulator.
+#[derive(Debug, Clone, PartialEq)]
+struct RevealTrace {
+    /// Per-surface transition sequence number (1-based).
+    seq: u64,
+    direction: TraceDir,
+    /// Whether this open reused an already-warm surface (open_count > 1). Always
+    /// false for a close, matching the AGS reference.
+    warm: bool,
+    /// Transition start (open_start / close_start) timestamp, in ms.
+    start_ms: f64,
+    /// Last recorded sample timestamp, in ms.
+    last_ms: f64,
+    /// Samples recorded so far.
+    samples: u32,
+    /// Largest gap between consecutive samples (and start -> first sample), in ms.
+    max_gap_ms: f64,
+    /// Whether the first_tick event has been reported yet.
+    first_tick_done: bool,
+}
+
+impl RevealTrace {
+    /// Begin a transition at `now_ms`; no sample yet.
+    fn begin(seq: u64, direction: TraceDir, warm: bool, now_ms: f64) -> Self {
+        Self {
+            seq,
+            direction,
+            warm,
+            start_ms: now_ms,
+            last_ms: now_ms,
+            samples: 0,
+            max_gap_ms: 0.0,
+            first_tick_done: false,
+        }
+    }
+
+    /// Record one animated sample at `now_ms`: bump the count and the max gap
+    /// (measured from the previous sample, or from the start for the first). Returns
+    /// true exactly once, on the first sample, so the caller emits first_tick.
+    fn record(&mut self, now_ms: f64) -> bool {
+        let gap = (now_ms - self.last_ms).max(0.0);
+        if gap > self.max_gap_ms {
+            self.max_gap_ms = gap;
+        }
+        self.last_ms = now_ms;
+        self.samples += 1;
+        let first = !self.first_tick_done;
+        self.first_tick_done = true;
+        first
+    }
+
+    /// Elapsed ms since the transition began, clamped to >= 1 so the sample-rate
+    /// division is always well-defined (matches the AGS reference).
+    fn elapsed_ms(&self, now_ms: f64) -> f64 {
+        (now_ms - self.start_ms).max(1.0)
+    }
+
+    /// Mean sample rate over the elapsed window (Hz, rounded).
+    fn sample_hz(&self, now_ms: f64) -> u32 {
+        ((self.samples as f64 * 1000.0) / self.elapsed_ms(now_ms)).round() as u32
+    }
+}
+
 /// One on-demand surface's reveal state. The surface is created once and stays
 /// mapped forever (the AGS warm-open trick): closed = opacity 0 + empty input region
 /// + keyboard None; open = opacity springs to 1 + full input region + its keyboard
@@ -159,6 +244,13 @@ struct Reveal {
     /// Writes the animated value into this surface's `OpenProgress` State<f32> root
     /// context, which the surface UI multiplies into its root opacity.
     write_progress: Box<dyn FnMut(f32)>,
+    /// Profiling transition counter, bumped per transition when profiling is on.
+    trace_seq: u64,
+    /// Opens so far, so the profiler can flag a warm reopen (count > 1).
+    open_count: u32,
+    /// In-flight profiling accumulator; Some only while profiling and a transition
+    /// is running.
+    trace: Option<RevealTrace>,
 }
 
 /// The shell manager loop, living on the UI thread -- the makeReveal successor. The
@@ -178,6 +270,14 @@ pub struct Manager {
     dismiss: Option<SurfaceId>,
     /// Wall clock for the reveal springs' integration timestep.
     last_tick: Instant,
+    /// Reduced-motion accessibility flag: reveal springs snap 0/1 instantly.
+    reduced_motion: bool,
+    /// Profiling flag (KOBEL_PROFILE_ANIM): emit the reveal-spring trace and the
+    /// machine-readable KOBEL_MOTION settle summary.
+    profile: bool,
+    /// Monotonic epoch for the trace's absolute-ms timestamps. Independent of the
+    /// clamped spring dt, so a real stall surfaces as a large max_gap_ms.
+    trace_epoch: Instant,
     quit: bool,
 }
 
@@ -190,6 +290,9 @@ impl Manager {
             open: None,
             dismiss: None,
             last_tick: Instant::now(),
+            reduced_motion: false,
+            profile: false,
+            trace_epoch: Instant::now(),
             quit: false,
         }
     }
@@ -213,6 +316,9 @@ impl Manager {
                 target_open: false,
                 active: false,
                 write_progress,
+                trace_seq: 0,
+                open_count: 0,
+                trace: None,
             },
         );
     }
@@ -220,6 +326,64 @@ impl Manager {
     /// Register the full-screen dismiss layer surface.
     pub fn set_dismiss(&mut self, id: SurfaceId) {
         self.dismiss = Some(id);
+    }
+
+    /// Enable the reduced-motion reveal path: opacity springs snap to 0/1 instead of
+    /// fading. Set once at startup from KOBEL_REDUCED_MOTION (DESIGN.md accessibility).
+    pub fn set_reduced_motion(&mut self, on: bool) {
+        self.reduced_motion = on;
+    }
+
+    /// Enable reveal-spring profiling (KOBEL_PROFILE_ANIM): per-transition trace
+    /// lines plus the machine-readable KOBEL_MOTION settle summary.
+    pub fn set_profile_anim(&mut self, on: bool) {
+        self.profile = on;
+    }
+
+    /// Absolute monotonic time in ms since the manager was built. Feeds the profiling
+    /// accumulator directly (not the clamped spring dt) so a real stall stays visible.
+    fn now_ms(&self) -> f64 {
+        self.trace_epoch.elapsed().as_secs_f64() * 1000.0
+    }
+
+    /// Human-readable per-event profiling line (open_start / close_start, first_tick,
+    /// settled), tagged `[trace]`. The machine-readable summary is [`emit_motion`].
+    fn log_trace_event(key: SurfaceKey, t: &RevealTrace, event: &str, now_ms: f64) {
+        tracing::info!(
+            "[trace] surface={} seq={} event={} direction={} warm={} elapsed_ms={:.0} samples={} sample_hz={} max_gap_ms={:.0}",
+            key.as_str(),
+            t.seq,
+            event,
+            t.direction.as_str(),
+            t.warm as u8,
+            t.elapsed_ms(now_ms),
+            t.samples,
+            t.sample_hz(now_ms),
+            t.max_gap_ms,
+        );
+    }
+
+    /// The machine-readable settle summary, emitted as a raw stdout line beginning
+    /// exactly with `KOBEL_MOTION ` so ags/scripts/profile-surfaces.sh's
+    /// `startswith("KOBEL_MOTION ")` parser (and a plain grep of kobel.log) both pick
+    /// it up. Ports the KOBEL_MOTION line from ags/lib/surface.ts recordTrace.
+    fn emit_motion(key: SurfaceKey, t: &RevealTrace, now_ms: f64) {
+        let target = match t.direction {
+            TraceDir::Open => 1,
+            TraceDir::Close => 0,
+        };
+        println!(
+            "KOBEL_MOTION surface={} seq={} direction={} warm={} target={} elapsed_ms={} samples={} sample_hz={} max_gap_ms={}",
+            key.as_str(),
+            t.seq,
+            t.direction.as_str(),
+            t.warm as u8,
+            target,
+            t.elapsed_ms(now_ms).round() as u64,
+            t.samples,
+            t.sample_hz(now_ms),
+            t.max_gap_ms.round() as u64,
+        );
     }
 
     /// Drain and apply every pending message, then advance any active reveal spring.
@@ -275,12 +439,28 @@ impl Manager {
                 self.close(cur, host);
             }
         }
-        let (id, kb) = {
+        let reduced = self.reduced_motion;
+        let profile = self.profile;
+        let now = if profile { self.now_ms() } else { 0.0 };
+        let (id, kb, opened_trace) = {
             let r = self.reveals.get_mut(&key).expect("registered above");
             r.target_open = true;
             r.active = true;
             r.sim.target = 1.0; // retarget; x and v preserved -> interruptible
-            (r.id, r.kb_open)
+            if reduced {
+                r.sim.snap(1.0); // accessibility: reveal instantly, no fade
+            }
+            let opened_trace = if profile {
+                r.trace_seq += 1;
+                r.open_count += 1;
+                let warm = r.open_count > 1;
+                let t = RevealTrace::begin(r.trace_seq, TraceDir::Open, warm, now);
+                r.trace = Some(t.clone());
+                Some(t)
+            } else {
+                None
+            };
+            (r.id, r.kb_open, opened_trace)
         };
         self.open = Some(key);
         // Reveal: full input region + this surface's keyboard mode.
@@ -288,14 +468,30 @@ impl Manager {
         host.set_keyboard_interactivity(id, kb);
         self.sync_dismiss(host);
         tracing::info!("[manager] opened {}", key.as_str());
+        if let Some(t) = opened_trace {
+            Self::log_trace_event(key, &t, "open_start", now);
+        }
     }
 
     fn close(&mut self, key: SurfaceKey, host: &mut impl RevealHost) {
+        let reduced = self.reduced_motion;
+        let profile = self.profile;
+        let now = if profile { self.now_ms() } else { 0.0 };
+        let mut started_trace = None;
         let did_close = match self.reveals.get_mut(&key) {
             Some(r) if r.target_open || r.active => {
                 r.target_open = false;
                 r.active = true;
                 r.sim.target = 0.0; // retarget; x and v preserved -> interruptible
+                if reduced {
+                    r.sim.snap(0.0); // accessibility: hide instantly, no fade
+                }
+                if profile {
+                    r.trace_seq += 1;
+                    let t = RevealTrace::begin(r.trace_seq, TraceDir::Close, false, now);
+                    started_trace = Some(t.clone());
+                    r.trace = Some(t);
+                }
                 true
             }
             _ => false,
@@ -306,6 +502,9 @@ impl Manager {
         self.sync_dismiss(host);
         if did_close {
             tracing::info!("[manager] closed {}", key.as_str());
+        }
+        if let Some(t) = started_trace {
+            Self::log_trace_event(key, &t, "close_start", now);
         }
         // Keyboard None + empty input region are restored on settle (in advance),
         // not here, so they hold through the whole close fade.
@@ -334,7 +533,9 @@ impl Manager {
         if dt <= 0.0 {
             return;
         }
-        for r in self.reveals.values_mut() {
+        let profile = self.profile;
+        let now = if profile { self.now_ms() } else { 0.0 };
+        for (key, r) in self.reveals.iter_mut() {
             if !r.active {
                 continue;
             }
@@ -350,6 +551,19 @@ impl Manager {
             // past 1 (the spring's own x keeps its true physics for correct settling).
             let x = r.sim.x.clamp(0.0, 1.0);
             (r.write_progress)(x);
+            if profile {
+                if let Some(t) = r.trace.as_mut() {
+                    if t.record(now) {
+                        Self::log_trace_event(*key, t, "first_tick", now);
+                    }
+                }
+                if settled {
+                    if let Some(t) = r.trace.take() {
+                        Self::log_trace_event(*key, &t, "settled", now);
+                        Self::emit_motion(*key, &t, now);
+                    }
+                }
+            }
             if settled && !r.target_open {
                 host.set_input_region_empty(r.id, true);
                 host.set_keyboard_interactivity(r.id, KeyboardInteractivity::None);
@@ -524,5 +738,63 @@ mod tests {
         bus.send(ShellMsg::CloseAll);
         bus.send(ShellMsg::CloseAll);
         assert_eq!(hits.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn reduced_motion_reveal_snaps_instantly() {
+        // With reduced motion the reveal spring snaps: one tick opens fully (progress
+        // 1.0, nothing left animating) and one tick closes fully (0.0 + click-through
+        // + kb None), instead of fading over many frames.
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        manager.set_reduced_motion(true);
+        let id = SurfaceId::new(3);
+        let p = Rc::new(RefCell::new(Vec::new()));
+        manager.register_reveal(SurfaceKey::QuickSettings, id, KeyboardInteractivity::OnDemand, recording(&p));
+        manager.set_dismiss(SurfaceId::new(0));
+        let mut host = FakeHost::default();
+
+        bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings));
+        manager.tick(&mut host);
+        assert_eq!(p.borrow().last().copied(), Some(1.0), "reduced motion opens fully in one tick");
+        assert!(!manager.any_active(), "no spring left running after a snapped open");
+        assert!(host.region.contains(&(id, false)));
+        assert!(host.kb.contains(&(id, KeyboardInteractivity::OnDemand)));
+
+        host.kb.clear();
+        host.region.clear();
+        bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings));
+        manager.tick(&mut host);
+        assert_eq!(p.borrow().last().copied(), Some(0.0), "reduced motion closes fully in one tick");
+        assert!(!manager.any_active());
+        assert!(host.region.contains(&(id, true)), "closed surface becomes click-through immediately");
+        assert!(host.kb.contains(&(id, KeyboardInteractivity::None)));
+    }
+
+    #[test]
+    fn reveal_trace_accumulates_samples_and_gaps() {
+        // begin at t=0, then samples at 16/32/80/96 ms: a 48 ms stall between the 2nd
+        // and 3rd sample. The accumulator must count 4 samples, pick the 48 ms gap as
+        // the max, and derive the mean sample rate over the 96 ms window.
+        let mut t = RevealTrace::begin(1, TraceDir::Open, false, 0.0);
+        assert_eq!(t.samples, 0);
+
+        assert!(t.record(16.0), "first sample reports first_tick");
+        assert!(!t.record(32.0));
+        assert!(!t.record(80.0)); // the stall
+        assert!(!t.record(96.0));
+
+        assert_eq!(t.samples, 4);
+        assert_eq!(t.max_gap_ms, 48.0, "max gap is the 48 ms stall, not a spring frame");
+        assert_eq!(t.elapsed_ms(96.0), 96.0);
+        assert_eq!(t.sample_hz(96.0), 42, "round(4 * 1000 / 96) = 42 Hz");
+    }
+
+    #[test]
+    fn reveal_trace_elapsed_clamps_to_one() {
+        // A zero-duration transition must never divide by zero.
+        let t = RevealTrace::begin(1, TraceDir::Close, false, 5.0);
+        assert_eq!(t.elapsed_ms(5.0), 1.0);
+        assert_eq!(t.sample_hz(5.0), 0);
     }
 }

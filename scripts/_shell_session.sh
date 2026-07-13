@@ -2,8 +2,12 @@
 # Inner session body for the phase-2 pass -- runs INSIDE dbus-run-session.
 set -u
 export GNOME_SHELL_DISABLE_EXTENSIONS=1
+# VIRTUAL_MONITORS: space-separated WxH list (default one 1280x800); each entry
+# becomes a --virtual-monitor so the multi-monitor pass can run the same gate.
+MON_ARGS=()
+for m in ${VIRTUAL_MONITORS:-1280x800}; do MON_ARGS+=(--virtual-monitor "$m"); done
 "$PREFIX/bin/gnome-shell" --headless --wayland --no-x11 --mode=gnoblin \
-  --virtual-monitor 1280x800 --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
+  "${MON_ARGS[@]}" --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
 SP=$!
 for _ in $(seq 1 60); do sleep 0.5; [ -S "$XDG_RUNTIME_DIR/$DISP" ] && break; done
 [ -S "$XDG_RUNTIME_DIR/$DISP" ] || { echo "NO-SOCKET"; tail -20 "$DK/shell.log"; exit 1; }
@@ -11,7 +15,13 @@ for _ in $(seq 1 40); do grep -q "GNOME Shell started" "$DK/shell.log" && break;
 echo "== shell up on $DISP =="
 
 export WAYLAND_DISPLAY="$DISP"
-RUST_LOG="${RUST_LOG:-info}" stdbuf -oL -eL "$SHELL_BIN" >"$DK/kobel.log" 2>&1 &
+# Forward the motion/profile flags (set by run-shell-in-gnoblin.sh, default empty)
+# so KOBEL_PROFILE_ANIM/KOBEL_REDUCED_MOTION reach the real binary; the KOBEL_MOTION
+# trace lines then land in kobel.log alongside RUST_LOG output.
+RUST_LOG="${RUST_LOG:-info}" \
+  KOBEL_PROFILE_ANIM="${KOBEL_PROFILE_ANIM:-}" \
+  KOBEL_REDUCED_MOTION="${KOBEL_REDUCED_MOTION:-}" \
+  stdbuf -oL -eL "$SHELL_BIN" >"$DK/kobel.log" 2>&1 &
 AP=$!
 
 sleep 4

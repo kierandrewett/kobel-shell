@@ -39,6 +39,13 @@ DISP="kobel-shell-$$"
 # session's kobel-shell.sock.
 export KOBEL_SHELL_SOCKET="$DK/kobel-shell.sock"
 CONF="$(python3 "$GNOBLIN/scripts/devkit_dbus.py" "$DK" "$GNOBLIN")" || exit 1
+# Motion/profile flags forwarded into the shell env (default off). KOBEL_PROFILE_ANIM
+# turns on the reveal-spring trace (KOBEL_MOTION lines land in kobel.log);
+# KOBEL_REDUCED_MOTION makes every spring settle instantly (accessibility).
+export KOBEL_PROFILE_ANIM="${KOBEL_PROFILE_ANIM:-}"
+export KOBEL_REDUCED_MOTION="${KOBEL_REDUCED_MOTION:-}"
+# Space-separated WxH list; two entries = the multi-monitor pass.
+export VIRTUAL_MONITORS="${VIRTUAL_MONITORS:-1280x800}"
 export DISP DK OUT PREFIX SHELL_BIN CTL_BIN
 
 cleanup() { rm -rf "$DK"; }
