@@ -121,12 +121,14 @@ pub fn dock_radius(tokens: &Tokens) -> f32 {
     theme::RADIUS_TILE + tokens.dock_pad - 1.0
 }
 
-/// Exact dock width: `pin_count + 1` icon tiles (pins + media), one separator,
-/// the inter-child spacing, and the dock padding on both sides.
+/// Exact dock width: `pin_count + 1` icon tiles (pins + media), the pin-group
+/// separator (present when there is a fifth pin, AGS `i === 4`), the media
+/// separator, the inter-child spacing, and the dock padding on both sides.
 pub fn dock_width(tokens: &Tokens, pin_count: usize) -> u32 {
     let tiles = pin_count as f32 + 1.0; // pins + media tile
-    let children = tiles + 1.0; // + the separator
-    let content = tiles * tokens.icon + SEP_W + DOCK_SPACING * (children - 1.0);
+    let seps = if pin_count > 4 { 2.0 } else { 1.0 };
+    let children = tiles + seps;
+    let content = tiles * tokens.icon + seps * SEP_W + DOCK_SPACING * (children - 1.0);
     (content + 2.0 * tokens.dock_pad).ceil() as u32
 }
 
@@ -577,14 +579,20 @@ fn media_progress(progress: f64, tile: f32) -> Element {
 // Entry point
 // ---------------------------------------------------------------------------
 
-/// The dock. One PANEL slab: pinned tiles, a separator, then the media tile.
+/// The dock. One PANEL slab: pinned tiles (with the prototype's group separator
+/// between the fourth and fifth pins), a separator, then the media tile --
+/// matching ags/widget/Dock.tsx which inserts `.sep` at `i === 4` and again
+/// before the media widget.
 pub fn dock() -> impl IntoElement {
     let tokens = *use_consume::<State<Tokens>>().read();
 
-    let mut children: Vec<Element> = pins()
-        .iter()
-        .map(|id| DockTile { pin_id: id.clone() }.into_element())
-        .collect();
+    let mut children: Vec<Element> = Vec::new();
+    for (i, id) in pins().iter().enumerate() {
+        if i == 4 {
+            children.push(separator());
+        }
+        children.push(DockTile { pin_id: id.clone() }.into_element());
+    }
     children.push(separator());
     children.push(MediaTile.into_element());
 
@@ -636,8 +644,10 @@ mod tests {
 
     #[test]
     fn width_matches_the_floating_dock_math() {
-        // 6 pins + media = 7 tiles @44 + 1 sep + 4*(8-1) spacing + 2*5 pad.
-        assert_eq!(dock_width(&theme::FLOATING, 6), 347);
+        // 6 pins + media = 7 tiles @44 + 2 seps + 4*(9-1) spacing + 2*5 pad.
+        assert_eq!(dock_width(&theme::FLOATING, 6), 352);
+        // 4 pins or fewer: only the media separator.
+        assert_eq!(dock_width(&theme::FLOATING, 4), 5 * 44 + 1 + 4 * 5 + 10);
         assert_eq!(dock_height(&theme::FLOATING), 54);
         // Concentric radius: 12 + dock_pad - 1.
         assert_eq!(dock_radius(&theme::FLOATING), 16.0);
