@@ -234,23 +234,77 @@ impl Component for Chip {
 
 /// A hover-lit square icon button that fires an [`EventHandler`] (unlike
 /// [`super::IconButton`], which only toggles a surface). Resting = a `tint`
-/// glyph on a transparent slab; hover lifts to PANEL2 and swaps the glyph to
-/// `hover_tint`. Used for the QS top-row buttons (reload/lock/power) and the
-/// drill back button.
+/// glyph on the [`IconAction::rest_bg`] slab (transparent by default); hover
+/// lifts one step up the elevation ladder and swaps the glyph to `hover_tint`.
+/// Opt-in [`IconAction::rest_bg`]/[`IconAction::radius`]/[`IconAction::danger`]
+/// give the QS top-row `.rbtn` treatment (CHIP pill, ROSE danger hover); the
+/// drill back/chevron buttons keep the transparent `RADIUS_BUTTON` defaults.
 #[derive(PartialEq)]
 pub struct IconAction {
     /// Embedded SVG bytes (a `super::ICON_*`).
-    pub icon: &'static [u8],
+    icon: &'static [u8],
     /// Control box edge (square).
-    pub size: f32,
+    size: f32,
     /// Glyph size inside the box.
-    pub icon_size: f32,
+    icon_size: f32,
     /// Resting glyph tint.
-    pub tint: Rgb,
+    tint: Rgb,
     /// Glyph tint while hovered.
-    pub hover_tint: Rgb,
+    hover_tint: Rgb,
     /// Fired on press.
-    pub on_press: EventHandler<()>,
+    on_press: EventHandler<()>,
+    /// Resting background fill (default `Color::TRANSPARENT`).
+    rest_bg: Color,
+    /// Corner radius (default `theme::RADIUS_BUTTON`).
+    radius: f32,
+    /// Destructive treatment: hover fills ROSE with a ROSEINK glyph.
+    danger: bool,
+}
+
+impl IconAction {
+    /// A square icon button: an `icon_size` glyph in a `size` box, resting
+    /// `tint` -> hovered `hover_tint`, pressing fires `on_press`. Defaults to a
+    /// transparent slab, `RADIUS_BUTTON` corners, and non-danger; the setters
+    /// below opt into the `.rbtn` treatment.
+    pub fn new(
+        icon: &'static [u8],
+        size: f32,
+        icon_size: f32,
+        tint: Rgb,
+        hover_tint: Rgb,
+        on_press: impl Into<EventHandler<()>>,
+    ) -> Self {
+        Self {
+            icon,
+            size,
+            icon_size,
+            tint,
+            hover_tint,
+            on_press: on_press.into(),
+            rest_bg: Color::TRANSPARENT,
+            radius: theme::RADIUS_BUTTON,
+            danger: false,
+        }
+    }
+
+    /// Set the resting background fill (default transparent).
+    pub fn rest_bg(mut self, rest_bg: Rgb) -> Self {
+        self.rest_bg = rest_bg.rgb().into();
+        self
+    }
+
+    /// Set the corner radius (default `theme::RADIUS_BUTTON`).
+    pub fn radius(mut self, radius: f32) -> Self {
+        self.radius = radius;
+        self
+    }
+
+    /// Enable the destructive treatment: hover fills ROSE with a ROSEINK glyph
+    /// (scss `.rbtn.danger:hover`, main.scss:351-354).
+    pub fn danger(mut self, danger: bool) -> Self {
+        self.danger = danger;
+        self
+    }
 }
 
 impl Component for IconAction {
@@ -258,19 +312,34 @@ impl Component for IconAction {
         let hover = use_hover();
         let on = hover.on();
 
+        // Hover lifts one step up the elevation ladder: transparent -> PANEL2
+        // (drill back/chevron), CHIP -> HOVER (QS top-row `.rbtn:hover`,
+        // main.scss:347-350). Danger overrides to ROSE bg + ROSEINK glyph
+        // (`.rbtn.danger:hover`, main.scss:351-354).
+        let chip: Color = theme::CHIP.rgb().into();
         let bg: Color = if on {
-            theme::PANEL2.rgb().into()
+            if self.danger {
+                theme::ROSE.rgb().into()
+            } else if self.rest_bg == chip {
+                theme::HOVER.rgb().into()
+            } else {
+                theme::PANEL2.rgb().into()
+            }
         } else {
-            Color::TRANSPARENT
+            self.rest_bg
         };
-        let tint = if on { self.hover_tint } else { self.tint };
+        let tint = if on {
+            if self.danger { theme::ROSEINK } else { self.hover_tint }
+        } else {
+            self.tint
+        };
         let on_press = self.on_press.clone();
 
         rect()
             .width(Size::px(self.size))
             .height(Size::px(self.size))
             .center()
-            .corner_radius(theme::RADIUS_BUTTON)
+            .corner_radius(self.radius)
             .background(bg)
             .hover(hover)
             .on_press(move |_| on_press.call(()))

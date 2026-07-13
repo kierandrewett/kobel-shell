@@ -345,10 +345,13 @@ impl Component for Drawer {
         let list: Element = if count == 0 {
             empty_state()
         } else {
+            // Key each card by notification id (matching the toast list above):
+            // the drawer re-sorts/dismisses entries, so stateful card
+            // reconciliation must track the notification, not the list index.
             let cards: Vec<Element> = snap
                 .notifications
                 .iter()
-                .map(|n| DrawerCard { n: n.clone() }.into_element())
+                .map(|n| rect().key(n.id).child(DrawerCard { n: n.clone() }).into_element())
                 .collect();
             ScrollView::new()
                 .direction(Direction::Vertical)
@@ -415,7 +418,7 @@ fn empty_state() -> Element {
         .spacing(4.0)
         .padding((20.0, 0.0, 16.0, 0.0))
         .background(theme::PANEL.rgb())
-        .corner_radius(20.0)
+        .corner_radius(theme::RADIUS_CARD)
         .shadow((0.0, 6.0, 18.0, 0.0, (0, 0, 0, 77)))
         .child(icon(ICON_CHECK, 22.0, theme::MUT))
         .child(
@@ -532,7 +535,7 @@ fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Siz
         .spacing(8.0)
         .padding((11.0, pad_h))
         .background(bg)
-        .corner_radius(20.0)
+        .corner_radius(theme::RADIUS_CARD)
         .shadow(shadow)
         .child(row);
 
@@ -740,7 +743,7 @@ impl Component for MediaCard {
             .width(Size::fill())
             .padding((10.0, 11.0, 9.0, 11.0))
             .background(theme::PANEL.rgb())
-            .corner_radius(20.0)
+            .corner_radius(theme::RADIUS_CARD)
             .shadow((0.0, 15.0, 34.0, 0.0, (8, 5, 16, 115)))
             .child(body)
     }

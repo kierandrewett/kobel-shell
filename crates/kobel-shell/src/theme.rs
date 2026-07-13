@@ -157,6 +157,10 @@ pub const ROSEINK: Rgb = Rgb(75, 15, 31);
 /// per DESIGN.md; used for the v3 amber anomaly rows.
 /// `main.scss:16` `$amber: #edbb64;` / DESIGN.md "amber".
 pub const AMBER: Rgb = Rgb(237, 187, 100);
+/// Calendar event-chip fill: the colored 26x26 icon slab on a calendar event
+/// row. A one-off decorative fill, not a core palette token; `main.scss:942`
+/// `.evrow .evic { background-color: #628933; }`.
+pub const EVENT_CHIP: Rgb = Rgb(98, 137, 51);
 
 // ---------------------------------------------------------------------------
 // Radii (ags/style/main.scss, DESIGN.md "Shape & elevation")
@@ -182,6 +186,10 @@ pub const RADIUS_BUTTON: f32 = 9.0;
 /// `main.scss:150` `.status { ... border-radius: 999px; }` (one of many
 /// 999px sites: chips, switches, sliders, badges).
 pub const RADIUS_PILL: f32 = 999.0;
+/// Card corner radius (notification cards, toasts, empty-state cards).
+/// `main.scss:986` `.ncard { border-radius: 20px; }` (`.toast`:973 and
+/// `.nempty`:1163 share the same 20px radius).
+pub const RADIUS_CARD: f32 = 20.0;
 
 // ---------------------------------------------------------------------------
 // Typography (ags/style/main.scss:21-28, DESIGN.md "Typography")
