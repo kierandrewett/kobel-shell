@@ -474,9 +474,13 @@ fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Siz
         .overflow(Overflow::Clip)
         .child(card_glyph(n));
 
+    // Content::Flex is REQUIRED here: without it the flex(1) summary consumes the
+    // whole row and the time label collapses to ~1ch and wraps vertically (the same
+    // Torin class as the calendar column bug).
     let top = rect()
         .horizontal()
         .width(Size::fill())
+        .content(Content::Flex)
         .cross_align(Alignment::Start)
         .spacing(8.0)
         .child(
@@ -494,6 +498,7 @@ fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Siz
                 .text(fmt_when(n.time))
                 .color(theme::DIM.rgb())
                 .font_size(10.0)
+                .max_lines(1usize)
                 .font_family(theme::FONT_FAMILY_DATA),
         );
 
