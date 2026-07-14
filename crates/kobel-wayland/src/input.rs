@@ -37,6 +37,29 @@ pub fn mouse_move(cursor: CursorPoint) -> PlatformEvent {
     PlatformEvent::Mouse { name: MouseEventName::MouseMove, cursor, button: None }
 }
 
+/// A synthetic move to a point no real content occupies, for when the
+/// compositor reports the pointer LEAVING the surface entirely.
+/// `freya_core::PlatformEvent` has no dedicated "pointer left" variant --
+/// `on_pointer_enter`/`on_pointer_leave` are synthesized purely by diffing
+/// which element consecutive `MouseMove` events hit-test against, so the only
+/// way to make that diff resolve to "nothing is hovered" is a move whose
+/// target genuinely has no content (a negative coordinate, since real content
+/// only ever occupies non-negative surface-local space).
+///
+/// Without this, a pointer that leaves a surface WITHOUT first crossing onto
+/// a different element inside it (e.g. straight off the dock's bottom edge
+/// onto the desktop, rather than sliding across to a sibling tile) leaves
+/// whatever it was last hovering PERMANENTLY stuck in its hovered visual
+/// state -- confirmed live: a dock tile's hover highlight/tooltip that never
+/// clears after the cursor moves off the dock. Real hardware, not a
+/// synthetic-input artifact: `PointerEventKind::Leave` was previously a
+/// documented no-op ("hover state clears on the next enter"), which is only
+/// true if the next enter lands on the SAME surface -- it is not, once the
+/// pointer has actually left.
+pub fn mouse_leave() -> PlatformEvent {
+    mouse_move(CursorPoint::new(-1.0, -1.0))
+}
+
 /// Build a pointer press/release event. `pressed` selects down vs up.
 pub fn mouse_button(cursor: CursorPoint, button: u32, pressed: bool) -> PlatformEvent {
     PlatformEvent::Mouse {
@@ -330,5 +353,22 @@ mod tests {
         assert_eq!(axis_pixels(0.0, 120, 0), WHEEL_LINE_PX);
         assert_eq!(axis_pixels(0.0, 0, 2), 2.0 * WHEEL_LINE_PX);
         assert_eq!(axis_pixels(0.0, 0, 0), 0.0);
+    }
+
+    #[test]
+    fn mouse_leave_targets_a_point_no_real_content_occupies() {
+        // Real surface-local content only ever occupies non-negative space, so
+        // this must land outside it on both axes for the hit-test diff to
+        // resolve to "nothing hovered" (see mouse_leave's doc for why this
+        // needs to exist at all).
+        match mouse_leave() {
+            PlatformEvent::Mouse { name, cursor, button } => {
+                assert_eq!(name, MouseEventName::MouseMove);
+                assert!(cursor.x < 0.0);
+                assert!(cursor.y < 0.0);
+                assert_eq!(button, None);
+            }
+            other => panic!("expected a Mouse platform event, got {other:?}"),
+        }
     }
 }

@@ -1640,7 +1640,11 @@ impl PointerHandler for Host {
                     self.surfaces[idx].feed_event(input::mouse_move(cursor));
                 }
                 PointerEventKind::Leave { .. } => {
-                    // Hover state clears on the next enter (Phase 0/1).
+                    // See input::mouse_leave's doc: freya-core has no raw "pointer
+                    // left" platform event, only MouseMove hit-test diffing, so a
+                    // real Wayland Leave must be translated into a synthetic
+                    // out-of-bounds move or whatever was hovered stays stuck.
+                    self.surfaces[idx].feed_event(input::mouse_leave());
                 }
                 PointerEventKind::Press { button, serial, .. } => {
                     // Track the press serial so a popup opened from this click can grab
