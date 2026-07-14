@@ -12,8 +12,15 @@
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use kobel_ipc::socket_path;
+
+/// Matches ipc.rs's REQUEST_TIMEOUT: without this, a hung/unresponsive shell
+/// (deadlocked, wedged, or simply slow to drain its bus) would leave kobelctl
+/// blocked forever on `read_line` with no way for the caller (a script, a
+/// keybinding) to know something went wrong.
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -31,6 +38,14 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Err(e) = stream.set_read_timeout(Some(TIMEOUT)) {
+        eprintln!("kobelctl: cannot set read timeout: {e}");
+        return ExitCode::FAILURE;
+    }
+    if let Err(e) = stream.set_write_timeout(Some(TIMEOUT)) {
+        eprintln!("kobelctl: cannot set write timeout: {e}");
+        return ExitCode::FAILURE;
+    }
     if let Err(e) = writeln!(stream, "{line}") {
         eprintln!("kobelctl: write failed: {e}");
         return ExitCode::FAILURE;
