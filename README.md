@@ -147,3 +147,20 @@ was drawn, not a replacement for them.
   switching can never activate an ibus engine here. That is an environment gap,
   not a kobel-shell one; the client-side protocol implementation is complete and
   exercised -- confirm the actual compose round-trip on a real desktop session.
+- Ctrl+C/X/V in the launcher's text field use a real Wayland clipboard: kobel-
+  wayland constructs it via `freya_clipboard::copypasta::wayland_clipboard::
+  create_clipboards_from_external`, handed the SAME `wl_display` raw pointer
+  `Egl::new` uses (smithay-clipboard runs its own dedicated thread + wl event
+  queue wrapping it, so it never competes with the host's own calloop queue).
+  Opt-in per surface (`SurfaceConfig::clipboard`) -- only the launcher has a
+  text field, so it is the only surface with a real provider; every other
+  surface keeps the inert `None` stub. **Not verified**: an actual `wl-copy`/
+  `wl-paste` round-trip in THIS devkit -- confirmed via an independent baseline
+  (`wl-copy | wl-paste` with zero kobel-shell involvement fails identically)
+  that this headless virtual-monitor gnoblin session's seat has no keyboard
+  capability for freshly-spawned clients at all ("This seat has no keyboard"),
+  which is what both `wl-clipboard` tools need to bind a data device. kobel-
+  shell itself is unaffected (it binds its keyboard early via sctk's seat
+  state, before whatever gates this) -- its own `Clipboard::set`/`get` calls
+  complete with no error logged. An environment gap, not a kobel-shell one;
+  confirm the actual system-clipboard round-trip on a real desktop session.
