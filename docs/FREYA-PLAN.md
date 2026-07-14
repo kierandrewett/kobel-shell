@@ -289,7 +289,7 @@ gnoblin window rules keep matching):
 | osd | per-output | BOTTOM, m 72 | top / none | **empty input region**; volume events; 1.4s auto-hide; ~~add mute-change trigger (known gap)~~ resolved -- `osd.rs`'s reveal dependency is `(volume, muted)`, so a mute-only toggle (unchanged level) reveals the pill too |
 | launcher | singleton | TOP, m 56 | top / Exclusive when open | custom text field (ghost autocomplete, faux placeholder), sections, `:` commands, `=` calc, tile grid |
 | quicksettings | singleton | TOP+RIGHT | top / OnDemand | chip grid, drill stack (wifi/bt/mixer) with slide motion, sliders, gnoblin banner |
-| calendar | singleton | TOP | top / OnDemand | grid w/ week numbers, event dots (absolute), month nav; events stay hardcoded for now |
+| calendar | singleton | TOP | top / OnDemand | grid w/ week numbers, event dots (absolute), month nav; events come from a real `org.gnome.Shell.CalendarServer` subscription, not hardcoded (see section 9) |
 | drawer | singleton | TOP+RIGHT+BOTTOM, m 12 | top / OnDemand | media card, history, clear, empty state |
 | session | singleton | all edges, exclusivity ignore | top / Exclusive when open | 4 buttons, arrow nav, press-again confirm w/ 4s revert |
 | dismiss | singleton | all edges | top / none | empty->full input region flip with dismissVisible; closes everything on click |
