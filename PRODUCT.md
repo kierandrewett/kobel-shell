@@ -17,7 +17,7 @@ ambient frame around all other work.
 
 kobel-shell is the complete chrome suite for gnoblin, built in Rust with Freya as
 the UI framework, rendered by our own wlr-layer-shell host (no winit, no GTK): top
-bar, launcher, quick-settings dashboard, notification centre with calendar, media +
+bar, launcher, quick-settings dashboard, notification drawer, calendar, media +
 OSD, session controls. gnoblin vacates the space (no gnome panel/dash/OSD); kobel
 fills all of it and drives gnoblin live over org.gnoblin.Shell. Success = it feels
 better than the gnome-shell it replaced — buttery, instant, personal — and other
@@ -61,6 +61,8 @@ decoration for its own sake.
 - `prefers-reduced-motion` honored everywhere: every UI spring settles instantly
   on its target instead of animating.
 - Text contrast ≥ 4.5:1 on all surfaces, including muted/secondary text.
-- Full keyboard path: launcher is keyboard-first (type, arrows, Enter, Escape),
-  every interactive element has a visible :focus-visible ring.
+- Full keyboard path on the two keyboard-Exclusive surfaces: launcher
+  (type, arrows, Enter, Escape) and session (arrow-nav, press-again confirm).
+  Every other surface is pointer/hover-only; see DESIGN.md's "Keyboard path"
+  note for the full breakdown.
 - Hit targets ≥ 24px in the bar, ≥ 32px in panels.

@@ -102,14 +102,25 @@ never decorative. If a new surface needs one of these, redesign the surface.
 
 ## v3 addenda (post-critique rebuild)
 
-- **Dock**: bottom-center opaque slab; flat icon tiles, spring magnify (k420 d22, scale 1.16 / y −4),
-  running dot → focused 14px leaf pill. Pinned + running, separator before unpinned.
-- **Notifications**: right **slide-out drawer** (full height, x-axis spring) with calendar + today
-  button; toasts float over content macOS-style at 82% opacity + blur — **the one sanctioned
-  translucency**, contingent on a gnoblin blur window-rule (the archived C++ stack proved the effect).
-  OSD shares the treatment. Toasts route straight to the drawer when any panel is open or Silent is on.
-- **Control centre**: chips grow chevron-expandable sections (Wi-Fi networks with signal + connect
-  flow, BT devices, per-app mixer under volume) — height springs, chevron rotates 90°.
+- **Dock**: bottom-center opaque slab; flat icon tiles (CHIP background on hover,
+  no scale/translate spring -- tile hover is a plain fill swap, not a magnify
+  effect), running 4x4 dot → focused 12x4 leaf pill via a width spring
+  (`DOCK_CYCLE`). Pinned + running, separator before unpinned.
+- **Notifications**: right **drawer** (full-height rail, TOP+RIGHT+BOTTOM anchor),
+  revealed by the same universal opacity spring every panel uses -- no x-axis
+  slide on the drawer itself. Calendar is its own separate singleton surface
+  (bar clock click), not part of the drawer. Toasts are the ones that actually
+  slide (`motion::TOAST_IN`/`TOAST_OUT`, in from the right + fade, per-card) and
+  float over content macOS-style at 82% opacity + blur — **the one sanctioned
+  translucency**, contingent on a gnoblin blur window-rule (the archived C++
+  stack proved the effect). OSD shares the treatment. Toasts suppress (route
+  straight to the drawer's history) specifically while the drawer is open or
+  DND is on -- not "any panel open".
+- **Control centre**: chips drill into full sections (Wi-Fi networks with signal +
+  connect flow, BT devices, per-app mixer under volume) via a slide transition
+  (`motion::DRILL`/`DRILL_BACK`), swapping a forward chevron at the root for a
+  distinct back chevron in the drill header -- not the same glyph rotating in
+  place. The sheet's own height adapts to the active layer's measured content.
 - **Quiet accent**: leaf fills = active chips, slider fills, primary buttons, today, badge, focus ring.
   EQ/stats/avatar/art/decorative = neutral. Amber = anomaly (connecting…, gnoblin disconnected).
 - **Failure states are canon**: media-empty ("Nothing playing" + Open Music), Wi-Fi connecting/…,
