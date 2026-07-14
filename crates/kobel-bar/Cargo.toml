@@ -1,0 +1,26 @@
+[package]
+name = "kobel-bar"
+description = "Independent Freya top bar for kobel-shell"
+default-run = "kobel-bar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+devtools = ["dep:freya", "freya/devtools", "freya/winit"]
+
+[dependencies]
+anyhow = { workspace = true }
+freya-core = { workspace = true }
+kobel-wayland = { workspace = true }
+torin = { workspace = true }
+freya = { workspace = true, optional = true }
+
+[dev-dependencies]
+freya-testing = { workspace = true }
+
+[[bin]]
+name = "preview"
+path = "src/bin/preview.rs"
+required-features = ["devtools"]
