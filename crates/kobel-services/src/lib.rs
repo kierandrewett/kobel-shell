@@ -32,7 +32,7 @@ pub use audio::{AudioSnapshot, AudioStream};
 pub use battery::BatterySnapshot;
 pub use bluetooth::{BluetoothSnapshot, BtDevice};
 pub use calendar::{CalendarEvent, CalendarSnapshot};
-pub use gnoblin::{GnoblinSnapshot, GnoblinWindow};
+pub use gnoblin::GnoblinSnapshot;
 pub use mpris::{MediaSnapshot, PlayerInfo};
 pub use network::{AccessPointInfo, NetworkSnapshot};
 pub use notifd::{NotifdSnapshot, Notification};

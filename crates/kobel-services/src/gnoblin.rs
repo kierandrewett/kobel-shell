@@ -2,26 +2,24 @@
 //! ags/services/gnoblin.ts: reload, feature toggles, and the connected/amber
 //! state driven by a NameOwnerChanged watch.
 //!
-//! Window list/activate/minimize/close do NOT live here. `org.gnoblin.Shell`'s
-//! wire contract (`/home/kieran/dev/gnoblin/src/gnome-shell-overlay/js/ui/
-//! components/gnoblinControl.js`, the `IFACE` XML) has never had a `ListWindows`/
-//! `ActivateWindow`/`MinimizeWindow`/`WindowsChanged` method or signal -- an
-//! earlier version of this module called them anyway (a leftover assumption from
-//! the pre-Freya AGS plan that gnoblin would grow window methods on this bus).
-//! `gdbus call --dest org.gnoblin.Shell ... ListWindows` against a live devkit
-//! session returns `org.freedesktop.DBus.Error.UnknownMethod`; these calls have
-//! silently failed (debug-level log, empty window list, no crash) for the whole
-//! session. Window control belongs to the WLR **Wayland protocol**
+//! Window list/activate/minimize/close do NOT live here, and never have.
+//! `org.gnoblin.Shell`'s wire contract (`/home/kieran/dev/gnoblin/src/
+//! gnome-shell-overlay/js/ui/components/gnoblinControl.js`, the `IFACE` XML) has
+//! never had a `ListWindows`/`ActivateWindow`/`MinimizeWindow`/`WindowsChanged`
+//! method or signal -- an earlier version of this module called them anyway (a
+//! leftover assumption from the pre-Freya AGS plan that gnoblin would grow window
+//! methods on this bus), and briefly after that a `GnoblinSnapshot.windows` field
+//! existed here as a dead, permanently-empty parallel model of
+//! `kobel_wayland::ToplevelInfo` (nothing ever populated it -- removed once that
+//! became clear, rather than keep documenting a contract with no writer). Window
+//! control belongs to the WLR **Wayland protocol**
 //! `zwlr_foreign_toplevel_manager_v1`, which gnoblin's mutter already implements
 //! natively and gates on by default (`wlr-foreign-toplevel-management = true` in
 //! `gnoblin.conf.example`) -- no gnoblin-repo change was needed. See
 //! `crates/kobel-wayland/src/toplevel.rs` + `conn.rs` for the real client:
-//! `Control::toplevels()` returns the live snapshot. Nothing in this crate merges
-//! it into `GnoblinSnapshot.windows` -- that was `crates/kobel-shell/src/main.rs`'s
-//! `on_tick` job before the UI reset (see `archive/freya-ui-v1/src/main.rs`, no
-//! longer a workspace member); the current UI-neutral `kobel-shell` core doesn't
-//! merge it either, and `kobel-ui` (the empty, human-owned replacement) hasn't
-//! wired it up yet.
+//! `Control::toplevels()` is the single source of truth, consumed directly by
+//! whichever concrete UI needs a window list (nothing does yet -- `kobel-ui` is
+//! still the empty, human-owned scaffold).
 
 use futures_util::StreamExt;
 use futures_util::stream::BoxStream;
@@ -34,26 +32,12 @@ use crate::ServiceEvent;
 
 const BUS: &str = "org.gnoblin.Shell";
 
-/// One compositor window (see the module doc: sourced from kobel-wayland's
-/// `zwlr_foreign_toplevel_manager_v1` client now, not this D-Bus proxy).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GnoblinWindow {
-    pub id: String,
-    pub app_id: String,
-    pub title: String,
-    pub focused: bool,
-    pub minimized: bool,
-}
-
 /// Snapshot of the compositor link. `connected == false` => amber everywhere.
-/// `connected` comes from this module (Ping-based liveness, real). `windows` is
-/// ALWAYS empty from this module (see the module doc: `run()` below only ever
-/// emits `windows: Vec::new()`); a caller merging in kobel-wayland's
-/// `Control::toplevels()` is what would populate it, and nothing currently does.
+/// Ping-based liveness only -- see the module doc for why this carries no window
+/// state.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GnoblinSnapshot {
     pub connected: bool,
-    pub windows: Vec<GnoblinWindow>,
 }
 
 pub(crate) enum GnoblinCommand {
@@ -175,8 +159,5 @@ async fn handle_command(proxy: Option<&ShellProxy<'_>>, cmd: GnoblinCommand) {
 }
 
 fn emit(events: &UnboundedSender<ServiceEvent>, connected: bool) {
-    let _ = events.send(ServiceEvent::Gnoblin(GnoblinSnapshot {
-        connected,
-        windows: Vec::new(),
-    }));
+    let _ = events.send(ServiceEvent::Gnoblin(GnoblinSnapshot { connected }));
 }
