@@ -132,7 +132,18 @@ was drawn, not a replacement for them.
   feature back on exit.
 - The bar's status pill goes amber when the gnoblin bus name vanishes; quick
   settings grows a reconnect banner.
-
-## Follow-ups (known, deliberate)
-
-- IME (`zwp_text_input_v3`) for CJK input in the launcher.
+- The launcher's text field speaks `zwp_text_input_v3` directly (mutter implements
+  it as a core input-method surface, not gated like the wlr-* extensions -- no
+  gnoblin-repo change needed). `kobel-wayland` binds the manager, creates one
+  per-seat text-input object, and enables/disables it as IME focus enters/leaves
+  the launcher (`crates/kobel-wayland/src/ime.rs` + `conn.rs`); commit/preedit
+  payloads route into the launcher's `Editor` and an inline composing-text overlay
+  (`crates/kobel-shell/src/ui/launcher.rs`). Verified live against a real gnoblin
+  session: enable/cursor-rectangle/commit/disable correctly fire across repeated
+  launcher open/close cycles and other surfaces gaining focus. **Not verified**:
+  an actual composing CJK input method round-trip (real preedit/commit_string from
+  ibus) -- this devkit's gnoblin build has no `gsettings-desktop-schemas`
+  (`org.gnome.desktop.input-sources` is missing), so GNOME's own input-source
+  switching can never activate an ibus engine here. That is an environment gap,
+  not a kobel-shell one; the client-side protocol implementation is complete and
+  exercised -- confirm the actual compose round-trip on a real desktop session.
