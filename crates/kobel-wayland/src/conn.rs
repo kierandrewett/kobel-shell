@@ -70,7 +70,9 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 use crate::egl::Egl;
 use crate::frame::runner_waker;
 use crate::ime::{ImeCommit, ImeEvent, Preedit, decode_cursor};
-use crate::surface::{FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole, floor_content_size};
+use crate::surface::{
+    EmbeddedFont, FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole, floor_content_size,
+};
 use crate::toplevel::{ToplevelInfo, ToplevelState, decode_state_array};
 use crate::{
     KeyPress, LoopWaker, OutputEvent, OutputId, PopupAnchor, PopupConfig, PopupGravity, Result, SurfaceConfig,
@@ -205,6 +207,7 @@ impl Shell {
             ime_handler: None,
             egl,
             surfaces: Vec::new(),
+            embedded_fonts: Vec::new(),
             next_id: 0,
             keyboard: None,
             pointer: None,
@@ -225,6 +228,16 @@ impl Shell {
         };
 
         Ok(Self { event_loop, host })
+    }
+
+    /// Add a font face to every subsequently created embedded Freya surface.
+    ///
+    /// `family` is the name UI code uses in `font_family`. Keep the data in the
+    /// presentation crate with `include_bytes!`; the host only retains this static
+    /// reference and does not own theme or typography policy.
+    pub fn with_font(mut self, family: &'static str, data: &'static [u8]) -> Self {
+        self.host.embedded_fonts.push(EmbeddedFont { name: family, data });
+        self
     }
 
     /// Create a layer surface rendering `app`, not bound to a specific output.
@@ -614,6 +627,7 @@ struct Host {
     ime_commit_count: u32,
     egl: Egl,
     surfaces: Vec<FreyaLayerSurface>,
+    embedded_fonts: Vec<EmbeddedFont>,
     next_id: u32,
 
     keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -788,6 +802,7 @@ impl Host {
             content,
             config.preferred_theme,
             clipboard,
+            &self.embedded_fonts,
         );
         // Record the bound output so output_destroyed can find every surface to tear
         // down when this output goes away (None for a compositor-placed surface).
@@ -960,6 +975,7 @@ impl Host {
             content,
             config.preferred_theme,
             clipboard,
+            &self.embedded_fonts,
         );
 
         // Fractional scaling + viewport, exactly like a layer surface.

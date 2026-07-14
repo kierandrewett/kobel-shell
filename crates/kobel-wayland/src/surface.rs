@@ -48,6 +48,12 @@ use crate::egl::LayerEglSurface;
 use crate::frame::FrameClock;
 use crate::{FrameStats, SurfaceId};
 
+#[derive(Clone, Copy)]
+pub(crate) struct EmbeddedFont {
+    pub(crate) name: &'static str,
+    pub(crate) data: &'static [u8],
+}
+
 /// One layer surface's embedded Freya instance plus its Wayland/EGL handles.
 pub(crate) struct FreyaLayerSurface {
     pub(crate) id: SurfaceId,
@@ -217,6 +223,7 @@ impl FreyaLayerSurface {
         content: Option<(u32, u32)>,
         preferred_theme: PreferredTheme,
         clipboard: Option<Box<dyn ClipboardProvider>>,
+        embedded_fonts: &[EmbeddedFont],
     ) -> (Self, C) {
         let wl_surface = role.wl_surface().clone();
         // Start at scale 1.0 (num=120); the compositor updates it via
@@ -230,10 +237,18 @@ impl FreyaLayerSurface {
 
         let (events_sender, events_receiver) = futures_channel::mpsc::unbounded();
 
-        // Fonts: a dynamic provider for app-registered faces plus the OS default.
+        // Fonts: caller-provided faces in a dynamic provider plus the OS default.
         let mut font_collection = FontCollection::new();
         let default_font_manager = FontMgr::default();
-        let dynamic_font_manager: FontMgr = TypefaceFontProvider::new().into();
+        let embedded_font_manager = FontMgr::custom_empty().unwrap_or_default();
+        let mut provider = TypefaceFontProvider::new();
+        for font in embedded_fonts {
+            let typeface = embedded_font_manager
+                .new_from_data(font.data, None)
+                .unwrap_or_else(|| panic!("failed to load embedded font {}", font.name));
+            provider.register_typeface(typeface, Some(font.name));
+        }
+        let dynamic_font_manager: FontMgr = provider.into();
         font_collection.set_default_font_manager(default_font_manager, None);
         font_collection.set_dynamic_font_manager(dynamic_font_manager.clone());
 
