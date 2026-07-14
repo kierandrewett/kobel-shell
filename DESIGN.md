@@ -113,9 +113,13 @@ never decorative. If a new surface needs one of these, redesign the surface.
 - **Quiet accent**: leaf fills = active chips, slider fills, primary buttons, today, badge, focus ring.
   EQ/stats/avatar/art/decorative = neutral. Amber = anomaly (connecting…, gnoblin disconnected).
 - **Failure states are canon**: media-empty ("Nothing playing" + Open Music), Wi-Fi connecting/…,
-  gnoblin disconnected (amber row, "Reconnect", "osd handed back to gnome"), launcher no-results
-  ("↵ to search the web"). Failure tour: the 4th demo button or `#fail`.
-- **Keyboard path**: everything is a real button; sliders are `role=slider` with arrow keys; session
-  has arrow-nav + focus trap entry + two-step confirm on Restart/Shut down; Del dismisses a focused
-  notification; focus returns to the invoker on close.
+  gnoblin disconnected (amber row, "Reconnect", "osd + notifs handed back to gnome"), launcher
+  no-results (a permanent last-row "Search the web for..." fallback, so results are never truly empty).
+- **Keyboard path**: full keyboard-first interaction (typing, arrow-nav, Enter,
+  Escape) exists on the two `KeyboardInteractivity::Exclusive` surfaces only --
+  launcher (results list) and session (action tiles, press-again confirm on
+  Restart/Shut down). Every other surface (quick settings, calendar, drawer,
+  dock, bar) is pointer/hover-only -- sliders drag, notifications dismiss by
+  click -- except Escape, which main.rs routes to close any open surface
+  regardless of its keyboard-interactivity mode.
 - OSD is display-only (pointer-events: none), compact, above the dock.
