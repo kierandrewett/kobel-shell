@@ -2256,6 +2256,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kobel-dock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "freya",
+ "freya-core",
+ "freya-testing",
+ "kobel-wayland",
+ "torin",
+]
+
+[[package]]
 name = "kobel-ipc"
 version = "0.1.0"
 

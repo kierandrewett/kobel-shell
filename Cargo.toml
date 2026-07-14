@@ -9,6 +9,7 @@ members = [
     "crates/kobel-services",
     "crates/kobel-shell",
     "crates/kobel-bar",
+    "crates/kobel-dock",
     "crates/kobel-ui",
 ]
 
