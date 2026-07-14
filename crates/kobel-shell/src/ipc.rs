@@ -131,6 +131,32 @@ fn acquire_instance_lock(socket_path: &Path) -> std::io::Result<File> {
     Ok(file)
 }
 
+/// Remove any existing file at `path`, treating "nothing there" as success. A
+/// REAL removal failure (permission denied, etc.) is surfaced distinctly --
+/// never silently swallowed -- because [`UnixListener::bind`] at a path where
+/// something still exists fails with the exact same `io::ErrorKind::AddrInUse`
+/// [`acquire_instance_lock`] uses for "another instance is live" (EADDRINUSE
+/// is the kernel's only error for "something is already at this path",
+/// regardless of cause -- verified directly: a stale socket under a directory
+/// this process lacks write access to reproduces errno 98 on bind, identical
+/// to the live-instance case). Swallowing a real failure here would let that
+/// ambiguity leak into `serve_at`'s caller, which would then misdiagnose
+/// "can't remove a stale file" as "another instance is running" and refuse to
+/// start over it -- when the flock (already acquired by the time this runs)
+/// has ALREADY proven no live instance holds this path. The correct behavior
+/// for a stuck stale file is the same graceful non-fatal degrade every OTHER
+/// bind failure gets, which requires NOT reporting AddrInUse here.
+fn remove_stale_socket(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(std::io::Error::other(format!(
+            "cannot remove stale socket at {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
 /// [`serve_at`]'s implementation, with the per-request timeout as a parameter so
 /// tests can use a short one instead of waiting out the production default.
 fn serve_at_with_timeout(path: PathBuf, bus: ShellBus, timeout: std::time::Duration) -> std::io::Result<PathBuf> {
@@ -144,7 +170,7 @@ fn serve_at_with_timeout(path: PathBuf, bus: ShellBus, timeout: std::time::Durat
     // unlinking a stale socket file (if any) and rebinding is now safe: nothing
     // else could have created a live listener at `path` without first winning
     // the lock above, and only one process can ever hold it.
-    let _ = std::fs::remove_file(&path);
+    remove_stale_socket(&path)?;
     let listener = UnixListener::bind(&path)?;
     // Owner-only: UnixListener::bind creates the socket at the umask-masked
     // default (typically 0755, world-connectable), and this accepts unauthenticated
@@ -362,6 +388,42 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("lock"));
+    }
+
+    #[test]
+    fn stale_socket_removal_failure_is_never_reported_as_addrinuse() {
+        // Reproduces "the stale file exists but this process cannot remove it"
+        // WITHOUT needing a different UID: unlinking a file requires write
+        // permission on its CONTAINING DIRECTORY, not the file itself, so
+        // locking the directory to read+execute-only reproduces the exact same
+        // failure a different-owner file under a sticky /tmp would (verified
+        // directly against the real syscalls: both surface as EADDRINUSE on a
+        // bind() at that path if left unguarded).
+        //
+        // Calls remove_stale_socket directly rather than the full serve_at:
+        // going through serve_at would first try to CREATE the lock file in
+        // this SAME (about-to-be-read-only) directory, failing there instead
+        // and never exercising the removal-guard code this test targets.
+        let dir = std::env::temp_dir().join(format!("kobel-shell-ipc-noremove-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let path = dir.join("sock.sock");
+        {
+            let _dangling = UnixListener::bind(&path).expect("create a socket file to abandon");
+        }
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).expect("lock the dir read-only");
+
+        let err = remove_stale_socket(&path).expect_err("must fail: the stale file cannot be removed");
+        assert_ne!(
+            err.kind(),
+            std::io::ErrorKind::AddrInUse,
+            "a removal failure must never be reported as AddrInUse -- that kind specifically means \
+             'another live instance holds the flock', which a merely-undeletable stale file is not"
+        );
+
+        // Restore write access so the fixture can be cleaned up.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).expect("restore dir perms");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
     }
 
     #[test]
