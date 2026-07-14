@@ -15,9 +15,13 @@
 //! `zwlr_foreign_toplevel_manager_v1`, which gnoblin's mutter already implements
 //! natively and gates on by default (`wlr-foreign-toplevel-management = true` in
 //! `gnoblin.conf.example`) -- no gnoblin-repo change was needed. See
-//! `crates/kobel-wayland/src/toplevel.rs` + `conn.rs` for the real client, and
-//! `crates/kobel-shell/src/main.rs`'s `on_tick` for how `GnoblinSnapshot.windows`
-//! is populated from the host every tick instead.
+//! `crates/kobel-wayland/src/toplevel.rs` + `conn.rs` for the real client:
+//! `Control::toplevels()` returns the live snapshot. Nothing in this crate merges
+//! it into `GnoblinSnapshot.windows` -- that was `crates/kobel-shell/src/main.rs`'s
+//! `on_tick` job before the UI reset (see `archive/freya-ui-v1/src/main.rs`, no
+//! longer a workspace member); the current UI-neutral `kobel-shell` core doesn't
+//! merge it either, and `kobel-ui` (the empty, human-owned replacement) hasn't
+//! wired it up yet.
 
 use futures_util::StreamExt;
 use futures_util::stream::BoxStream;
@@ -43,8 +47,9 @@ pub struct GnoblinWindow {
 
 /// Snapshot of the compositor link. `connected == false` => amber everywhere.
 /// `connected` comes from this module (Ping-based liveness, real). `windows` is
-/// populated by `main.rs` from the Wayland host every tick, NOT by this module --
-/// `run()` below only ever emits `windows: Vec::new()`; callers merge it in.
+/// ALWAYS empty from this module (see the module doc: `run()` below only ever
+/// emits `windows: Vec::new()`); a caller merging in kobel-wayland's
+/// `Control::toplevels()` is what would populate it, and nothing currently does.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GnoblinSnapshot {
     pub connected: bool,
