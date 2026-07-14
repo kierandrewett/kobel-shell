@@ -1212,4 +1212,45 @@ mod tests {
         assert_eq!(kb_open(SurfaceKey::Calendar), KeyboardInteractivity::OnDemand);
         assert_eq!(kb_open(SurfaceKey::Drawer), KeyboardInteractivity::OnDemand);
     }
+
+    /// `dock_config`'s exclusive zone has a real conditional (the devkit-only
+    /// hittest escape hatch), unlike the other `*_config` functions which just
+    /// copy fields straight from tokens -- this is the one worth locking down.
+    /// One sequential test, not two: `KOBEL_TEST_DOCK_HITTEST` is a
+    /// process-global env var and Rust's default test runner executes
+    /// `#[test]`s on separate threads, so two tests toggling it concurrently
+    /// would race. No other test in this module reads that var.
+    #[test]
+    fn dock_config_exclusive_zone_respects_the_hittest_escape_hatch() {
+        // SAFETY: mutates process-global env state; safe here because no other
+        // test in this crate reads KOBEL_TEST_DOCK_HITTEST, and both mutations
+        // below are sequenced within this single test function.
+        unsafe {
+            std::env::remove_var("KOBEL_TEST_DOCK_HITTEST");
+        }
+        let t = theme::FLOATING;
+        let normal = dock_config(&t);
+        // Production: reserves gap + the VISUAL dock height (not the taller
+        // surface height, which is a paint-only tooltip allowance) so tiled
+        // windows sit above the floating dock.
+        assert_eq!(normal.exclusive_zone, t.gap as i32 + ui::dock::dock_height(&t) as i32);
+        assert!(normal.exclusive_zone > 0, "production dock must reserve real space");
+
+        // SAFETY: see above.
+        unsafe {
+            std::env::set_var("KOBEL_TEST_DOCK_HITTEST", "1");
+        }
+        let hittest = dock_config(&t);
+        // Devkit gate only: zeroed so mutter's work-area-confined RemoteDesktop
+        // injector can reach a dock tile. Every other field is unaffected --
+        // this flag must never move or resize the dock, only its reserved zone.
+        assert_eq!(hittest.exclusive_zone, 0);
+        assert_eq!(hittest.size, normal.size, "hittest mode must not resize the dock");
+        assert_eq!(hittest.margins, normal.margins, "hittest mode must not move the dock");
+
+        // SAFETY: see above; restore a clean slate for any test added later.
+        unsafe {
+            std::env::remove_var("KOBEL_TEST_DOCK_HITTEST");
+        }
+    }
 }
