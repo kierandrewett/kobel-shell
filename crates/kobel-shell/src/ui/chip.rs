@@ -534,12 +534,14 @@ impl Component for KSwitch {
 // KSlider
 // -------------------------------------------------------------------------
 
-/// Default rail height / knob edge (ags: 6px rail, 17px knob).
+/// Default rail height / knob edge; docs/prototype.html `.rail{height:6px}` /
+/// `.knob{width:17px;height:17px}`.
 const RAIL: f32 = 6.0;
 const KNOB: f32 = 17.0;
-/// Compact rail/knob for the per-app mixer rows.
-const RAIL_MINI: f32 = 4.0;
-const KNOB_MINI: f32 = 12.0;
+/// Compact knob for the per-app mixer rows; docs/prototype.html
+/// `.mixrow .knob{width:14px;height:14px}` -- note there is no `.mixrow .rail`
+/// override, so the rail stays the same 6px as the full-size slider.
+const KNOB_MINI: f32 = 14.0;
 
 /// Map a pointer x (relative to the slider's left edge) plus the slider's total
 /// width to a 0..1 value. The usable travel is `width - knob`; the pointer maps
@@ -572,9 +574,9 @@ impl KSlider {
         Self { value, on_change: on_change.into(), rail: RAIL, knob: KNOB }
     }
 
-    /// Compact slider (mixer rows).
+    /// Compact slider (mixer rows): same rail, a smaller knob.
     pub fn compact(value: f64, on_change: impl Into<EventHandler<f64>>) -> Self {
-        Self { value, on_change: on_change.into(), rail: RAIL_MINI, knob: KNOB_MINI }
+        Self { value, on_change: on_change.into(), rail: RAIL, knob: KNOB_MINI }
     }
 }
 
