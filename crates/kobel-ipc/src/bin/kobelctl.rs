@@ -1,6 +1,6 @@
 // kobelctl: tiny CLI over the kobel-shell control socket.
 //
-//   kobelctl toggle launcher
+//   kobelctl toggle surface-a
 //   kobelctl close-all
 //   kobelctl quit
 //   kobelctl ping

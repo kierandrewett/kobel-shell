@@ -32,17 +32,15 @@ pub fn reduced_motion() -> bool {
 // Pure math core (no freya deps)
 // -------------------------------------------------------------------------
 
-/// A spring is fully described by stiffness `k` and damping `d` (mass is fixed at
-/// 1). This maps 1:1 onto `Adw.SpringParams.new_full(d, 1, k)` from the AGS
-/// reference: `d` is the raw damping coefficient, not the damping ratio.
+/// A spring is fully described by stiffness `k` and damping `d`, with mass fixed at
+/// 1. `d` is the raw damping coefficient, not the damping ratio.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpringSpec {
     pub k: f32,
     pub d: f32,
 }
 
-/// Settle tolerance in units of unit motion (values are typically normalised to
-/// [0, 1]). Matches the `epsilon: 0.0005` used by the AGS Adw springs.
+/// Settle tolerance in units of unit motion, whose values are normally in [0, 1].
 pub const SETTLE_EPS: f32 = 0.0005;
 
 /// Damped harmonic oscillator state. `x` is the current value, `v` its velocity,

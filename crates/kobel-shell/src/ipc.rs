@@ -1,20 +1,19 @@
 //! Unix-socket control channel: `kobelctl` talks to a running shell here. One line
 //! per request; the shell replies `ok` or `err <msg>`. Parsed requests are fed into
-//! the same ShellBus the UI uses, so IPC and UI drive the manager identically.
+//! the same [`ShellBus`] used by in-process producers.
 //!
-//! The listener runs on a plain std thread and only ever sends over the bus (which
-//! wakes the loop). Socket lifecycle: an exclusive, non-blocking `flock()` on a
-//! companion `<path>.lock` file is the sole arbiter of "is another instance already
-//! running" -- atomic at the kernel level, so two instances racing to start at
-//! nearly the same instant can never both pass the check (unlike a plain
-//! `connect()`-based probe, which has a real window between the check and the
-//! bind). The lock is held for this process's entire lifetime by leaking the file
-//! descriptor; the OS releases it automatically when every FD referencing it
-//! closes -- on a clean exit OR a crash/SIGKILL -- so a lock FILE left on disk by
-//! a dead previous instance never blocks a fresh one from re-acquiring it. Once
-//! the lock is held, this process owns exclusive rights to unlink+rebind the
-//! actual control socket; ours is removed on exit (main.rs, after the loop
-//! returns).
+//! The listener runs on a plain std thread and only ever sends over the bus, which
+//! wakes the host loop. Socket lifecycle uses an exclusive, non-blocking `flock()`
+//! on a companion `<path>.lock` file as the sole arbiter of whether another instance
+//! is running. The kernel makes that decision atomically, so two instances racing
+//! to start cannot both pass the check.
+//!
+//! The lock is held for the process lifetime by leaking its file descriptor. The OS
+//! releases it after a clean exit, crash or SIGKILL, so a lock file left on disk
+//! never blocks a new process from acquiring it. Once the lock is held, this process
+//! owns exclusive rights to unlink and rebind the socket. The production entry point
+//! is responsible for removing the path returned by [`serve`] when its host loop
+//! exits.
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -264,15 +263,15 @@ mod tests {
     #[test]
     fn tolerates_surrounding_whitespace() {
         assert!(matches!(
-            parse_line("   toggle   launcher   "),
-            Ok(Request::Forward(ShellMsg::Toggle(key))) if key == self::key("launcher")
+            parse_line("   toggle   surface-a   "),
+            Ok(Request::Forward(ShellMsg::Toggle(key))) if key == self::key("surface-a")
         ));
     }
 
     #[test]
     fn rejects_trailing_tokens() {
         assert_eq!(
-            parse_line("toggle launcher extra").unwrap_err(),
+            parse_line("toggle surface-a extra").unwrap_err(),
             "unexpected argument: extra"
         );
         assert_eq!(parse_line("quit now").unwrap_err(), "unexpected argument: now");
@@ -309,7 +308,7 @@ mod tests {
         };
 
         assert_eq!(send("ping"), "ok");
-        assert_eq!(send("toggle launcher"), "ok");
+        assert_eq!(send("toggle surface-a"), "ok");
         assert_eq!(send("close-all"), "ok");
         assert_eq!(send("bogus"), "err unknown command: bogus");
         assert!(send("toggle InvalidName").starts_with("err invalid surface name"));
@@ -321,7 +320,7 @@ mod tests {
         }
         assert!(
             got.iter()
-                .any(|message| matches!(message, ShellMsg::Toggle(surface) if surface == &key("launcher")))
+                .any(|message| matches!(message, ShellMsg::Toggle(surface) if surface == &key("surface-a")))
         );
         assert!(got.iter().any(|m| matches!(m, ShellMsg::CloseAll)));
         let _ = std::fs::remove_file(&path);
