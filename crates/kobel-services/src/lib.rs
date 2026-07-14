@@ -2,8 +2,11 @@
 //! its own thread). Snapshots are PLAIN data pushed over a callback; this crate
 //! NEVER depends on calloop or freya. See docs/FREYA-PLAN.md section 5.
 //!
-//! Phase-2 scope: gnoblin (compositor link), audio (pipewire-pulse), battery
-//! (UPower DisplayDevice). Other Astal replacements land in later phases.
+//! Twelve services: gnoblin (compositor link), audio (pipewire-pulse), battery
+//! (UPower DisplayDevice), apps (desktop entries + inotify watch), bluetooth,
+//! calendar (GNOME.Shell.CalendarServer), exec (session/uri/clipboard verbs),
+//! mpris, network (NetworkManager), notifd (org.freedesktop.Notifications,
+//! owns the bus name itself), sysctl (brightness/power/settings), tray (SNI).
 
 use std::thread::JoinHandle;
 use std::time::Duration;
