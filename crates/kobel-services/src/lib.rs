@@ -65,6 +65,13 @@ pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 /// a warning so the caller's event loop always continues to the next
 /// iteration -- one hung command degrades to "this one did nothing", never
 /// "the whole service stalled". `label` is the service's log tag, e.g. "tray".
+///
+/// Shell shutdown is never delayed by an in-flight timeout: every service
+/// task (except notifd, which gets its own graceful handshake) is torn down
+/// via `JoinHandle::abort()` in [`run`]'s shutdown sequence, which cancels
+/// the task at its next await point regardless of what it is currently
+/// doing -- including sitting inside this function's `tokio::time::timeout`.
+/// Verified directly: raising `COMMAND_TIMEOUT` cannot slow down `quit`.
 pub(crate) async fn with_command_timeout<F>(label: &str, fut: F)
 where
     F: Future<Output = ()>,
