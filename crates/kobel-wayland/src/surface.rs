@@ -133,6 +133,11 @@ struct ContentSized {
 /// another surface (a layer surface via `zwlr_layer_surface_v1.get_popup`, or another
 /// popup via `xdg_surface.get_popup`). Everything else about the embedded Freya
 /// instance is identical, so both share the same struct.
+// `PopupRole` is meaningfully larger than `LayerSurface`, but surface count in
+// this shell is small and bounded (dozens of layer/popup surfaces total, never
+// a hot allocation path) -- boxing the Popup variant would ripple through every
+// match site in conn.rs/surface.rs for memory savings that don't matter here.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum SurfaceRole {
     Layer(LayerSurface),
     Popup(PopupRole),

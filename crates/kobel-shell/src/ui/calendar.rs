@@ -739,9 +739,9 @@ mod tests {
         assert!(g[0].days[5].weekend);
         assert_eq!(g[0].days[6].date, d(2026, 7, 5));
         assert!(g[0].days[6].weekend);
-        for r in 0..6 {
-            assert!(!g[r].days[0].weekend, "Monday column is never a weekend");
-            assert!(g[r].days[6].weekend, "Sunday column is always a weekend");
+        for row in &g {
+            assert!(!row.days[0].weekend, "Monday column is never a weekend");
+            assert!(row.days[6].weekend, "Sunday column is always a weekend");
         }
         // Row 2 Monday is 2026-07-13 (in-month); the grid's last cell spills to August.
         assert_eq!(g[2].days[0].date, d(2026, 7, 13));
@@ -846,7 +846,7 @@ mod tests {
         assert_eq!(map.get(&ymd_key(d(2026, 7, 6))).map(Vec::len), Some(1));
         assert_eq!(map.get(&ymd_key(d(2026, 7, 11))).map(Vec::len), Some(2));
         // A day with no events resolves to None (the "No events" path).
-        assert!(map.get(&ymd_key(d(2026, 7, 20))).is_none());
+        assert!(!map.contains_key(&ymd_key(d(2026, 7, 20))));
     }
 
     #[test]

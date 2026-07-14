@@ -98,6 +98,17 @@ fn provide_contexts(
     }
 }
 
+/// The tuple [`provide_panel_contexts`] returns: the frozen service fan-out
+/// states, the panel's `OpenProgress` inner state, and the optional
+/// KeyFeed/ImeFeed inner states (`Some` only on the surfaces that register
+/// them -- see [`provide_panel_contexts`]'s body doc).
+type PanelContexts = (
+    SurfaceStates,
+    State<f32>,
+    Option<State<Option<ui::panels::KeyEvent>>>,
+    Option<State<Option<ui::panels::ImeFeedEvent>>>,
+);
+
 /// Provide the frozen root contexts plus the additive per-surface OpenProgress (the
 /// reveal opacity the manager animates). Returns the snapshot handles for the service
 /// fan-out and the OpenProgress inner State<f32> the manager writes each animated
@@ -107,12 +118,7 @@ fn provide_panel_contexts(
     bus: &ShellBus,
     tokens: theme::Tokens,
     key: SurfaceKey,
-) -> (
-    SurfaceStates,
-    State<f32>,
-    Option<State<Option<ui::panels::KeyEvent>>>,
-    Option<State<Option<ui::panels::ImeFeedEvent>>>,
-) {
+) -> PanelContexts {
     let states = provide_contexts(cx, bus, tokens);
     let progress = cx.provide(|| ui::panels::OpenProgress(State::create(0.0)));
     // KeyFeed on the keyboard-Exclusive surfaces (launcher, session) AND on

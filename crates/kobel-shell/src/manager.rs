@@ -704,11 +704,14 @@ mod tests {
         }
     }
 
+    /// One `set_input_region_rects` call's recorded surface + rects.
+    type RectsCall = (SurfaceId, Vec<(i32, i32, i32, i32)>);
+
     #[derive(Default)]
     struct FakeHost {
         kb: Vec<(SurfaceId, KeyboardInteractivity)>,
         region: Vec<(SurfaceId, bool)>,
-        rects: Vec<(SurfaceId, Vec<(i32, i32, i32, i32)>)>,
+        rects: Vec<RectsCall>,
         window_calls: Vec<(&'static str, String)>,
         ime_calls: Vec<(String, i32, i32)>,
     }

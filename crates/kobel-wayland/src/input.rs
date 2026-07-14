@@ -329,9 +329,7 @@ mod tests {
 
     #[test]
     fn modifiers_translate_bitwise() {
-        let mut m = SctkModifiers::default();
-        m.ctrl = true;
-        m.shift = true;
+        let m = SctkModifiers { ctrl: true, shift: true, ..Default::default() };
         let out = map_modifiers(m);
         assert!(out.contains(Modifiers::CONTROL));
         assert!(out.contains(Modifiers::SHIFT));

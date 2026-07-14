@@ -774,7 +774,7 @@ mod tests {
             .join("notifications.json")
     }
 
-    fn cleanup(path: &PathBuf) {
+    fn cleanup(path: &Path) {
         if let Some(parent) = path.parent() {
             let _ = std::fs::remove_dir_all(parent);
         }

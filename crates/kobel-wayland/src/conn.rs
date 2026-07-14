@@ -536,6 +536,15 @@ impl OutputControl<'_> {
     }
 }
 
+/// Per-key-press callback registered via [`Shell::on_key`].
+type KeyHandler = Box<dyn FnMut(KeyPress, &mut Control<'_>)>;
+/// Per-sweep callback registered via [`Shell::on_tick`].
+type ShellTickHandler = Box<dyn FnMut(&mut Control<'_>)>;
+/// IME event callback registered via [`Shell::on_ime`].
+type ImeHandler = Box<dyn FnMut(ImeEvent, &mut Control<'_>)>;
+/// Output add/remove callback registered via [`Shell::on_output`].
+type MountHandler = Box<dyn FnMut(OutputEvent, &mut OutputControl<'_>)>;
+
 /// The single sctk dispatch + calloop data type. Holds all surfaces and shared state.
 struct Host {
     registry_state: RegistryState,
@@ -598,14 +607,14 @@ struct Host {
     _conn: Connection,
 
     exit: bool,
-    key_handler: Option<Box<dyn FnMut(KeyPress, &mut Control<'_>)>>,
-    shell_tick: Option<Box<dyn FnMut(&mut Control<'_>)>>,
+    key_handler: Option<KeyHandler>,
+    shell_tick: Option<ShellTickHandler>,
     /// App-level IME handler (see [`Shell::on_ime`]). Taken via `.take()` while it
     /// runs, like key_handler/shell_tick, so the host can be borrowed by [`Control`].
-    ime_handler: Option<Box<dyn FnMut(ImeEvent, &mut Control<'_>)>>,
+    ime_handler: Option<ImeHandler>,
     /// Per-output mount handler (see [`Shell::on_output`]). Taken via `.take()` while
     /// it runs so the host can be handed to it as an [`OutputControl`].
-    output_handler: Option<Box<dyn FnMut(OutputEvent, &mut OutputControl<'_>)>>,
+    output_handler: Option<MountHandler>,
     /// Outputs we have already fired [`OutputEvent::Added`] for. Guards against
     /// double-mounting a startup output whose sctk `new_output` (fired on its first
     /// `Done`) lands after the eager `on_output` announce pass.

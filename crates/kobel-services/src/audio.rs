@@ -39,6 +39,12 @@ pub struct AudioSnapshot {
     pub streams: Vec<AudioStream>,
 }
 
+// Mirrors the public `Command::Set*` audio variants one-for-one (see
+// lib.rs's Command -> AudioCommand forward) -- renaming these would desync
+// that intentional parity, and renaming `Command` itself has real blast
+// radius across the UI for a naming heuristic that doesn't apply well to a
+// command enum of setters.
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum AudioCommand {
     SetVolume(f32),
     SetMuted(bool),

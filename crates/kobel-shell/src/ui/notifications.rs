@@ -289,7 +289,7 @@ impl Component for Toasts {
         // bounds for unmounted toasts so `card_rects` never grows without bound.
         use_side_effect_with_deps(
             &(region.clone(), live_ids.clone()),
-            move |(region, live_ids): &(Vec<(i32, i32, i32, i32)>, Vec<u32>)| {
+            move |(region, live_ids)| {
                 let mut card_rects = card_rects;
                 let alive: HashSet<u32> = live_ids.iter().copied().collect();
                 // Hoist the peek() borrow out before write() (State gotcha).
@@ -512,6 +512,10 @@ impl Component for DrawerCard {
 // Shared notification card
 // ---------------------------------------------------------------------------
 
+/// (background, horizontal padding, shadow) for [`notif_card`]'s translucent
+/// (toast) vs opaque (drawer) backing.
+type CardStyle = (Color, f32, (f32, f32, f32, f32, (u8, u8, u8, u8)));
+
 /// The shared notification card body (ags `Card`): a 30px icon tile, the
 /// summary/time/body text column, and (when `interactive`) a close button + action
 /// buttons. Both toasts and drawer cards are interactive: the toasts surface gets a
@@ -521,7 +525,7 @@ impl Component for DrawerCard {
 /// `translucent` selects the toast backing (the one sanctioned translucency) vs the
 /// opaque drawer PANEL.
 fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Size) -> Element {
-    let (bg, pad_h, shadow): (Color, f32, (f32, f32, f32, f32, (u8, u8, u8, u8))) = if translucent
+    let (bg, pad_h, shadow): CardStyle = if translucent
     {
         (
             Color::from_af32rgb(0.82, 16, 13, 20),
