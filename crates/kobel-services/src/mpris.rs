@@ -448,3 +448,85 @@ fn percent_decode(input: &str) -> String {
     }
     String::from_utf8_lossy(&out).into_owned()
 }
+
+#[cfg(test)]
+mod tests {
+    use zbus::zvariant::Value;
+
+    use super::*;
+
+    fn owned(v: impl Into<Value<'static>>) -> OwnedValue {
+        OwnedValue::try_from(v.into()).expect("value converts")
+    }
+
+    #[test]
+    fn first_artist_takes_the_first_non_empty_entry_from_a_list() {
+        let list = vec!["".to_string(), "Radiohead".to_string(), "Thom Yorke".to_string()];
+        assert_eq!(first_artist(owned(list)), Some("Radiohead".to_string()));
+    }
+
+    #[test]
+    fn first_artist_falls_back_to_a_plain_string() {
+        // Some players send xesam:artist as a bare string instead of an array.
+        assert_eq!(first_artist(owned("Boards of Canada")), Some("Boards of Canada".to_string()));
+    }
+
+    #[test]
+    fn first_artist_none_for_an_all_empty_list_or_empty_string() {
+        assert_eq!(first_artist(owned(vec!["".to_string(), "".to_string()])), None);
+        assert_eq!(first_artist(owned("")), None);
+    }
+
+    #[test]
+    fn length_micros_reads_i64_and_falls_back_to_u64() {
+        assert_eq!(length_micros(owned(240_000_000_i64)), Some(240_000_000));
+        // Some players send mpris:length as u64 (`t`) instead of i64 (`x`).
+        assert_eq!(length_micros(owned(240_000_000_u64)), Some(240_000_000));
+    }
+
+    #[test]
+    fn length_micros_none_for_a_non_numeric_value() {
+        assert_eq!(length_micros(owned("not a number")), None);
+    }
+
+    #[test]
+    fn micros_to_secs_divides_by_a_million() {
+        assert_eq!(micros_to_secs(240_000_000), 240.0);
+        assert_eq!(micros_to_secs(0), 0.0);
+        assert_eq!(micros_to_secs(1_500_000), 1.5);
+    }
+
+    #[test]
+    fn percent_decode_handles_spaces_and_multiple_escapes() {
+        assert_eq!(percent_decode("My%20Song%20-%20Artist"), "My Song - Artist");
+        assert_eq!(percent_decode("no-escapes-here"), "no-escapes-here");
+    }
+
+    #[test]
+    fn percent_decode_falls_back_to_literal_on_truncated_or_invalid_escapes() {
+        // A trailing '%' with too few following bytes for a full escape.
+        assert_eq!(percent_decode("truncated%2"), "truncated%2");
+        assert_eq!(percent_decode("truncated%"), "truncated%");
+        // Non-hex digits after '%' aren't a valid escape.
+        assert_eq!(percent_decode("bad%zzescape"), "bad%zzescape");
+    }
+
+    #[test]
+    fn percent_decode_handles_an_escape_at_the_very_end() {
+        assert_eq!(percent_decode("file%20"), "file ");
+    }
+
+    #[test]
+    fn art_url_to_path_strips_file_scheme_and_decodes() {
+        assert_eq!(
+            art_url_to_path("file:///home/x/My%20Song.jpg".to_string()),
+            Some(PathBuf::from("/home/x/My Song.jpg"))
+        );
+    }
+
+    #[test]
+    fn art_url_to_path_none_for_remote_schemes() {
+        // http(s) art (e.g. Spotify) isn't fetched.
+        assert_eq!(art_url_to_path("https://example.com/art.jpg".to_string()), None);
+    }
+}

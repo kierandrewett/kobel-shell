@@ -473,3 +473,62 @@ where
         None => std::future::pending().await,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_profile_matches_known_values() {
+        assert_eq!(parse_profile("power-saver"), PowerProfile::PowerSaver);
+        assert_eq!(parse_profile("performance"), PowerProfile::Performance);
+        assert_eq!(parse_profile("balanced"), PowerProfile::Balanced);
+    }
+
+    #[test]
+    fn parse_profile_falls_back_to_balanced_for_unknown_values() {
+        // An unrecognized/future profile string (or a D-Bus glitch) degrades to
+        // the safe default rather than erroring.
+        assert_eq!(parse_profile("quiet"), PowerProfile::Balanced);
+        assert_eq!(parse_profile(""), PowerProfile::Balanced);
+    }
+
+    #[test]
+    fn profile_str_round_trips_through_parse_profile() {
+        for p in [PowerProfile::PowerSaver, PowerProfile::Balanced, PowerProfile::Performance] {
+            assert_eq!(parse_profile(profile_str(p)), p);
+        }
+    }
+
+    #[test]
+    fn monitor_value_takes_the_part_after_the_first_colon() {
+        assert_eq!(monitor_value("color-scheme: 'prefer-dark'"), Some("'prefer-dark'".to_string()));
+        // A value that itself contains a colon (e.g. a URI) keeps everything
+        // after the FIRST colon, not just up to the next one.
+        assert_eq!(
+            monitor_value("picture-uri: 'file:///home/x.png'"),
+            Some("'file:///home/x.png'".to_string())
+        );
+    }
+
+    #[test]
+    fn monitor_value_none_without_a_colon() {
+        assert_eq!(monitor_value("no colon here"), None);
+    }
+
+    #[test]
+    fn parse_dark_detects_prefer_dark_only() {
+        assert!(parse_dark("'prefer-dark'"));
+        assert!(!parse_dark("'prefer-light'"));
+        assert!(!parse_dark("'default'"));
+    }
+
+    #[test]
+    fn parse_bool_strips_quotes_and_ignores_case() {
+        assert!(parse_bool("'true'"));
+        assert!(parse_bool("TRUE"));
+        assert!(parse_bool("  'True'  "));
+        assert!(!parse_bool("'false'"));
+        assert!(!parse_bool("nonsense"));
+    }
+}
