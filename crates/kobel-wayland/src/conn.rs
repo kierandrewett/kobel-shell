@@ -67,10 +67,15 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_h
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::{
     self, ZwlrForeignToplevelManagerV1,
 };
+use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::{
+    self, ZwpTextInputManagerV3,
+};
+use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::{self, ZwpTextInputV3};
 
 use crate::egl::Egl;
-use crate::toplevel::{ToplevelInfo, decode_state_array};
 use crate::frame::runner_waker;
+use crate::ime::{ImeCommit, ImeEvent, Preedit, decode_cursor};
+use crate::toplevel::{ToplevelInfo, decode_state_array};
 use crate::surface::{FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole};
 use crate::{
     KeyPress, LoopWaker, OutputEvent, OutputId, PopupAnchor, PopupConfig, PopupGravity, Result,
@@ -166,6 +171,17 @@ impl Shell {
             if toplevel_manager.is_some() { "bound (window list/activate/minimize/close)" } else { "unavailable" }
         );
 
+        // IME (CJK/compose input) for text fields: zwp_text_input_manager_v3, a
+        // core mutter input-method surface (not gated like the wlr-* extensions --
+        // mutter always advertises it). The per-seat zwp_text_input_v3 object
+        // itself is created lazily in new_capability once BOTH this manager and a
+        // seat are known (order between the two globals is not guaranteed).
+        let text_input_manager = globals.bind::<ZwpTextInputManagerV3, Host, _>(&qh, 1..=1, ()).ok();
+        tracing::info!(
+            "[host] text input (IME) {}",
+            if text_input_manager.is_some() { "manager bound" } else { "unavailable" }
+        );
+
         let host = Host {
             registry_state: RegistryState::new(&globals),
             seat_state: SeatState::new(&globals, &qh),
@@ -178,6 +194,10 @@ impl Shell {
             toplevel_manager,
             toplevels: Vec::new(),
             next_toplevel_id: 0,
+            text_input_manager,
+            text_input: None,
+            ime_pending: ImeCommit::default(),
+            ime_handler: None,
             egl,
             surfaces: Vec::new(),
             next_id: 0,
@@ -263,6 +283,15 @@ impl Shell {
     /// Freya tree, and can drive the shell via [`Control`] (exit, kb interactivity).
     pub fn on_key(&mut self, handler: impl FnMut(KeyPress, &mut Control<'_>) + 'static) {
         self.host.key_handler = Some(Box::new(handler));
+    }
+
+    /// Install the app-level IME handler: fires for text-input `enter`/`leave`
+    /// (mirrors keyboard focus) and `Commit` (one atomic `done` payload -- see
+    /// [`ImeEvent`]). The caller decides which surface(s) want IME enabled (e.g.
+    /// the launcher's text field) by calling [`Control::ime_enable`]/
+    /// [`Control::ime_disable`] in response to `Enter`/`Leave`.
+    pub fn on_ime(&mut self, handler: impl FnMut(ImeEvent, &mut Control<'_>) + 'static) {
+        self.host.ime_handler = Some(Box::new(handler));
     }
 
     /// Install the per-output mount handler and immediately drive it for every output
@@ -409,6 +438,59 @@ impl Control<'_> {
     pub fn close_toplevel(&mut self, id: &str) {
         self.host.close_toplevel(id);
     }
+
+    /// Request text input be enabled on the surface that just fired
+    /// [`ImeEvent::Enter`] (the protocol scopes `enable` to "the surface
+    /// previously obtained from the enter event" -- there is exactly one
+    /// zwp_text_input_v3 per seat, so this always targets the current focus).
+    /// Requests are double-buffered; call [`Control::ime_commit`] to apply.
+    pub fn ime_enable(&mut self) {
+        if let Some(ti) = self.host.text_input.as_ref() {
+            ti.enable();
+        }
+    }
+
+    /// Explicitly disable text input on the current surface (no editable focus).
+    /// Double-buffered; call [`Control::ime_commit`] to apply.
+    pub fn ime_disable(&mut self) {
+        if let Some(ti) = self.host.text_input.as_ref() {
+            ti.disable();
+        }
+    }
+
+    /// Report the plain text around the cursor (excluding any preedit), so the
+    /// input method can position its candidate window and react to context
+    /// (backspace-to-edit-previous-word, etc). `cursor`/`anchor` are byte offsets
+    /// into `text`; `anchor == cursor` when nothing is selected. The protocol caps
+    /// this at 4000 bytes -- an over-limit call is skipped (logged) rather than
+    /// risking a protocol violation; double-buffered, call [`Control::ime_commit`].
+    pub fn ime_set_surrounding_text(&mut self, text: &str, cursor: i32, anchor: i32) {
+        if text.len() > 4000 {
+            tracing::warn!("[host] ime_set_surrounding_text: {} bytes exceeds the 4000 byte protocol cap, skipped", text.len());
+            return;
+        }
+        if let Some(ti) = self.host.text_input.as_ref() {
+            ti.set_surrounding_text(text.to_string(), cursor, anchor);
+        }
+    }
+
+    /// Mark the area around the cursor (surface-local coordinates) so the
+    /// compositor can place a candidate window near it without obstructing the
+    /// text. Double-buffered, call [`Control::ime_commit`].
+    pub fn ime_set_cursor_rectangle(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        if let Some(ti) = self.host.text_input.as_ref() {
+            ti.set_cursor_rectangle(x, y, w, h);
+        }
+    }
+
+    /// Atomically apply every pending `ime_*` request sent since the last commit
+    /// (or since `enable`/`disable`). Required after any of the above to take
+    /// effect -- the protocol's state is otherwise inert pending state.
+    pub fn ime_commit(&mut self) {
+        if let Some(ti) = self.host.text_input.as_ref() {
+            ti.commit();
+        }
+    }
 }
 
 /// Handle passed to the [`Shell::on_output`] handler for mounting per-output
@@ -481,6 +563,18 @@ struct Host {
     /// string handed to the UI, not a Wayland object id (implementation detail,
     /// not a stable string shape across wayland-client versions).
     next_toplevel_id: u32,
+    /// zwp_text_input_manager_v3 global (IME text input). `None` => not
+    /// advertised -> IME never available (mutter always advertises this in
+    /// practice; `None` only on a non-mutter compositor).
+    text_input_manager: Option<ZwpTextInputManagerV3>,
+    /// The per-seat zwp_text_input_v3 object, created once a seat AND the
+    /// manager are both known. `None` until then.
+    text_input: Option<ZwpTextInputV3>,
+    /// Accumulates preedit_string/commit_string/delete_surrounding_text events
+    /// between `done`s (double-buffered per protocol); reset to default after
+    /// each `done` is dispatched. See ime.rs's module doc for the exact
+    /// apply-order contract.
+    ime_pending: ImeCommit,
     egl: Egl,
     surfaces: Vec<FreyaLayerSurface>,
     next_id: u32,
@@ -505,6 +599,9 @@ struct Host {
     exit: bool,
     key_handler: Option<Box<dyn FnMut(KeyPress, &mut Control<'_>)>>,
     shell_tick: Option<Box<dyn FnMut(&mut Control<'_>)>>,
+    /// App-level IME handler (see [`Shell::on_ime`]). Taken via `.take()` while it
+    /// runs, like key_handler/shell_tick, so the host can be borrowed by [`Control`].
+    ime_handler: Option<Box<dyn FnMut(ImeEvent, &mut Control<'_>)>>,
     /// Per-output mount handler (see [`Shell::on_output`]). Taken via `.take()` while
     /// it runs so the host can be handed to it as an [`OutputControl`].
     output_handler: Option<Box<dyn FnMut(OutputEvent, &mut OutputControl<'_>)>>,
@@ -1013,6 +1110,20 @@ impl Host {
         self.output_handler = Some(handler);
     }
 
+    /// Run the app-level IME handler for one event, handing it a [`Control`]. Taken
+    /// out and restored around the call (like key_handler/output_handler) so the
+    /// host can be borrowed by the control. No-op when no handler is installed.
+    fn dispatch_ime(&mut self, event: ImeEvent) {
+        let Some(mut handler) = self.ime_handler.take() else {
+            return;
+        };
+        {
+            let mut control = Control { host: self };
+            handler(event, &mut control);
+        }
+        self.ime_handler = Some(handler);
+    }
+
     fn index_of(&self, surface: &wl_surface::WlSurface) -> Option<usize> {
         self.surfaces.iter().position(|s| s.wl_surface() == surface)
     }
@@ -1348,6 +1459,15 @@ impl SeatHandler for Host {
     ) {
         // Retain the seat so a popup grab can name it (xdg_popup.grab(seat, serial)).
         self.seat = Some(seat.clone());
+        // The text-input object is per-seat, not per-capability -- created once,
+        // as soon as both a seat and the manager global are known (order of the
+        // two is not guaranteed; new_capability fires per seat capability, so this
+        // runs on whichever capability arrives first for the first seat).
+        if self.text_input.is_none()
+            && let Some(manager) = self.text_input_manager.as_ref()
+        {
+            self.text_input = Some(manager.get_text_input(&seat, qh, ()));
+        }
         if capability == Capability::Keyboard && self.keyboard.is_none() {
             match self.seat_state.get_keyboard_with_repeat(
                 qh,
@@ -1704,6 +1824,77 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for Host {
                 }
             }
             Event::OutputEnter { .. } | Event::OutputLeave { .. } | Event::Parent { .. } => {}
+            // Non-exhaustive enum: a future protocol version may add variants.
+            _ => {}
+        }
+    }
+}
+
+// --- Text input (IME) raw Dispatch (no companion crate carries zwp_text_input_v3;
+// wayland-protocols itself does, gated behind its `unstable` feature) ---
+// preedit_string/commit_string/delete_surrounding_text are double-buffered: each
+// overwrites the corresponding `ime_pending` field, and `done` atomically hands the
+// accumulated payload to the app then resets `ime_pending` to its initial (empty)
+// value for the next cycle, per the protocol's mandated semantics.
+
+impl Dispatch<ZwpTextInputManagerV3, ()> for Host {
+    fn event(
+        _: &mut Self,
+        _: &ZwpTextInputManagerV3,
+        _: zwp_text_input_manager_v3::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // The manager carries no events (factory-only interface).
+    }
+}
+
+impl Dispatch<ZwpTextInputV3, ()> for Host {
+    fn event(
+        host: &mut Self,
+        _obj: &ZwpTextInputV3,
+        event: zwp_text_input_v3::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        use zwp_text_input_v3::Event;
+        match event {
+            Event::Enter { surface } => {
+                if let Some(idx) = host.index_of(&surface) {
+                    let sid = host.surfaces[idx].id;
+                    tracing::debug!("[host] ime entered surface {sid:?}");
+                    host.dispatch_ime(ImeEvent::Enter(sid));
+                }
+            }
+            Event::Leave { surface } => {
+                if let Some(idx) = host.index_of(&surface) {
+                    let sid = host.surfaces[idx].id;
+                    tracing::debug!("[host] ime left surface {sid:?}");
+                    host.dispatch_ime(ImeEvent::Leave(sid));
+                }
+            }
+            Event::PreeditString { text, cursor_begin, cursor_end } => {
+                host.ime_pending.preedit = text.map(|text| {
+                    let (cursor_begin, cursor_end) = decode_cursor(cursor_begin, cursor_end);
+                    Preedit { text, cursor_begin, cursor_end }
+                });
+            }
+            Event::CommitString { text } => {
+                host.ime_pending.commit = text;
+            }
+            Event::DeleteSurroundingText { before_length, after_length } => {
+                host.ime_pending.delete_before = before_length;
+                host.ime_pending.delete_after = after_length;
+            }
+            Event::Done { serial } => {
+                let payload = std::mem::take(&mut host.ime_pending);
+                tracing::debug!("[host] ime done serial={serial} payload={payload:?}");
+                if !payload.is_empty() {
+                    host.dispatch_ime(ImeEvent::Commit(payload));
+                }
+            }
             // Non-exhaustive enum: a future protocol version may add variants.
             _ => {}
         }

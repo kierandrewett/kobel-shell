@@ -15,15 +15,19 @@
 //   toplevel.rs -- zwlr_foreign_toplevel_manager_v1 snapshot type + state decode
 //                  (pure, unit-tested; the Dispatch glue lives in conn.rs with
 //                  every other raw protocol since Host is private to that module)
+//   ime.rs      -- zwp_text_input_v3 (IME preedit/commit) snapshot types + cursor
+//                  decode (pure, unit-tested; Dispatch glue lives in conn.rs)
 
 mod conn;
 mod egl;
 mod frame;
+mod ime;
 mod input;
 mod surface;
 mod toplevel;
 
 pub use conn::{Control, OutputControl, Shell};
+pub use ime::{ImeCommit, ImeEvent, Preedit};
 pub use surface::SurfaceContexts;
 pub use toplevel::ToplevelInfo;
 
