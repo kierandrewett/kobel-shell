@@ -18,6 +18,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
+use std::thread;
 
 use freya_core::prelude::{IntoElement, State, WritableUtils};
 use kobel_services::{
@@ -926,6 +927,39 @@ fn main() -> anyhow::Result<()> {
         let waker = waker.clone();
         move || waker.wake()
     });
+
+    // Graceful shutdown on SIGTERM/SIGINT (systemd stop, logout, Ctrl+C in a
+    // terminal launch): translate the signal into the SAME ShellMsg::Quit the IPC
+    // `quit` command already uses, so it drives the identical clean-shutdown chain
+    // (manager sees quit -> control.exit() -> shell.run() returns -> main() falls
+    // through -> every Rc<RefCell<Manager>> clone drops once shell's own callback
+    // closures are released with `shell` itself -> Manager drops -> its
+    // Box<dyn CommandSink> (the ServicesHandle) field drops -> notifd gets its
+    // bounded-3s graceful shutdown, including the SetFeature hand-back to gnoblin).
+    // Without this, SIGTERM's default disposition is immediate termination with no
+    // Drop impls running at all -- every ungraceful stop (systemd restart, a plain
+    // `kill`) would skip that hand-back. Since notifd disables gnoblin's own
+    // notification handling on startup in the common case (gnome-shell owns
+    // org.freedesktop.Notifications by default) and only re-enables it here, that
+    // would leave desktop notifications broken system-wide until kobel-shell is
+    // started again -- not a rare edge case, the normal shape of "restart the shell".
+    match signal_hook::iterator::Signals::new([signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT]) {
+        Ok(mut signals) => {
+            let bus = bus.clone();
+            thread::Builder::new()
+                .name("kobel-signals".to_string())
+                .spawn(move || {
+                    if let Some(sig) = signals.forever().next() {
+                        tracing::info!("[shell] received signal {sig}; requesting clean shutdown");
+                        bus.send(ShellMsg::Quit);
+                    }
+                })
+                .expect("failed to spawn signal-handling thread");
+        }
+        Err(e) => {
+            tracing::warn!("[shell] signal handler unavailable: {e}; SIGTERM/SIGINT will not shut down cleanly")
+        }
+    }
 
     let tokens = theme::FLOATING;
 
