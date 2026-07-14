@@ -110,17 +110,32 @@ struct WeekRow {
 /// previous month, trailing cells spill into the next, and each row's ISO week
 /// number is taken from that row's Monday -- the six-row window GNOME's calendar
 /// shows. `month` is 1-based (chrono convention).
+///
+/// `(year, month)` is always [`NaiveDate`]-representable here: the `view` state
+/// this is called with is seeded from `Local::now()` (always valid), jumped to
+/// `today` (also always valid), or stepped via [`step_month`], which clamps at
+/// chrono's own representable boundary rather than ever producing an invalid
+/// pair -- see its doc for why that clamp exists.
+///
+/// That guarantees `(year, month, 1)` itself is representable, but the SIX-WEEK
+/// GRID this builds reaches up to ~6 days before it and ~35 days after it (the
+/// Monday-started backfill/spillover) -- close enough to [`NaiveDate::MIN`]/
+/// [`MAX`] (verified: December of `NaiveDate::MAX`'s own year) that plain `+`/`-`
+/// on those offsets can still overflow even though the month itself is fine.
+/// [`saturating_offset`] absorbs that: every date in the grid clamps to MIN/MAX
+/// rather than ever panicking, degrading the display at literally the ends of
+/// representable time instead of crashing.
 fn month_grid(year: i32, month: u32) -> [WeekRow; 6] {
-    let first = NaiveDate::from_ymd_opt(year, month, 1).expect("valid year/month");
+    let first = NaiveDate::from_ymd_opt(year, month, 1).expect("valid year/month (see fn doc)");
     // Monday=0 .. Sunday=6: the offset of the 1st within its Monday-started week.
     let start = first.weekday().num_days_from_monday() as i64;
     // Monday of the grid's first row (may sit in the previous month).
-    let grid_monday = first - Duration::days(start);
+    let grid_monday = saturating_offset(first, -start);
 
     std::array::from_fn(|r| {
-        let row_monday = grid_monday + Duration::days((r * 7) as i64);
+        let row_monday = saturating_offset(grid_monday, (r * 7) as i64);
         let days = std::array::from_fn(|c| {
-            let date = row_monday + Duration::days(c as i64);
+            let date = saturating_offset(row_monday, c as i64);
             DayCell {
                 date,
                 in_month: date.month() == month && date.year() == year,
@@ -134,15 +149,44 @@ fn month_grid(year: i32, month: u32) -> [WeekRow; 6] {
     })
 }
 
-/// Step the (year, month) view one month `forward`/back, wrapping the year.
+/// Add `days` to `date`, clamping to [`NaiveDate::MIN`]/[`MAX`] instead of
+/// overflowing/panicking (chrono's plain `+`/`-` on `NaiveDate` panics past
+/// those bounds; `checked_add_signed`/`checked_sub_signed` are the non-panicking
+/// primitives this saturates through). Used by [`month_grid`]'s six-week window,
+/// which can walk a handful of days beyond even a representable month at either
+/// extreme of chrono's range.
+fn saturating_offset(date: NaiveDate, days: i64) -> NaiveDate {
+    let delta = Duration::days(days);
+    if days >= 0 {
+        date.checked_add_signed(delta).unwrap_or(NaiveDate::MAX)
+    } else {
+        date.checked_sub_signed(-delta).unwrap_or(NaiveDate::MIN)
+    }
+}
+
+/// Step the (year, month) view one month `forward`/back, wrapping the year, but
+/// clamped so it never walks past what [`NaiveDate`] can represent (roughly
+/// years -262143..=262142 -- `NaiveDate::MIN`/`MAX`). Without this, enough
+/// presses of the nav chevron (a few million) would produce a `(year, month)`
+/// `NaiveDate::from_ymd_opt` can't construct, and `month_grid`'s `.expect()`
+/// below -- plus `nav_row`'s label formatting -- would panic on it. Checked via
+/// `from_ymd_opt` directly (not a hardcoded boundary constant) so the bound
+/// always matches whatever chrono itself can actually represent. Clamped, not
+/// wrapped: at the edge, another press in the same direction is a no-op --
+/// there is nowhere further to go, same as a real calendar at the end of time.
 /// `month` is 1-based.
 fn step_month(year: i32, month: u32, forward: bool) -> (i32, u32) {
-    if forward {
+    let next = if forward {
         if month == 12 { (year + 1, 1) } else { (year, month + 1) }
     } else if month == 1 {
         (year - 1, 12)
     } else {
         (year, month - 1)
+    };
+    if NaiveDate::from_ymd_opt(next.0, next.1, 1).is_some() {
+        next
+    } else {
+        (year, month)
     }
 }
 
@@ -325,8 +369,9 @@ fn nav_row(
 ) -> impl IntoElement {
     // Always month + year (the contract label is month-year); AGS omitted the year
     // in the current year, but the label here is explicitly month+year.
+    // See month_grid's doc for why (vy, vm) is always representable here.
     let label_text = NaiveDate::from_ymd_opt(vy, vm, 1)
-        .expect("valid month")
+        .expect("valid month (see month_grid's doc)")
         .format("%B %Y")
         .to_string();
 
@@ -839,6 +884,46 @@ mod tests {
         assert_eq!(step_month(2026, 1, false), (2025, 12));
         assert_eq!(step_month(2026, 7, true), (2026, 8));
         assert_eq!(step_month(2026, 7, false), (2026, 6));
+    }
+
+    #[test]
+    fn step_month_clamps_at_naivedate_max_instead_of_overflowing() {
+        // NaiveDate::MAX is the last representable date; December of its year is
+        // the last representable MONTH. One more "forward" press must be a no-op
+        // (there is nowhere further to go), never an unrepresentable pair that
+        // would later panic in month_grid/nav_row.
+        let last_month = (NaiveDate::MAX.year(), 12);
+        assert_eq!(step_month(last_month.0, last_month.1, true), last_month);
+        // Pressing repeatedly stays pinned, never drifts past the boundary.
+        let mut cur = last_month;
+        for _ in 0..5 {
+            cur = step_month(cur.0, cur.1, true);
+        }
+        assert_eq!(cur, last_month);
+        // Sanity: month_grid must not panic when actually called at this edge.
+        month_grid(last_month.0, last_month.1);
+    }
+
+    #[test]
+    fn step_month_clamps_at_naivedate_min_instead_of_overflowing() {
+        let first_month = (NaiveDate::MIN.year(), 1);
+        assert_eq!(step_month(first_month.0, first_month.1, false), first_month);
+        let mut cur = first_month;
+        for _ in 0..5 {
+            cur = step_month(cur.0, cur.1, false);
+        }
+        assert_eq!(cur, first_month);
+        month_grid(first_month.0, first_month.1);
+    }
+
+    #[test]
+    fn step_month_still_steps_normally_one_short_of_either_boundary() {
+        // Regression guard: the clamp must only bite exactly at the edge, never
+        // one month early.
+        let near_max = (NaiveDate::MAX.year(), 11);
+        assert_eq!(step_month(near_max.0, near_max.1, true), (NaiveDate::MAX.year(), 12));
+        let near_min = (NaiveDate::MIN.year(), 2);
+        assert_eq!(step_month(near_min.0, near_min.1, false), (NaiveDate::MIN.year(), 1));
     }
 
     #[test]
