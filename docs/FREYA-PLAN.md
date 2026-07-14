@@ -286,7 +286,7 @@ gnoblin window rules keep matching):
 | bar | per-output | TOP+L+R, m 10/12/12, exclusive | top / none | clock poll, gnoblin title, status pill (amber on disconnect), bell+badge, tray |
 | dock | per-output | BOTTOM | top / none | pins + gnoblin dots (absolute overlays), click/scroll/middle/right-click model, media tile |
 | toasts | per-output | TOP+RIGHT, m 58/12 | top / none | hidden while drawer open; 3.8s expiry; translucent card (blur = gnoblin rule) |
-| osd | per-output | BOTTOM, m 72 | top / none | **empty input region**; volume events; 1.4s auto-hide; add mute-change trigger (known gap) |
+| osd | per-output | BOTTOM, m 72 | top / none | **empty input region**; volume events; 1.4s auto-hide; ~~add mute-change trigger (known gap)~~ resolved -- `osd.rs`'s reveal dependency is `(volume, muted)`, so a mute-only toggle (unchanged level) reveals the pill too |
 | launcher | singleton | TOP, m 56 | top / Exclusive when open | custom text field (ghost autocomplete, faux placeholder), sections, `:` commands, `=` calc, tile grid |
 | quicksettings | singleton | TOP+RIGHT | top / OnDemand | chip grid, drill stack (wifi/bt/mixer) with slide motion, sliders, gnoblin banner |
 | calendar | singleton | TOP | top / OnDemand | grid w/ week numbers, event dots (absolute), month nav; events stay hardcoded for now |
