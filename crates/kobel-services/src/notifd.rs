@@ -1,14 +1,13 @@
-//! Notification daemon: WE OWN org.freedesktop.Notifications (the AGS AstalNotifd
-//! replacement, docs/FREYA-PLAN.md section 5). A zbus SERVER interface at
-//! /org/freedesktop/Notifications backs the contract types below.
+//! `org.freedesktop.Notifications` server backed by a zbus interface at
+//! `/org/freedesktop/Notifications`.
 //!
 //! Ownership handshake: we try to grab the well-known name WITHOUT replacement
 //! first. If it is held (gnoblin or gnome-shell), we ask the gnoblin compositor
 //! to `SetFeature("notifications", false)` -- which frees the name in a gnoblin
-//! session -- then retry for a few seconds. On a plain host desktop gnome-shell
-//! keeps the name; we log once, stay quiet, and run unserved (the persisted
-//! store still drives the drawer, but no external Notify calls arrive). On
-//! shutdown the name is released and the feature handed back.
+//! session -- then retry for a few seconds. On a plain host desktop GNOME Shell
+//! keeps the name; the service logs once and continues unserved, preserving its
+//! local store for snapshot consumers. Shutdown releases the name and hands the
+//! compositor feature back.
 //!
 //! The store is the source of truth: newest-first, capped at 50, persisted as
 //! JSON under $XDG_STATE_HOME/kobel/notifications.json (do-not-disturb included).
@@ -278,14 +277,10 @@ fn write_persisted(path: &Path, persisted: &Persisted) {
         tracing::warn!("[notifd] cannot create state dir {}: {e}", parent.display());
         return;
     }
-    // Crash-safe: write a sibling temp file then rename over the target, so a
-    // crash or full disk can never truncate the sole store (same pattern as the
-    // launcher frecency store). The temp file is opened with mode 0600 set
-    // ATOMICALLY at creation (OpenOptions::mode, not a separate set_permissions
-    // call after the fact) so there is no window, however narrow, where it
-    // exists at the loose umask-masked default -- notification content
-    // (summaries/bodies can carry OTP codes, email/chat previews, etc.) is
-    // sensitive enough to close that race, not just fix the steady state.
+    // Crash-safe: write a sibling temp file then rename it over the target, so a
+    // crash or full disk cannot truncate the sole store. Mode 0600 is applied
+    // atomically at creation rather than by a later permission change, closing the
+    // window where notification bodies could be exposed under a loose umask.
     let tmp = path.with_extension("json.tmp");
     match serde_json::to_string_pretty(persisted) {
         Ok(json) => {

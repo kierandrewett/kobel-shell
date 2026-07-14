@@ -8,21 +8,10 @@ use std::time::Duration;
 
 use kobel_services::{ServiceEvent, Services, TrayMenuItem};
 
-/// The six dock pins the shell ships with; we report whether each resolves via
-/// `AppsSnapshot::by_id` and whether an icon file was found.
-const PINS: &[&str] = &[
-    "org.gnome.Ptyxis",
-    "org.gnome.Nautilus",
-    "firefox",
-    "dev.zed.Zed",
-    "com.spotify.Client",
-    "org.gnome.Settings",
-];
-
 /// Total nodes in a menu subtree (the item itself plus all descendants), so the
 /// probe reports the full DBusMenu size, not just the top-level row count.
 fn count_menu_items(item: &TrayMenuItem) -> usize {
-    1 + item.children.iter().map(count_menu_items).sum::<usize>()
+    1 + item.submenu.iter().map(count_menu_items).sum::<usize>()
 }
 
 fn main() {
@@ -36,23 +25,13 @@ fn main() {
     tracing::info!("[probe] starting kobel-services (read-only; no commands sent)");
 
     let handle = Services::spawn(|event: ServiceEvent| match &event {
-        // The apps list is hundreds of entries; print a concise summary plus the
-        // pin resolution instead of the full Debug dump.
+        // The apps list is large, so report counts instead of dumping every entry.
         ServiceEvent::Apps(snapshot) => {
-            println!("[probe] Apps snapshot: {} visible entries", snapshot.apps.len());
-            for pin in PINS {
-                match snapshot.by_id(pin) {
-                    Some(app) => {
-                        let icon = app
-                            .icon
-                            .as_ref()
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_else(|| "<no icon>".to_string());
-                        println!("[probe]   {pin} -> id={} icon={}", app.id, icon);
-                    }
-                    None => println!("[probe]   {pin} -> <not found>"),
-                }
-            }
+            let resolved_icons = snapshot.apps.iter().filter(|app| app.icon.is_some()).count();
+            println!(
+                "[probe] Apps snapshot: {} visible entries, {resolved_icons} resolved icons",
+                snapshot.apps.len(),
+            );
         }
         // Report which tray items expose a DBusMenu and how many items it has.
         ServiceEvent::Tray(snapshot) => {
@@ -60,14 +39,18 @@ fn main() {
             for item in &snapshot.items {
                 match &item.menu {
                     Some(menu) => {
-                        let top = menu.items.len();
-                        let total = menu.items.iter().map(count_menu_items).sum::<usize>();
+                        let top = menu.submenus.len();
+                        let total = menu.submenus.iter().map(count_menu_items).sum::<usize>();
+                        let title = item.protocol.title.as_deref().unwrap_or(&item.protocol.id);
                         println!(
-                            "[probe]   {} ({}) -> menu: {top} top-level, {total} total item(s)",
-                            item.title, item.address,
+                            "[probe]   {title} ({}) -> menu: {top} top-level, {total} total item(s)",
+                            item.address,
                         );
                     }
-                    None => println!("[probe]   {} ({}) -> no menu", item.title, item.address,),
+                    None => {
+                        let title = item.protocol.title.as_deref().unwrap_or(&item.protocol.id);
+                        println!("[probe]   {title} ({}) -> no menu", item.address);
+                    }
                 }
             }
         }

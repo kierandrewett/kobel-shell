@@ -36,7 +36,7 @@ pub struct AppEntry {
     pub name: String,
     /// Resolved icon file (theme lookup already done; png or svg path).
     pub icon: Option<PathBuf>,
-    /// Search terms (name + keywords + generic name), lowercased, for the launcher.
+    /// Lowercased name, generic name and desktop-entry keywords for search.
     pub keywords: Vec<String>,
 }
 
@@ -48,8 +48,8 @@ pub struct AppsSnapshot {
 }
 
 impl AppsSnapshot {
-    /// Look up an entry by desktop id (exact match, then last-dot-component
-    /// fallback like the AGS dock used for loose pins).
+    /// Look up an entry by desktop id, then fall back to a case-insensitive match
+    /// against the final dot-separated component.
     pub fn by_id(&self, id: &str) -> Option<&AppEntry> {
         self.apps.iter().find(|a| a.id == id).or_else(|| {
             let last = id.rsplit('.').next().unwrap_or(id).to_lowercase();
@@ -230,15 +230,14 @@ fn scan() -> (AppsSnapshot, HashMap<String, PathBuf>) {
             keywords,
         });
     }
-    // Stable, case-insensitive display order (fuzzy/frecency ranking is a later
-    // phase); dedup already guarantees unique ids so ordering is cosmetic.
+    // Stable, case-insensitive display order. Consumers may apply their own ranking;
+    // deduplication already guarantees unique ids.
     apps.sort_by_key(|a| a.name.to_lowercase());
 
     (AppsSnapshot { apps }, paths)
 }
 
-/// Search terms for the launcher: lowercased name + GenericName + Keywords,
-/// de-duplicated, blanks dropped.
+/// Lowercased name, GenericName and Keywords, de-duplicated with blanks removed.
 fn build_keywords(entry: &DesktopEntry, name: &str, locales: &[String]) -> Vec<String> {
     let mut keywords = Vec::new();
     add_keyword(&mut keywords, name);
@@ -405,8 +404,7 @@ mod tests {
 
     #[test]
     fn by_id_falls_back_to_last_dot_component_case_insensitively() {
-        // A loose pin (e.g. "Firefox" or "firefox") matches the desktop id's
-        // last dot-component the way the AGS dock's pin resolution did.
+        // A loose id such as "Firefox" matches the final desktop-id component.
         let snap = AppsSnapshot {
             apps: vec![app("org.mozilla.firefox", "Firefox")],
         };

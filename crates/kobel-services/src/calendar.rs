@@ -2,11 +2,10 @@
 //! `org.gnome.Shell.CalendarServer` D-Bus service (implemented by
 //! `gnome-shell-calendar-server`, backed by Evolution Data Server), the exact
 //! source GNOME Calendar and the GNOME Shell clock dropdown read. Whatever's
-//! configured system-wide via GNOME Online Accounts / local EDS calendars shows
-//! up automatically -- deliberately no kobel-shell-specific config file, unlike
-//! the dock's pin list. Like every other source in this crate, it fans a typed
-//! [`CalendarSnapshot`] into the UI over `ServiceEvent`; the UI never touches
-//! D-Bus (docs/FREYA-PLAN.md section 5).
+//! configured system-wide through GNOME Online Accounts or local EDS calendars
+//! appears automatically, with no kobel-specific configuration. Like every other
+//! source in this crate, it emits typed [`CalendarSnapshot`] values over
+//! [`ServiceEvent`] so consumers do not need to access D-Bus directly.
 //!
 //! Live-verified interface (gdbus introspect against a running gnoblin session;
 //! gnoblin ships its own copy of gnome-shell-calendar-server, so this works
@@ -46,10 +45,9 @@ pub(crate) enum CalendarCommand {
     SetRange { since: i64, until: i64 },
 }
 
-/// One calendar event resolved for display. `all_day` is computed here (pure
-/// epoch math, see [`is_all_day`]); the UI keys events by their local start day
-/// and formats the time. `uid` is the server's stable per-occurrence id used as
-/// the live cache key so `EventsRemoved` can drop exactly the right entries.
+/// One calendar event. `all_day` is computed from epoch boundaries (see
+/// [`is_all_day`]); `uid` is the server's stable per-occurrence identifier used
+/// as the live cache key.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CalendarEvent {
     pub uid: String,
@@ -59,9 +57,8 @@ pub struct CalendarEvent {
     pub all_day: bool,
 }
 
-/// Snapshot fanned to the UI on every cache change. `has_calendars` false means
-/// no EDS calendars are configured -- the UI shows its "No events" empty state,
-/// same as an empty `events`.
+/// Snapshot emitted on every cache change. `has_calendars` is false when no EDS
+/// calendars are configured; `events` may be empty in either state.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CalendarSnapshot {
     pub has_calendars: bool,
@@ -124,13 +121,20 @@ fn raw_to_event(raw: RawEvent) -> CalendarEvent {
     }
 }
 
-/// Build a snapshot from the current cache (HashMap iteration order is
-/// unspecified, but the UI re-groups by day, so order does not matter).
+/// Build a deterministic chronological snapshot from the current cache.
 fn snapshot(has_calendars: bool, cache: &HashMap<String, CalendarEvent>) -> CalendarSnapshot {
-    CalendarSnapshot {
-        has_calendars,
-        events: cache.values().cloned().collect(),
-    }
+    let mut events = cache.values().cloned().collect::<Vec<_>>();
+    sort_calendar_events(&mut events);
+    CalendarSnapshot { has_calendars, events }
+}
+
+fn sort_calendar_events(events: &mut [CalendarEvent]) {
+    events.sort_by(|a, b| {
+        a.start_epoch
+            .cmp(&b.start_epoch)
+            .then(a.end_epoch.cmp(&b.end_epoch))
+            .then_with(|| a.uid.cmp(&b.uid))
+    });
 }
 
 /// Calendar service task. Connects once, subscribes to `EventsAddedOrUpdated` +
@@ -309,5 +313,45 @@ mod tests {
         let ev = raw_to_event(timed);
         assert!(!ev.all_day);
         assert_eq!(ev.start_epoch, epoch(2026, 7, 6, 9, 45));
+    }
+    #[test]
+    fn calendar_events_have_a_stable_chronological_order() {
+        let mut events = vec![
+            CalendarEvent {
+                uid: "delta".to_string(),
+                summary: String::new(),
+                start_epoch: 20,
+                end_epoch: 30,
+                all_day: false,
+            },
+            CalendarEvent {
+                uid: "zulu".to_string(),
+                summary: String::new(),
+                start_epoch: 10,
+                end_epoch: 15,
+                all_day: false,
+            },
+            CalendarEvent {
+                uid: "alpha".to_string(),
+                summary: String::new(),
+                start_epoch: 10,
+                end_epoch: 15,
+                all_day: false,
+            },
+            CalendarEvent {
+                uid: "beta".to_string(),
+                summary: String::new(),
+                start_epoch: 10,
+                end_epoch: 20,
+                all_day: false,
+            },
+        ];
+
+        sort_calendar_events(&mut events);
+
+        assert_eq!(
+            events.iter().map(|event| event.uid.as_str()).collect::<Vec<_>>(),
+            vec!["alpha", "zulu", "beta", "delta"],
+        );
     }
 }

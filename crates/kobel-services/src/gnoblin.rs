@@ -1,25 +1,9 @@
-//! org.gnoblin.Shell proxy: the compositor link. Faithful port of
-//! ags/services/gnoblin.ts: reload, feature toggles, and the connected/amber
-//! state driven by a NameOwnerChanged watch.
+//! `org.gnoblin.Shell` proxy for script reloads, compositor feature toggles and
+//! connection state driven by `NameOwnerChanged`.
 //!
-//! Window list/activate/minimize/close do NOT live here, and never have.
-//! `org.gnoblin.Shell`'s wire contract (`/home/kieran/dev/gnoblin/src/
-//! gnome-shell-overlay/js/ui/components/gnoblinControl.js`, the `IFACE` XML) has
-//! never had a `ListWindows`/`ActivateWindow`/`MinimizeWindow`/`WindowsChanged`
-//! method or signal -- an earlier version of this module called them anyway (a
-//! leftover assumption from the pre-Freya AGS plan that gnoblin would grow window
-//! methods on this bus), and briefly after that a `GnoblinSnapshot.windows` field
-//! existed here as a dead, permanently-empty parallel model of
-//! `kobel_wayland::ToplevelInfo` (nothing ever populated it -- removed once that
-//! became clear, rather than keep documenting a contract with no writer). Window
-//! control belongs to the WLR **Wayland protocol**
-//! `zwlr_foreign_toplevel_manager_v1`, which gnoblin's mutter already implements
-//! natively and gates on by default (`wlr-foreign-toplevel-management = true` in
-//! `gnoblin.conf.example`) -- no gnoblin-repo change was needed. See
-//! `crates/kobel-wayland/src/toplevel.rs` + `conn.rs` for the real client:
-//! `Control::toplevels()` is the single source of truth, consumed directly by
-//! whichever concrete UI needs a window list (nothing does yet -- `kobel-ui` is
-//! still the empty, human-owned scaffold).
+//! Window discovery and control do not belong to this D-Bus interface. They use
+//! `zwlr_foreign_toplevel_manager_v1` through `kobel_wayland::Control`, whose
+//! `toplevels` snapshot is the single source of truth.
 
 use futures_util::StreamExt;
 use futures_util::stream::BoxStream;

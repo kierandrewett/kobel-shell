@@ -38,7 +38,8 @@ pub use network::{AccessPointInfo, NetworkSnapshot};
 pub use notifd::{NotifdSnapshot, Notification};
 pub use sysctl::{BrightnessSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot};
 pub use tray::{
-    TrayIcon, TrayItem, TrayMenu, TrayMenuItem, TrayMenuItemKind, TraySnapshot, TrayToggle, TrayToggleKind,
+    TrayCategory, TrayIcon, TrayItem, TrayMenu, TrayMenuDisposition, TrayMenuItem, TrayMenuItemKind, TrayProtocolItem,
+    TrayScrollOrientation, TraySnapshot, TrayStatus, TrayToggleKind, TrayToggleState, TrayTooltip,
 };
 
 use apps::AppsCommand;
@@ -119,15 +120,14 @@ pub enum Command {
     MediaNext,
     /// media: previous track on the active player.
     MediaPrevious,
-    /// exec: run a session verb (lock/logout/restart/shutdown/suspend). The
-    /// SERVICE spawns the underlying command; UI components never run processes.
+    /// exec: run a session verb (lock/logout/restart/shutdown/suspend). The service
+    /// owns process creation; callers send only the typed command.
     Session(SessionVerb),
     /// exec: open a URI with the default handler (xdg-open).
     OpenUri(String),
     /// exec: copy text to the Wayland clipboard (wl-copy).
     CopyText(String),
-    /// gnoblin: reload user scripts (org.gnoblin.Shell.ReloadScripts). Typed --
-    /// the launcher's `:` command rows map to these variants, never raw argv.
+    /// gnoblin: reload user scripts (org.gnoblin.Shell.ReloadScripts).
     ReloadScripts,
     /// gnoblin: reload one extension by uuid (org.gnoblin.Shell.ReloadExtension).
     ReloadExtension(String),
@@ -149,7 +149,7 @@ pub enum Command {
     SetDarkStyle(bool),
     /// settings: toggle GNOME night light.
     SetNightLight(bool),
-    /// notifd: set do-not-disturb (toasts suppressed, store still fills).
+    /// notifd: set do-not-disturb while continuing to store notifications.
     SetDnd(bool),
     /// notifd: dismiss one notification by id (emits NotificationClosed).
     CloseNotification(u32),
@@ -157,23 +157,28 @@ pub enum Command {
     ClearNotifications,
     /// notifd: invoke a notification action (emits ActionInvoked).
     InvokeNotificationAction { id: u32, action_key: String },
-    /// tray: primary-activate an item by address (left click).
-    ActivateTrayItem(String),
-    /// tray: secondary-activate an item by address (middle click).
-    SecondaryActivateTrayItem(String),
-    /// tray: fire the item's DBusMenu `AboutToShow` before its menu is shown,
-    /// per the com.canonical.dbusmenu contract. Address is the item's bus name.
-    TrayMenuAboutToShow { address: String },
+    /// tray: primary-activate an item with a screen-coordinate placement hint.
+    ActivateTrayItem { address: String, x: i32, y: i32 },
+    /// tray: secondary-activate an item with a screen-coordinate placement hint.
+    SecondaryActivateTrayItem { address: String, x: i32, y: i32 },
+    /// tray: ask an item to open its context menu at a screen-coordinate hint.
+    ContextMenuTrayItem { address: String, x: i32, y: i32 },
+    /// tray: forward a scroll gesture with its protocol orientation.
+    ScrollTrayItem {
+        address: String,
+        delta: i32,
+        orientation: TrayScrollOrientation,
+    },
+    /// tray: fire DBusMenu `AboutToShow` for a menu item before displaying it.
+    TrayMenuAboutToShow { address: String, item_id: i32 },
     /// tray: send a DBusMenu `clicked` event for a menu item (proper timestamp
     /// supplied by the crate). `item_id` is the DBusMenu numeric id.
     TrayMenuClicked { address: String, item_id: i32 },
-    /// calendar: query events for a local-day epoch range `[since, until)` (one
-    /// viewed month). Routed to the calendar service's persistent subscription.
+    /// calendar: query events for an epoch range `[since, until)`.
     SetCalendarRange { since: i64, until: i64 },
 }
 
-/// A session-control verb, executed by the exec service (docs/FREYA-PLAN.md
-/// section 5: loginctl / gnome-session-quit / systemctl).
+/// A session-control verb executed by the exec service.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionVerb {
     Lock,
@@ -375,14 +380,28 @@ async fn run(
                 Command::SetNightLight(on) => {
                     let _ = settings_tx.send(SettingsCommand::SetNightLight(on));
                 }
-                Command::ActivateTrayItem(address) => {
-                    let _ = tray_tx.send(TrayCommand::Activate(address));
+                Command::ActivateTrayItem { address, x, y } => {
+                    let _ = tray_tx.send(TrayCommand::Activate { address, x, y });
                 }
-                Command::SecondaryActivateTrayItem(address) => {
-                    let _ = tray_tx.send(TrayCommand::SecondaryActivate(address));
+                Command::SecondaryActivateTrayItem { address, x, y } => {
+                    let _ = tray_tx.send(TrayCommand::SecondaryActivate { address, x, y });
                 }
-                Command::TrayMenuAboutToShow { address } => {
-                    let _ = tray_tx.send(TrayCommand::MenuAboutToShow(address));
+                Command::ContextMenuTrayItem { address, x, y } => {
+                    let _ = tray_tx.send(TrayCommand::ContextMenu { address, x, y });
+                }
+                Command::ScrollTrayItem {
+                    address,
+                    delta,
+                    orientation,
+                } => {
+                    let _ = tray_tx.send(TrayCommand::Scroll {
+                        address,
+                        delta,
+                        orientation,
+                    });
+                }
+                Command::TrayMenuAboutToShow { address, item_id } => {
+                    let _ = tray_tx.send(TrayCommand::MenuAboutToShow { address, item_id });
                 }
                 Command::TrayMenuClicked { address, item_id } => {
                     let _ = tray_tx.send(TrayCommand::MenuClicked { address, item_id });

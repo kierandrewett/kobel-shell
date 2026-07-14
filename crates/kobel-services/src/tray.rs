@@ -1,24 +1,45 @@
-//! StatusNotifier tray host (the AGS AstalTray replacement) via the
-//! `system-tray` crate (JakeStanger's async SNI watcher/host, the same one
-//! ironbar uses). We run its `Client` -- which starts an
-//! `org.kde.StatusNotifierWatcher` and registers us as a host -- on the
-//! services runtime, then translate its item events into `TraySnapshot`.
+//! StatusNotifierItem host built on the `system-tray` crate. Its client starts an
+//! `org.kde.StatusNotifierWatcher`, registers this process as a host and emits item
+//! changes, which this module converts into plain [`TraySnapshot`] values.
 //!
-//! Items + activate + DBusMenu tree/actions. The `system-tray` crate already
-//! tracks each item's `com.canonical.dbusmenu` layout in its item map (the
-//! `data` feature) and re-emits it on menu-update events; we translate that
-//! tree into a plain `TrayMenu` snapshot and route about-to-show / clicked
-//! calls back. Menu UI is a shared popup component (`kobel-shell`'s
-//! `ui/menu.rs`), wired from the bar's tray row on right-click.
+//! `system-tray` also tracks each item's `com.canonical.dbusmenu` layout. This module
+//! converts that tree into [`TrayMenu`] data and routes activate, about-to-show and
+//! clicked commands back to the owning item. Presentation remains the caller's
+//! responsibility.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use system_tray::client::{ActivateRequest, Client, Event};
-use system_tray::item::{IconPixmap, StatusNotifierItem};
-use system_tray::menu::{MenuItem as SniMenuItem, MenuType, ToggleState, ToggleType, TrayMenu as SniMenu};
+use system_tray::item::IconPixmap;
+pub use system_tray::item::{
+    Category as TrayCategory, Status as TrayStatus, StatusNotifierItem as TrayProtocolItem, Tooltip as TrayTooltip,
+};
+pub use system_tray::menu::{
+    Disposition as TrayMenuDisposition, MenuItem as TrayMenuItem, MenuType as TrayMenuItemKind,
+    ToggleState as TrayToggleState, ToggleType as TrayToggleKind, TrayMenu,
+};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use zbus::Connection;
+
+#[zbus::proxy(interface = "org.kde.StatusNotifierItem")]
+trait StatusNotifierActions {
+    fn context_menu(&self, x: i32, y: i32) -> zbus::Result<()>;
+    fn scroll(&self, delta: i32, orientation: &str) -> zbus::Result<()>;
+    fn activate(&self, x: i32, y: i32) -> zbus::Result<()>;
+    fn secondary_activate(&self, x: i32, y: i32) -> zbus::Result<()>;
+}
+
+#[zbus::proxy(
+    interface = "org.kde.StatusNotifierWatcher",
+    default_service = "org.kde.StatusNotifierWatcher",
+    default_path = "/StatusNotifierWatcher"
+)]
+trait StatusNotifierWatcherQuery {
+    #[zbus(property)]
+    fn registered_status_notifier_items(&self) -> zbus::Result<Vec<String>>;
+}
 
 use crate::ServiceEvent;
 
@@ -45,32 +66,32 @@ const SCALABLE_ICON_SIZE: u16 = 512;
 /// more" under attack, never anything worse.
 const ICON_CACHE_CAP: usize = 512;
 
-/// One StatusNotifierItem as the bar renders it.
-#[derive(Debug, Clone, PartialEq)]
+/// One StatusNotifierItem with its complete protocol data and host-derived
+/// conveniences kept separate.
+#[derive(Debug, Clone)]
 pub struct TrayItem {
     /// The item's bus address (stable key, used by activate commands).
     pub address: String,
-    pub title: String,
-    pub tooltip: Option<String>,
-    /// Resolved icon: a theme/file path when available, else raw ARGB32 pixmap
-    /// bytes with dimensions.
-    pub icon: TrayIcon,
-    /// The item's DBusMenu tree, if it advertised a `com.canonical.dbusmenu`
-    /// object and the crate has fetched its layout. `None` while the layout is
-    /// still loading or if the item exposes no menu.
+    /// Registered SNI object path. `None` only when the watcher query failed.
+    pub object_path: Option<String>,
+    /// Complete StatusNotifierItem properties from the pinned `system-tray`
+    /// protocol model, including status, category, attention/overlay icons,
+    /// structured tooltip data and activation policy.
+    pub protocol: TrayProtocolItem,
+    /// The primary icon resolved against the current icon theme for convenience.
+    /// Raw icon names and every supplied pixmap remain available in `protocol`.
+    pub resolved_icon: TrayIcon,
+    /// The complete DBusMenu tree, if the item advertised one and its layout has
+    /// loaded. Labels, icons, shortcuts, dispositions and toggle states are
+    /// preserved verbatim.
     pub menu: Option<TrayMenu>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TrayIcon {
-    Path(std::path::PathBuf),
-    /// Raw icon bitmap taken verbatim from the SNI `IconPixmap` property.
-    ///
-    /// Byte order is ARGB32 in NETWORK (big-endian) byte order, i.e. each pixel
-    /// is four bytes `[A, R, G, B]`, exactly as delivered over the bus (see the
-    /// StatusNotifierItem spec, "Icons"). The bytes are kept as-is; a renderer
-    /// wanting Skia's little-endian BGRA8888/`N32` layout must byte-swap per
-    /// pixel (`A,R,G,B` -> `B,G,R,A`).
+    Path(PathBuf),
+    /// Highest-resolution valid primary icon bitmap, retained in the SNI's
+    /// network-order ARGB32 byte layout.
     Pixmap {
         width: u32,
         height: u32,
@@ -79,70 +100,43 @@ pub enum TrayIcon {
     None,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct TraySnapshot {
     pub items: Vec<TrayItem>,
 }
 
-/// A tray item's DBusMenu (`com.canonical.dbusmenu`) tree, flattened to plain
-/// data the UI can render directly. Built from the `system-tray` crate's own
-/// layout via [`convert_menu`]; `items` are the root menu's children.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct TrayMenu {
-    pub items: Vec<TrayMenuItem>,
-}
-
-/// One node in a [`TrayMenu`]. Ids are the DBusMenu numeric item ids used by
-/// the clicked/about-to-show calls; `children` is non-empty for submenus.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TrayMenuItem {
-    /// DBusMenu numeric id, passed back verbatim on a `TrayMenuClicked`.
-    pub id: i32,
-    /// Display label with GTK/DBusMenu underscore mnemonics stripped (see
-    /// [`strip_mnemonics`]). Empty when the item carries no label.
-    pub label: String,
-    /// Whether the item can be activated.
-    pub enabled: bool,
-    /// Whether the item should be shown at all.
-    pub visible: bool,
-    /// Standard row or a separator line.
-    pub kind: TrayMenuItemKind,
-    /// Present only for checkmark/radio items; carries the current on-state.
-    pub toggle: Option<TrayToggle>,
-    /// Nested submenu items (empty for leaves).
-    pub children: Vec<TrayMenuItem>,
-}
-
+/// Axis reported to the StatusNotifierItem `Scroll` method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrayMenuItemKind {
-    Standard,
-    Separator,
+pub enum TrayScrollOrientation {
+    Horizontal,
+    Vertical,
 }
 
-/// Toggle state of a checkmark/radio menu item.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TrayToggle {
-    pub kind: TrayToggleKind,
-    /// True when the item is toggled on. DBusMenu's `Indeterminate` maps to
-    /// `false` (neither on nor a distinct tri-state in the UI model).
-    pub on: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrayToggleKind {
-    Check,
-    Radio,
+impl TrayScrollOrientation {
+    fn as_dbus_str(self) -> &'static str {
+        match self {
+            Self::Horizontal => "horizontal",
+            Self::Vertical => "vertical",
+        }
+    }
 }
 
 /// Command routed to the tray task; acts on an item by its bus address.
 pub(crate) enum TrayCommand {
-    /// Primary activation (left click): `Activate(x, y)` with x=y=0.
-    Activate(String),
-    /// Secondary activation (middle click): `SecondaryActivate(x, y)`, x=y=0.
-    SecondaryActivate(String),
-    /// DBusMenu `AboutToShow` on the root menu (id 0) before it is displayed,
-    /// per the com.canonical.dbusmenu contract. Address is the item's bus name.
-    MenuAboutToShow(String),
+    /// Primary activation with the caller's screen-coordinate placement hint.
+    Activate { address: String, x: i32, y: i32 },
+    /// Secondary activation with the caller's screen-coordinate placement hint.
+    SecondaryActivate { address: String, x: i32, y: i32 },
+    /// Ask the item to open its own context menu at a screen-coordinate hint.
+    ContextMenu { address: String, x: i32, y: i32 },
+    /// Forward a scroll gesture without choosing a UI-specific interpretation.
+    Scroll {
+        address: String,
+        delta: i32,
+        orientation: TrayScrollOrientation,
+    },
+    /// DBusMenu `AboutToShow` for any menu item.
+    MenuAboutToShow { address: String, item_id: i32 },
     /// DBusMenu `Event("clicked", ...)` for one item, with a proper timestamp
     /// supplied by the crate. Address is the item's bus name.
     MenuClicked { address: String, item_id: i32 },
@@ -164,10 +158,21 @@ pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: Unbou
             return;
         }
     };
+    let action_connection = match Connection::session().await {
+        Ok(connection) => Some(connection),
+        Err(error) => {
+            tracing::warn!("[tray] action connection unavailable: {error}");
+            None
+        }
+    };
 
     // Subscribe BEFORE the first snapshot: the crate recommends new -> subscribe
     // -> read state so no registration is missed in the gap.
     let mut tray_rx = client.subscribe();
+    let mut item_paths = match action_connection.as_ref() {
+        Some(connection) => refresh_registered_item_paths(connection).await.unwrap_or_default(),
+        None => HashMap::new(),
+    };
     // The user's icon theme is read once (matches apps.rs). A live theme switch
     // is not tracked; icons re-resolve whenever an item next changes.
     let theme = current_icon_theme();
@@ -179,25 +184,44 @@ pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: Unbou
 
     // Baseline emit so the UI has an initial (possibly empty) snapshot; real
     // content follows as items register and fire Add events.
-    emit_snapshot(&events, &client, theme.as_deref(), &mut icon_cache).await;
+    emit_snapshot(&events, &client, &item_paths, theme.as_deref(), &mut icon_cache).await;
 
     loop {
         tokio::select! {
             event = tray_rx.recv() => match event {
                 Ok(event) => {
                     match &event {
-                        Event::Add(addr, _) => tracing::debug!("[tray] item added: {addr}"),
-                        Event::Remove(addr) => tracing::debug!("[tray] item removed: {addr}"),
+                        Event::Add(addr, _) => {
+                            tracing::debug!("[tray] item added: {addr}");
+                            if let Some(connection) = action_connection.as_ref()
+                                && let Some(refreshed) = refresh_registered_item_paths(connection).await
+                            {
+                                item_paths = refreshed;
+                            }
+                        }
+                        Event::Remove(addr) => {
+                            tracing::debug!("[tray] item removed: {addr}");
+                            if let Some(connection) = action_connection.as_ref()
+                                && let Some(refreshed) = refresh_registered_item_paths(connection).await
+                            {
+                                item_paths = refreshed;
+                            }
+                        }
                         Event::Update(addr, _) => tracing::trace!("[tray] item updated: {addr}"),
                     }
                     // Every add/remove/update re-emits a fresh sorted snapshot.
                     // Menu-only updates leave the item fields untouched, so the
                     // rebuilt snapshot is identical and harmless.
-                    emit_snapshot(&events, &client, theme.as_deref(), &mut icon_cache).await;
+                    emit_snapshot(&events, &client, &item_paths, theme.as_deref(), &mut icon_cache).await;
                 }
                 Err(RecvError::Lagged(n)) => {
                     tracing::warn!("[tray] event stream lagged, dropped {n}; resyncing");
-                    emit_snapshot(&events, &client, theme.as_deref(), &mut icon_cache).await;
+                    if let Some(connection) = action_connection.as_ref()
+                        && let Some(refreshed) = refresh_registered_item_paths(connection).await
+                    {
+                        item_paths = refreshed;
+                    }
+                    emit_snapshot(&events, &client, &item_paths, theme.as_deref(), &mut icon_cache).await;
                 }
                 Err(RecvError::Closed) => {
                     tracing::warn!("[tray] event stream closed");
@@ -205,15 +229,16 @@ pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: Unbou
                 }
             },
             cmd = cmd_rx.recv() => match cmd {
-                // zbus method calls (system-tray's activate/about-to-show
-                // wrappers) have no default deadline, and this loop processes
-                // one command at a time -- a single hung/broken SNI tray item
-                // (never replying on the bus) would otherwise block every
-                // OTHER item's clicks and every item add/remove/update event
-                // indefinitely. crate::with_command_timeout bounds it so one
-                // bad tray app degrades to "this click did nothing", not
-                // "the whole tray is dead until the shell restarts".
-                Some(cmd) => crate::with_command_timeout("tray", handle_command(&client, cmd)).await,
+                // D-Bus methods have no default deadline and this loop processes
+                // one command at a time. Bound each request so one broken item
+                // cannot block every other item and snapshot update.
+                Some(cmd) => {
+                    crate::with_command_timeout(
+                        "tray",
+                        handle_command(&client, action_connection.as_ref(), &item_paths, cmd),
+                    )
+                    .await
+                }
                 None => break,
             },
         }
@@ -235,11 +260,12 @@ type IconKey = (String, Option<String>, Option<String>);
 async fn emit_snapshot(
     events: &UnboundedSender<ServiceEvent>,
     client: &Client,
+    item_paths: &HashMap<String, String>,
     theme: Option<&str>,
     icon_cache: &mut HashMap<IconKey, Option<PathBuf>>,
 ) {
     let map = client.items();
-    let raw: Vec<(String, StatusNotifierItem, Option<SniMenu>)> = {
+    let raw: Vec<(String, TrayProtocolItem, Option<TrayMenu>)> = {
         let guard = map.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         guard
             .iter()
@@ -248,14 +274,15 @@ async fn emit_snapshot(
     };
 
     let mut items: Vec<TrayItem> = Vec::with_capacity(raw.len());
-    for (address, item, menu) in &raw {
-        let icon = resolve_icon_cached(item, theme, icon_cache).await;
+    for (address, protocol, menu) in raw {
+        let resolved_icon = resolve_icon_cached(&protocol, theme, icon_cache).await;
+        let object_path = item_paths.get(&address).cloned();
         items.push(TrayItem {
-            address: address.clone(),
-            title: item.title.clone().unwrap_or_else(|| item.id.clone()),
-            tooltip: tooltip_text(item),
-            icon,
-            menu: menu.as_ref().map(convert_menu),
+            address,
+            object_path,
+            protocol,
+            resolved_icon,
+            menu,
         });
     }
     // HashMap iteration is unordered; sort by address for determinism.
@@ -269,7 +296,7 @@ async fn emit_snapshot(
 /// `IconThemePath`); fall back to the largest provided ARGB pixmap (in-memory);
 /// else `None`.
 async fn resolve_icon_cached(
-    item: &StatusNotifierItem,
+    item: &TrayProtocolItem,
     theme: Option<&str>,
     icon_cache: &mut HashMap<IconKey, Option<PathBuf>>,
 ) -> TrayIcon {
@@ -322,29 +349,72 @@ where
     found
 }
 
-/// Route a command to the SNI item / its DBusMenu.
+/// Route a command to the SNI item or its DBusMenu.
 ///
-/// Activate/SecondaryActivate use x=y=0 (we have no screen-position hint to
-/// offer; items use it only to place their own popups). Menu commands need the
-/// item's `com.canonical.dbusmenu` object path, which lives on the item's
-/// `menu` property; we resolve it from the crate's item map by address.
-async fn handle_command(client: &Client, cmd: TrayCommand) {
+/// Menu commands need the item's `com.canonical.dbusmenu` object path, which
+/// lives on the item's `menu` property; resolve it by bus address.
+async fn handle_command(
+    client: &Client,
+    action_connection: Option<&Connection>,
+    item_paths: &HashMap<String, String>,
+    cmd: TrayCommand,
+) {
     match cmd {
-        TrayCommand::Activate(address) => {
-            activate(client, ActivateRequest::Default { address, x: 0, y: 0 }).await;
+        TrayCommand::Activate { address, x, y } => {
+            let (Some(connection), Some(path)) = (action_connection, item_paths.get(&address)) else {
+                tracing::warn!("[tray] activate ignored: no object path for {address}");
+                return;
+            };
+            if let Err(error) = primary_activate(connection, &address, path, x, y).await {
+                tracing::warn!("[tray] activate failed: {error}");
+            }
         }
-        TrayCommand::SecondaryActivate(address) => {
-            activate(client, ActivateRequest::Secondary { address, x: 0, y: 0 }).await;
+        TrayCommand::SecondaryActivate { address, x, y } => {
+            let (Some(connection), Some(path)) = (action_connection, item_paths.get(&address)) else {
+                tracing::warn!("[tray] secondary activate ignored: no object path for {address}");
+                return;
+            };
+            if let Err(error) = secondary_activate(connection, &address, path, x, y).await {
+                tracing::warn!("[tray] secondary activate failed: {error}");
+            }
         }
-        TrayCommand::MenuAboutToShow(address) => {
+        TrayCommand::ContextMenu { address, x, y } => {
+            let Some(connection) = action_connection else {
+                tracing::warn!("[tray] context menu ignored: no action connection");
+                return;
+            };
+            let Some(path) = item_paths.get(&address) else {
+                tracing::warn!("[tray] context menu: no object path for {address}");
+                return;
+            };
+            if let Err(error) = context_menu(connection, &address, &path, x, y).await {
+                tracing::warn!("[tray] context menu failed: {error}");
+            }
+        }
+        TrayCommand::Scroll {
+            address,
+            delta,
+            orientation,
+        } => {
+            let Some(connection) = action_connection else {
+                tracing::warn!("[tray] scroll ignored: no action connection");
+                return;
+            };
+            let Some(path) = item_paths.get(&address) else {
+                tracing::warn!("[tray] scroll: no object path for {address}");
+                return;
+            };
+            if let Err(error) = scroll(connection, &address, &path, delta, orientation).await {
+                tracing::warn!("[tray] scroll failed: {error}");
+            }
+        }
+        TrayCommand::MenuAboutToShow { address, item_id } => {
             let Some(menu_path) = menu_path_for(client, &address) else {
                 tracing::warn!("[tray] about-to-show: no menu path for {address}");
                 return;
             };
-            // Root menu id is 0 per the DBusMenu contract; ignore needsUpdate
-            // (the crate refreshes the layout on its own layout-updated signal).
-            if let Err(e) = client.about_to_show_menuitem(address, menu_path, 0).await {
-                tracing::warn!("[tray] about-to-show failed: {e}");
+            if let Err(error) = client.about_to_show_menuitem(address, menu_path, item_id).await {
+                tracing::warn!("[tray] about-to-show failed: {error}");
             }
         }
         TrayCommand::MenuClicked { address, item_id } => {
@@ -365,7 +435,96 @@ async fn handle_command(client: &Client, cmd: TrayCommand) {
     }
 }
 
-/// Send an activate request, logging any failure. Shared by every command.
+async fn primary_activate(connection: &Connection, address: &str, path: &str, x: i32, y: i32) -> zbus::Result<()> {
+    let proxy = StatusNotifierActionsProxy::builder(connection)
+        .destination(address)?
+        .path(path)?
+        .build()
+        .await?;
+    proxy.activate(x, y).await
+}
+
+async fn secondary_activate(connection: &Connection, address: &str, path: &str, x: i32, y: i32) -> zbus::Result<()> {
+    let proxy = StatusNotifierActionsProxy::builder(connection)
+        .destination(address)?
+        .path(path)?
+        .build()
+        .await?;
+    proxy.secondary_activate(x, y).await
+}
+
+async fn context_menu(connection: &Connection, address: &str, path: &str, x: i32, y: i32) -> zbus::Result<()> {
+    let proxy = StatusNotifierActionsProxy::builder(connection)
+        .destination(address)?
+        .path(path)?
+        .build()
+        .await?;
+    proxy.context_menu(x, y).await
+}
+
+async fn scroll(
+    connection: &Connection,
+    address: &str,
+    path: &str,
+    delta: i32,
+    orientation: TrayScrollOrientation,
+) -> zbus::Result<()> {
+    let proxy = StatusNotifierActionsProxy::builder(connection)
+        .destination(address)?
+        .path(path)?
+        .build()
+        .await?;
+    proxy.scroll(delta, orientation.as_dbus_str()).await
+}
+
+async fn refresh_registered_item_paths(connection: &Connection) -> Option<HashMap<String, String>> {
+    match tokio::time::timeout(crate::COMMAND_TIMEOUT, query_registered_item_paths(connection)).await {
+        Ok(Ok(paths)) => Some(paths),
+        Ok(Err(error)) => {
+            tracing::warn!("[tray] cannot read registered item paths: {error}");
+            None
+        }
+        Err(_) => {
+            tracing::warn!(
+                "[tray] registered item path query timed out after {:?}",
+                crate::COMMAND_TIMEOUT
+            );
+            None
+        }
+    }
+}
+
+async fn query_registered_item_paths(connection: &Connection) -> zbus::Result<HashMap<String, String>> {
+    let proxy = StatusNotifierWatcherQueryProxy::new(connection).await?;
+    let items = proxy.registered_status_notifier_items().await?;
+    Ok(collect_registered_item_paths(items))
+}
+
+fn collect_registered_item_paths(mut registered: Vec<String>) -> HashMap<String, String> {
+    registered.sort();
+    let mut paths = HashMap::new();
+    for item in registered {
+        let Some((address, path)) = registered_item_parts(&item) else {
+            tracing::warn!("[tray] watcher returned an item without an object path: {item}");
+            continue;
+        };
+        if paths.contains_key(address) {
+            tracing::warn!(
+                "[tray] multiple SNI objects share {address}; system-tray exposes one item, using the first path"
+            );
+            continue;
+        }
+        paths.insert(address.to_owned(), path.to_owned());
+    }
+    paths
+}
+
+fn registered_item_parts(registered: &str) -> Option<(&str, &str)> {
+    let slash = registered.find('/')?;
+    Some((&registered[..slash], &registered[slash..]))
+}
+
+/// Send a DBusMenu activation request, logging any failure.
 async fn activate(client: &Client, req: ActivateRequest) {
     if let Err(e) = client.activate(req).await {
         tracing::warn!("[tray] activate failed: {e}");
@@ -378,81 +537,6 @@ fn menu_path_for(client: &Client, address: &str) -> Option<String> {
     let map = client.items();
     let guard = map.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     guard.get(address).and_then(|(item, _menu)| item.menu.clone())
-}
-
-/// Convert the crate's DBusMenu layout into the plain [`TrayMenu`] the UI
-/// renders. The crate's `TrayMenu.submenus` are the root menu's children.
-fn convert_menu(menu: &SniMenu) -> TrayMenu {
-    TrayMenu {
-        items: menu.submenus.iter().map(convert_menu_item).collect(),
-    }
-}
-
-/// Convert one DBusMenu item, recursing into its submenu. Maps the crate's
-/// `menu_type`/`toggle_type`/`toggle_state` onto our flat model and strips
-/// underscore mnemonics from the label.
-fn convert_menu_item(item: &SniMenuItem) -> TrayMenuItem {
-    let kind = match item.menu_type {
-        MenuType::Separator => TrayMenuItemKind::Separator,
-        MenuType::Standard => TrayMenuItemKind::Standard,
-    };
-    // DBusMenu `On` == toggled; `Off`/`Indeterminate` render as not-on.
-    let on = item.toggle_state == ToggleState::On;
-    let toggle = match item.toggle_type {
-        ToggleType::Checkmark => Some(TrayToggle {
-            kind: TrayToggleKind::Check,
-            on,
-        }),
-        ToggleType::Radio => Some(TrayToggle {
-            kind: TrayToggleKind::Radio,
-            on,
-        }),
-        ToggleType::CannotBeToggled => None,
-    };
-    TrayMenuItem {
-        id: item.id,
-        label: item.label.as_deref().map(strip_mnemonics).unwrap_or_default(),
-        enabled: item.enabled,
-        visible: item.visible,
-        kind,
-        toggle,
-        children: item.submenu.iter().map(convert_menu_item).collect(),
-    }
-}
-
-/// Strip GTK/DBusMenu underscore mnemonics from a menu label. Per the
-/// com.canonical.dbusmenu `label` contract: a doubled underscore "__" renders
-/// as one literal underscore; any other underscore is a mnemonic marker and is
-/// dropped. GTK does this transparently via the menu model (which AGS used);
-/// we do it explicitly so labels read as plain text.
-fn strip_mnemonics(label: &str) -> String {
-    let mut out = String::with_capacity(label.len());
-    let mut chars = label.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '_' {
-            if chars.peek() == Some(&'_') {
-                chars.next();
-                out.push('_');
-            }
-            // A lone underscore is a mnemonic marker: drop it.
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-/// Collapse the SNI tooltip (title + description) into one display string.
-fn tooltip_text(item: &StatusNotifierItem) -> Option<String> {
-    let tooltip = item.tool_tip.as_ref()?;
-    let title = tooltip.title.trim();
-    let description = tooltip.description.trim();
-    match (title.is_empty(), description.is_empty()) {
-        (false, false) => Some(format!("{title}\n{description}")),
-        (false, true) => Some(title.to_owned()),
-        (true, false) => Some(description.to_owned()),
-        (true, true) => None,
-    }
 }
 
 /// Resolve an icon name to a concrete file. Absolute paths pass through; the
@@ -653,107 +737,6 @@ mod tests {
         }
     }
 
-    /// Build a standard, enabled, visible fixture menu item.
-    fn item(id: i32, label: Option<&str>) -> SniMenuItem {
-        SniMenuItem {
-            id,
-            label: label.map(str::to_owned),
-            enabled: true,
-            visible: true,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn strip_mnemonics_matches_dbusmenu_spec() {
-        // Lone underscore is a mnemonic marker and vanishes.
-        assert_eq!(strip_mnemonics("_File"), "File");
-        assert_eq!(strip_mnemonics("Save _As"), "Save As");
-        assert_eq!(strip_mnemonics("trailing_"), "trailing");
-        // Doubled underscore renders as one literal underscore.
-        assert_eq!(strip_mnemonics("a__b"), "a_b");
-        assert_eq!(strip_mnemonics("__leading"), "_leading");
-        // Mixed: markers drop, doubles collapse.
-        assert_eq!(strip_mnemonics("_a__b_c"), "a_bc");
-        // No markers: passthrough.
-        assert_eq!(strip_mnemonics("no marker"), "no marker");
-    }
-
-    #[test]
-    fn convert_menu_flattens_tree() {
-        let sni = SniMenu {
-            id: 0,
-            submenus: vec![
-                // A submenu with a nested item, a separator, and a doubled label.
-                SniMenuItem {
-                    submenu: vec![
-                        item(11, Some("_Open")),
-                        SniMenuItem {
-                            menu_type: MenuType::Separator,
-                            ..item(12, None)
-                        },
-                        item(13, Some("Save __as__")),
-                    ],
-                    ..item(1, Some("_File"))
-                },
-                // Checkmark, toggled on.
-                SniMenuItem {
-                    toggle_type: ToggleType::Checkmark,
-                    toggle_state: ToggleState::On,
-                    ..item(2, Some("Show _hidden"))
-                },
-                // Radio, off.
-                SniMenuItem {
-                    toggle_type: ToggleType::Radio,
-                    toggle_state: ToggleState::Off,
-                    ..item(3, Some("Option A"))
-                },
-                // Disabled + invisible flags carried through.
-                SniMenuItem {
-                    enabled: false,
-                    ..item(4, Some("_Disabled"))
-                },
-                SniMenuItem {
-                    visible: false,
-                    ..item(5, Some("Hidden"))
-                },
-            ],
-        };
-
-        let menu = convert_menu(&sni);
-        assert_eq!(menu.items.len(), 5);
-
-        let file = &menu.items[0];
-        assert_eq!(file.id, 1);
-        assert_eq!(file.label, "File", "mnemonic marker stripped");
-        assert!(file.enabled && file.visible);
-        assert_eq!(file.kind, TrayMenuItemKind::Standard);
-        assert_eq!(file.toggle, None);
-        assert_eq!(file.children.len(), 3, "submenu recursed");
-        assert_eq!(file.children[0].label, "Open");
-        assert_eq!(file.children[1].kind, TrayMenuItemKind::Separator);
-        assert_eq!(file.children[1].label, "", "separator has no label");
-        assert_eq!(file.children[2].label, "Save _as_", "doubled underscore kept");
-
-        assert_eq!(
-            menu.items[1].toggle,
-            Some(TrayToggle {
-                kind: TrayToggleKind::Check,
-                on: true
-            }),
-        );
-        assert_eq!(
-            menu.items[2].toggle,
-            Some(TrayToggle {
-                kind: TrayToggleKind::Radio,
-                on: false
-            }),
-        );
-
-        assert!(!menu.items[3].enabled, "disabled flag carried");
-        assert!(!menu.items[4].visible, "invisible flag carried");
-    }
-
     fn pixmap(width: i32, height: i32, pixel_count: usize) -> IconPixmap {
         IconPixmap {
             width,
@@ -799,67 +782,37 @@ mod tests {
         assert!(largest_pixmap(&[]).is_none());
     }
 
-    /// Build a minimal `StatusNotifierItem` fixture with an optional tooltip.
-    fn sni_item(tool_tip: Option<Tooltip>) -> StatusNotifierItem {
-        StatusNotifierItem {
-            id: "test".to_string(),
-            category: Category::ApplicationStatus,
-            title: None,
-            status: Status::Active,
-            window_id: 0,
-            icon_theme_path: None,
-            icon_name: None,
-            icon_pixmap: None,
-            overlay_icon_name: None,
-            overlay_icon_pixmap: None,
-            attention_icon_name: None,
-            attention_icon_pixmap: None,
-            attention_movie_name: None,
-            tool_tip,
-            item_is_menu: false,
-            menu: None,
-        }
-    }
-
-    fn tooltip(title: &str, description: &str) -> Tooltip {
-        Tooltip {
-            icon_name: String::new(),
-            icon_data: Vec::new(),
-            title: title.to_string(),
-            description: description.to_string(),
-        }
-    }
-
     #[test]
-    fn tooltip_text_joins_title_and_description() {
-        let item = sni_item(Some(tooltip("Firefox", "3 unread tabs")));
-        assert_eq!(tooltip_text(&item), Some("Firefox\n3 unread tabs".to_string()));
-    }
-
-    #[test]
-    fn tooltip_text_falls_back_to_whichever_half_is_present() {
+    fn registered_item_path_cache_is_deterministic() {
+        let paths = collect_registered_item_paths(vec![
+            ":1.72/org/example/Z".to_string(),
+            ":1.58/StatusNotifierItem".to_string(),
+            ":1.72/org/example/A".to_string(),
+        ]);
+        assert_eq!(paths.get(":1.58").map(String::as_str), Some("/StatusNotifierItem"));
         assert_eq!(
-            tooltip_text(&sni_item(Some(tooltip("Firefox", "")))),
-            Some("Firefox".to_string()),
-            "title only"
-        );
-        assert_eq!(
-            tooltip_text(&sni_item(Some(tooltip("", "3 unread tabs")))),
-            Some("3 unread tabs".to_string()),
-            "description only"
+            paths.get(":1.72").map(String::as_str),
+            Some("/org/example/A"),
+            "the first lexical path wins when the upstream map collapses duplicate bus names",
         );
     }
 
     #[test]
-    fn tooltip_text_trims_whitespace_and_treats_blank_as_absent() {
-        // Both fields present but all-whitespace: no tooltip to show.
-        assert_eq!(tooltip_text(&sni_item(Some(tooltip("   ", "\t\n")))), None);
-        // No tool_tip at all.
-        assert_eq!(tooltip_text(&sni_item(None)), None);
-        // Padding around real content is trimmed.
+    fn scroll_orientation_matches_the_sni_wire_contract() {
+        assert_eq!(TrayScrollOrientation::Horizontal.as_dbus_str(), "horizontal");
+        assert_eq!(TrayScrollOrientation::Vertical.as_dbus_str(), "vertical");
+    }
+
+    #[test]
+    fn registered_item_paths_preserve_custom_objects() {
         assert_eq!(
-            tooltip_text(&sni_item(Some(tooltip("  Firefox  ", "")))),
-            Some("Firefox".to_string())
+            registered_item_parts(":1.72/org/ayatana/NotificationItem/dropbox"),
+            Some((":1.72", "/org/ayatana/NotificationItem/dropbox")),
         );
+        assert_eq!(
+            registered_item_parts(":1.58/StatusNotifierItem"),
+            Some((":1.58", "/StatusNotifierItem")),
+        );
+        assert_eq!(registered_item_parts(":1.72"), None);
     }
 }

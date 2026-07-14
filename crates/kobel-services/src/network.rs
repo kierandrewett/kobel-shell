@@ -20,8 +20,6 @@ const NM: &str = "org.freedesktop.NetworkManager";
 const DEVICE_TYPE_WIFI: u32 = 2;
 /// NM_802_11_AP_FLAGS_PRIVACY: association needs a key/password.
 const AP_FLAG_PRIVACY: u32 = 0x1;
-/// The QS Wi-Fi list shows at most this many APs.
-const MAX_APS: usize = 6;
 
 /// A request routed to the network task.
 pub(crate) enum NetworkCommand {
@@ -38,8 +36,7 @@ pub struct AccessPointInfo {
     pub secured: bool,
 }
 
-/// Wi-Fi state snapshot. `available` false when there is no Wi-Fi device
-/// (desktop case) -- the QS chip hides, matching the AGS behaviour.
+/// Wi-Fi state snapshot. `available` is false when no Wi-Fi device exists.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NetworkSnapshot {
     pub available: bool,
@@ -47,7 +44,8 @@ pub struct NetworkSnapshot {
     pub active_ssid: Option<String>,
     /// Strength of the active AP, 0 when none.
     pub active_strength: u8,
-    /// Up to ~6 strongest APs, deduped by ssid, active first.
+    /// Every visible AP, deduped by SSID, with the active AP first, then by
+    /// descending strength and SSID.
     pub aps: Vec<AccessPointInfo>,
 }
 
@@ -369,9 +367,7 @@ async fn scan(conn: &Connection, nm: &NetworkManagerProxy<'_>, wireless: &Device
             secured: row.secured,
         });
     }
-    // Active first, then strength descending.
-    aps.sort_by(|a, b| b.active.cmp(&a.active).then(b.strength.cmp(&a.strength)));
-    aps.truncate(MAX_APS);
+    sort_access_points(&mut aps);
 
     Scan {
         snapshot: NetworkSnapshot {
@@ -384,6 +380,15 @@ async fn scan(conn: &Connection, nm: &NetworkManagerProxy<'_>, wireless: &Device
         active_ap_path,
         index,
     }
+}
+
+fn sort_access_points(aps: &mut [AccessPointInfo]) {
+    aps.sort_by(|a, b| {
+        b.active
+            .cmp(&a.active)
+            .then(b.strength.cmp(&a.strength))
+            .then_with(|| a.ssid.cmp(&b.ssid))
+    });
 }
 
 async fn handle_command(
@@ -424,7 +429,8 @@ async fn connect(
         return;
     }
 
-    // Secured + unknown: password UX is out of scope (matches AGS).
+    // A secured network without a saved connection requires credentials the
+    // service API does not collect.
     if *secured {
         tracing::info!("[network] no saved connection for {ssid}");
         return;
@@ -611,5 +617,33 @@ mod tests {
         let map = wireless_map(vec![0xff, 0xfe, b'X']);
         let ssid = connection_ssid(&map).expect("some ssid decoded");
         assert!(ssid.contains('X'));
+    }
+    #[test]
+    fn access_point_snapshot_keeps_every_network_in_deterministic_order() {
+        let mut aps = vec![
+            ("gamma", 70, false),
+            ("zeta", 90, false),
+            ("active", 1, true),
+            ("epsilon", 50, false),
+            ("alpha", 90, false),
+            ("delta", 60, false),
+            ("beta", 80, false),
+        ]
+        .into_iter()
+        .map(|(ssid, strength, active)| AccessPointInfo {
+            ssid: ssid.to_string(),
+            strength,
+            active,
+            secured: false,
+        })
+        .collect::<Vec<_>>();
+
+        sort_access_points(&mut aps);
+
+        assert_eq!(aps.len(), 7);
+        assert_eq!(
+            aps.iter().map(|ap| ap.ssid.as_str()).collect::<Vec<_>>(),
+            vec!["active", "alpha", "zeta", "beta", "gamma", "delta", "epsilon"],
+        );
     }
 }
