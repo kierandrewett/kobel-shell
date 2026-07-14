@@ -53,9 +53,9 @@ impl AppsSnapshot {
     pub fn by_id(&self, id: &str) -> Option<&AppEntry> {
         self.apps.iter().find(|a| a.id == id).or_else(|| {
             let last = id.rsplit('.').next().unwrap_or(id).to_lowercase();
-            self.apps.iter().find(|a| {
-                a.id.rsplit('.').next().unwrap_or(&a.id).to_lowercase() == last
-            })
+            self.apps
+                .iter()
+                .find(|a| a.id.rsplit('.').next().unwrap_or(&a.id).to_lowercase() == last)
         })
     }
 }
@@ -77,10 +77,7 @@ const RESCAN_DEBOUNCE: Duration = Duration::from_secs(2);
 /// Apps service task: scan desktop entries once at startup, emit the snapshot,
 /// then watch the XDG applications dirs (inotify) and re-emit on any install/
 /// uninstall/edit, alongside servicing launch commands.
-pub(crate) async fn run(
-    events: UnboundedSender<ServiceEvent>,
-    mut cmd_rx: UnboundedReceiver<AppsCommand>,
-) {
+pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: UnboundedReceiver<AppsCommand>) {
     // Scanning hits the filesystem (hundreds of .desktop files) plus one
     // gsettings subprocess; keep it off the single tokio worker thread.
     let (snapshot, mut paths) = match tokio::task::spawn_blocking(scan).await {
@@ -172,11 +169,7 @@ fn init_watcher() -> Option<inotify::EventStream<[u8; 1024]>> {
             return None;
         }
     };
-    let mask = WatchMask::CREATE
-        | WatchMask::DELETE
-        | WatchMask::MODIFY
-        | WatchMask::MOVED_FROM
-        | WatchMask::MOVED_TO;
+    let mask = WatchMask::CREATE | WatchMask::DELETE | WatchMask::MODIFY | WatchMask::MOVED_FROM | WatchMask::MOVED_TO;
     let mut watched = 0usize;
     for dir in default_paths() {
         if !dir.is_dir() {
@@ -227,9 +220,7 @@ fn scan() -> (AppsSnapshot, HashMap<String, PathBuf>) {
             .name(&locales)
             .map(|n| n.into_owned())
             .unwrap_or_else(|| id.clone());
-        let icon = entry
-            .icon()
-            .and_then(|icon| resolve_icon(icon, theme.as_deref()));
+        let icon = entry.icon().and_then(|icon| resolve_icon(icon, theme.as_deref()));
         let keywords = build_keywords(entry, &name, &locales);
         paths.insert(id.clone(), entry.path.clone());
         apps.push(AppEntry {
@@ -366,7 +357,12 @@ mod tests {
     use super::*;
 
     fn app(id: &str, name: &str) -> AppEntry {
-        AppEntry { id: id.to_string(), name: name.to_string(), icon: None, keywords: Vec::new() }
+        AppEntry {
+            id: id.to_string(),
+            name: name.to_string(),
+            icon: None,
+            keywords: Vec::new(),
+        }
     }
 
     #[test]
@@ -399,7 +395,10 @@ mod tests {
     #[test]
     fn by_id_matches_exact_desktop_id_first() {
         let snap = AppsSnapshot {
-            apps: vec![app("org.gnome.Nautilus", "Files"), app("org.mozilla.firefox", "Firefox")],
+            apps: vec![
+                app("org.gnome.Nautilus", "Files"),
+                app("org.mozilla.firefox", "Firefox"),
+            ],
         };
         assert_eq!(snap.by_id("org.gnome.Nautilus").map(|a| a.name.as_str()), Some("Files"));
     }
@@ -408,7 +407,9 @@ mod tests {
     fn by_id_falls_back_to_last_dot_component_case_insensitively() {
         // A loose pin (e.g. "Firefox" or "firefox") matches the desktop id's
         // last dot-component the way the AGS dock's pin resolution did.
-        let snap = AppsSnapshot { apps: vec![app("org.mozilla.firefox", "Firefox")] };
+        let snap = AppsSnapshot {
+            apps: vec![app("org.mozilla.firefox", "Firefox")],
+        };
         assert_eq!(snap.by_id("firefox").map(|a| a.name.as_str()), Some("Firefox"));
         assert_eq!(snap.by_id("Firefox").map(|a| a.name.as_str()), Some("Firefox"));
         assert_eq!(snap.by_id("FIREFOX").map(|a| a.name.as_str()), Some("Firefox"));
@@ -416,7 +417,9 @@ mod tests {
 
     #[test]
     fn by_id_returns_none_when_nothing_matches() {
-        let snap = AppsSnapshot { apps: vec![app("org.mozilla.firefox", "Firefox")] };
+        let snap = AppsSnapshot {
+            apps: vec![app("org.mozilla.firefox", "Firefox")],
+        };
         assert!(snap.by_id("org.gnome.Nautilus").is_none());
         assert!(snap.by_id("nautilus").is_none());
     }

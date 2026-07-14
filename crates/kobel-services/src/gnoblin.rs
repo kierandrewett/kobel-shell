@@ -19,8 +19,8 @@
 //! `crates/kobel-shell/src/main.rs`'s `on_tick` for how `GnoblinSnapshot.windows`
 //! is populated from the host every tick instead.
 
-use futures_util::stream::BoxStream;
 use futures_util::StreamExt;
+use futures_util::stream::BoxStream;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
@@ -70,10 +70,7 @@ pub(crate) trait Shell {
     fn reload_extension(&self, uuid: &str) -> zbus::Result<()>;
 }
 
-pub(crate) async fn run(
-    events: UnboundedSender<ServiceEvent>,
-    mut cmd_rx: UnboundedReceiver<GnoblinCommand>,
-) {
+pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: UnboundedReceiver<GnoblinCommand>) {
     let conn = match Connection::session().await {
         Ok(conn) => conn,
         Err(e) => {
@@ -93,10 +90,7 @@ pub(crate) async fn run(
     };
 
     // Watch only our bus name (server-side match on arg 0 == the name).
-    let mut name_changes: BoxStream<'static, _> = match dbus
-        .receive_name_owner_changed_with_args(&[(0, BUS)])
-        .await
-    {
+    let mut name_changes: BoxStream<'static, _> = match dbus.receive_name_owner_changed_with_args(&[(0, BUS)]).await {
         Ok(stream) => stream.boxed(),
         Err(e) => {
             tracing::warn!("[gnoblin] name-owner watch failed: {e}");
@@ -176,5 +170,8 @@ async fn handle_command(proxy: Option<&ShellProxy<'_>>, cmd: GnoblinCommand) {
 }
 
 fn emit(events: &UnboundedSender<ServiceEvent>, connected: bool) {
-    let _ = events.send(ServiceEvent::Gnoblin(GnoblinSnapshot { connected, windows: Vec::new() }));
+    let _ = events.send(ServiceEvent::Gnoblin(GnoblinSnapshot {
+        connected,
+        windows: Vec::new(),
+    }));
 }

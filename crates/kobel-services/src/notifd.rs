@@ -23,9 +23,9 @@ use std::time::Duration;
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Notify;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
-use tokio::sync::Notify;
 use zbus::fdo::RequestNameFlags;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedValue;
@@ -313,11 +313,7 @@ fn write_persisted(path: &Path, persisted: &Persisted) {
 /// the rest of the burst over [`PERSIST_DEBOUNCE`], then flushes once. Every disk
 /// write happens here, so nothing races the final shutdown flush: on the
 /// shutdown signal it flushes the latest snapshot immediately and exits.
-async fn persist_loop(
-    store: Arc<Mutex<Store>>,
-    wake: Arc<Notify>,
-    mut shutdown_rx: oneshot::Receiver<()>,
-) {
+async fn persist_loop(store: Arc<Mutex<Store>>, wake: Arc<Notify>, mut shutdown_rx: oneshot::Receiver<()>) {
     loop {
         tokio::select! {
             biased;
@@ -421,11 +417,7 @@ impl NotificationsServer {
 
     /// Close a notification by id (emits NotificationClosed reason 3). A no-op
     /// if the id is unknown, per common-daemon behavior.
-    async fn close_notification(
-        &self,
-        id: u32,
-        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
-    ) {
+    async fn close_notification(&self, id: u32, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
         let removed = self.store.lock().close(id);
         if removed {
             let _ = emitter.notification_closed(id, REASON_CLOSED).await;
@@ -435,18 +427,10 @@ impl NotificationsServer {
     }
 
     #[zbus(signal)]
-    async fn notification_closed(
-        emitter: &SignalEmitter<'_>,
-        id: u32,
-        reason: u32,
-    ) -> zbus::Result<()>;
+    async fn notification_closed(emitter: &SignalEmitter<'_>, id: u32, reason: u32) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    async fn action_invoked(
-        emitter: &SignalEmitter<'_>,
-        id: u32,
-        action_key: &str,
-    ) -> zbus::Result<()>;
+    async fn action_invoked(emitter: &SignalEmitter<'_>, id: u32, action_key: &str) -> zbus::Result<()>;
 }
 
 // ---- service task ---------------------------------------------------------
@@ -547,10 +531,7 @@ pub(crate) async fn run(
     // no late Notify can dirty the store after the persist writer has exited (UI
     // commands already stopped when the loop above broke).
     if let Some(conn) = conn.as_ref()
-        && let Err(e) = conn
-            .object_server()
-            .remove::<NotificationsServer, _>(PATH)
-            .await
+        && let Err(e) = conn.object_server().remove::<NotificationsServer, _>(PATH).await
     {
         tracing::debug!("[notifd] interface remove on shutdown failed: {e}");
     }
@@ -1053,7 +1034,10 @@ mod tests {
     fn hint_bool_defaults_false_for_mismatch_or_missing() {
         let hints = hints_with(&[("resident", owned(true)), ("wrong-type", owned(42u8))]);
         assert!(hint_bool(&hints, "resident"));
-        assert!(!hint_bool(&hints, "wrong-type"), "type mismatch defaults false, never panics");
+        assert!(
+            !hint_bool(&hints, "wrong-type"),
+            "type mismatch defaults false, never panics"
+        );
         assert!(!hint_bool(&hints, "absent"), "missing key defaults false");
     }
 
@@ -1065,17 +1049,18 @@ mod tests {
             ("wrong-type", owned(7u8)),
         ]);
         assert_eq!(hint_str(&hints, "image-path"), Some("/tmp/icon.png".to_string()));
-        assert_eq!(hint_str(&hints, "blank"), None, "an empty string hint is treated as absent");
+        assert_eq!(
+            hint_str(&hints, "blank"),
+            None,
+            "an empty string hint is treated as absent"
+        );
         assert_eq!(hint_str(&hints, "wrong-type"), None, "type mismatch must not panic");
         assert_eq!(hint_str(&hints, "absent"), None);
     }
 
     #[test]
     fn pick_icon_prefers_app_icon_then_spec_hint_then_legacy_hint() {
-        let both_hints = hints_with(&[
-            ("image-path", owned("/spec.png")),
-            ("image_path", owned("/legacy.png")),
-        ]);
+        let both_hints = hints_with(&[("image-path", owned("/spec.png")), ("image_path", owned("/legacy.png"))]);
         // Non-empty app_icon always wins, hints ignored.
         assert_eq!(pick_icon("/app.png", &both_hints), Some("/app.png".to_string()));
         // Empty app_icon: the spec 1.2 hyphenated hint wins over the legacy one.

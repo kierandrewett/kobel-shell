@@ -151,10 +151,7 @@ struct Scan {
     index: HashMap<String, (OwnedObjectPath, bool)>,
 }
 
-pub(crate) async fn run(
-    events: UnboundedSender<ServiceEvent>,
-    mut cmd_rx: UnboundedReceiver<NetworkCommand>,
-) {
+pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: UnboundedReceiver<NetworkCommand>) {
     let conn = match Connection::system().await {
         Ok(conn) => conn,
         Err(e) => {
@@ -236,8 +233,7 @@ pub(crate) async fn run(
     // WirelessEnabled (NM prop) changes: watched via the NM root object's
     // PropertiesChanged signal, which fires regardless of property caching
     // (a property-change stream would need caching, which this proxy disables).
-    let nm_root =
-        OwnedObjectPath::try_from("/org/freedesktop/NetworkManager").expect("valid NM path");
+    let nm_root = OwnedObjectPath::try_from("/org/freedesktop/NetworkManager").expect("valid NM path");
     let mut nm_changes = props_stream(&conn, Some(&nm_root)).await;
     // Device AP add/remove.
     let mut ap_added: BoxStream<'static, _> = match wireless.receive_access_point_added().await {
@@ -247,8 +243,7 @@ pub(crate) async fn run(
             futures_util::stream::pending().boxed()
         }
     };
-    let mut ap_removed: BoxStream<'static, _> = match wireless.receive_access_point_removed().await
-    {
+    let mut ap_removed: BoxStream<'static, _> = match wireless.receive_access_point_removed().await {
         Ok(stream) => stream.boxed(),
         Err(e) => {
             tracing::warn!("[network] AccessPointRemoved watch: {e}");
@@ -319,11 +314,7 @@ async fn refresh_and_emit(
 }
 
 /// Read every property the snapshot needs, deduping APs by ssid.
-async fn scan(
-    conn: &Connection,
-    nm: &NetworkManagerProxy<'_>,
-    wireless: &DeviceWirelessProxy<'_>,
-) -> Scan {
+async fn scan(conn: &Connection, nm: &NetworkManagerProxy<'_>, wireless: &DeviceWirelessProxy<'_>) -> Scan {
     let enabled = nm.wireless_enabled().await.unwrap_or(false);
 
     let active_ap_path = match wireless.active_access_point().await {
@@ -426,10 +417,7 @@ async fn connect(
 
     // A saved connection wins: activate it against this device + AP.
     if let Some(conn_path) = find_connection(conn, ssid).await {
-        match nm
-            .activate_connection(&conn_path, device_path, ap_path)
-            .await
-        {
+        match nm.activate_connection(&conn_path, device_path, ap_path).await {
             Ok(_) => tracing::info!("[network] activating saved connection for {ssid}"),
             Err(e) => tracing::warn!("[network] ActivateConnection failed: {e}"),
         }
@@ -467,10 +455,7 @@ fn open_settings(ssid: &str) -> HashMap<&str, HashMap<&str, Value<'_>>> {
 }
 
 /// The first NM device whose type is Wi-Fi.
-async fn find_wifi_device(
-    conn: &Connection,
-    nm: &NetworkManagerProxy<'_>,
-) -> Option<OwnedObjectPath> {
+async fn find_wifi_device(conn: &Connection, nm: &NetworkManagerProxy<'_>) -> Option<OwnedObjectPath> {
     let devices = nm.get_devices().await.ok()?;
     for path in devices {
         let dev = match DeviceProxy::builder(conn)

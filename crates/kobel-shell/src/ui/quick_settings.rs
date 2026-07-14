@@ -23,16 +23,16 @@ use freya_core::prelude::*;
 use torin::prelude::{Alignment, Content, Position, Size};
 
 use kobel_services::{
-    AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot, Command,
-    GnoblinSnapshot, NetworkSnapshot, PowerProfile, PowerSnapshot, SessionVerb, SettingsSnapshot,
+    AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot, Command, GnoblinSnapshot, NetworkSnapshot,
+    PowerProfile, PowerSnapshot, SessionVerb, SettingsSnapshot,
 };
 
 use super::chip::{Chip, HoverExt, IconAction, KSlider, KSwitch, use_hover};
 use super::panels::{KeyFeed, OpenProgress, use_open_scale};
 use super::{
-    ICON_BATTERY, ICON_BELL_SLASH, ICON_BLUETOOTH, ICON_BOLT, ICON_BRIGHTNESS, ICON_CHECK,
-    ICON_CHEVRON_LEFT, ICON_LEAF, ICON_LOCK, ICON_MOON, ICON_MUSIC, ICON_POWER, ICON_SPEAKER_MUTE,
-    ICON_SPEAKER_WAVE, ICON_SUN, ICON_WARNING, ICON_WIFI, icon,
+    ICON_BATTERY, ICON_BELL_SLASH, ICON_BLUETOOTH, ICON_BOLT, ICON_BRIGHTNESS, ICON_CHECK, ICON_CHEVRON_LEFT,
+    ICON_LEAF, ICON_LOCK, ICON_MOON, ICON_MUSIC, ICON_POWER, ICON_SPEAKER_MUTE, ICON_SPEAKER_WAVE, ICON_SUN,
+    ICON_WARNING, ICON_WIFI, icon,
 };
 use crate::manager::{ShellBus, ShellMsg, SurfaceKey};
 use crate::motion::{self, use_spring};
@@ -111,7 +111,11 @@ fn power_saver_active(power: &PowerSnapshot) -> bool {
 /// Toggling Power Saver swaps between PowerSaver and Balanced (ags: never touches
 /// Performance).
 fn next_power_profile(active: bool) -> PowerProfile {
-    if active { PowerProfile::Balanced } else { PowerProfile::PowerSaver }
+    if active {
+        PowerProfile::Balanced
+    } else {
+        PowerProfile::PowerSaver
+    }
 }
 
 /// Pressing a Bluetooth row disconnects a connected device, else connects it.
@@ -125,7 +129,11 @@ fn bt_row_command(connected: bool, address: &str) -> Command {
 
 /// Wi-Fi row trailing text: "Connected" for the active AP, else "{strength}%".
 fn wifi_row_state(active: bool, strength: u8) -> String {
-    if active { "Connected".to_string() } else { format!("{strength}%") }
+    if active {
+        "Connected".to_string()
+    } else {
+        format!("{strength}%")
+    }
 }
 
 /// Bluetooth row trailing text.
@@ -490,9 +498,16 @@ fn top_row(bus: &ShellBus, tokens: &theme::Tokens, battery: &BatterySnapshot) ->
         // scss `.rbtn.leaf image` (main.scss:355-357) keeps the reload glyph
         // $leaf even on hover, overriding `.rbtn:hover`'s $tx -- so both tints
         // are LEAF, not LEAF/LEAF2.
-        IconAction::new(ICON_LEAF, ctl, 16.0, theme::LEAF, theme::LEAF, cmd(bus, Command::Reload))
-            .rest_bg(theme::CHIP)
-            .radius(theme::RADIUS_PILL),
+        IconAction::new(
+            ICON_LEAF,
+            ctl,
+            16.0,
+            theme::LEAF,
+            theme::LEAF,
+            cmd(bus, Command::Reload),
+        )
+        .rest_bg(theme::CHIP)
+        .radius(theme::RADIUS_PILL),
     )
     .child(
         IconAction::new(
@@ -588,7 +603,11 @@ fn empty_chip_slot() -> Element {
 /// a drilling chip's full-height chevron to `tile_h`, instead of letting the
 /// chevron's `Size::fill` inflate the auto-height row to the whole sheet.
 fn chip_row(tile_h: f32, chips: Vec<Element>) -> Element {
-    let mut row = rect().horizontal().width(Size::fill()).content(Content::Flex).spacing(8.0);
+    let mut row = rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .spacing(8.0);
     for chip in chips {
         row = row.child(
             rect()
@@ -661,7 +680,11 @@ fn slider_row(icon_bytes: &'static [u8]) -> Rect {
 
 /// Wrap a slider so it flexes to fill the row.
 fn slider_slot(slider: KSlider) -> Element {
-    rect().width(Size::flex(1.0)).content(Content::Flex).child(slider).into_element()
+    rect()
+        .width(Size::flex(1.0))
+        .content(Content::Flex)
+        .child(slider)
+        .into_element()
 }
 
 // ===========================================================================
@@ -819,12 +842,7 @@ fn mix_list(bus: &ShellBus, audio: &AudioSnapshot) -> Element {
 }
 
 /// One mixer row: 26x26 icon tile, 72px name column, a compact slider.
-fn mix_row(
-    icon_bytes: &'static [u8],
-    title: String,
-    value: f64,
-    on_change: EventHandler<f64>,
-) -> Rect {
+fn mix_row(icon_bytes: &'static [u8], title: String, value: f64, on_change: EventHandler<f64>) -> Rect {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -850,7 +868,12 @@ fn mix_row(
                 .text_overflow(TextOverflow::Ellipsis)
                 .width(Size::px(72.0)),
         )
-        .child(rect().width(Size::flex(1.0)).content(Content::Flex).child(KSlider::compact(value, on_change)))
+        .child(
+            rect()
+                .width(Size::flex(1.0))
+                .content(Content::Flex)
+                .child(KSlider::compact(value, on_change)),
+        )
 }
 
 /// Trailing content of a drill row: a text state ("Paired", "80%") or a LEAF
@@ -896,9 +919,7 @@ impl Component for DrillRow {
         let on_press = self.on_press.clone();
         let trailing: Element = match &self.trailing {
             RowTrailing::Check => icon(ICON_CHECK, 16.0, theme::LEAF).into_element(),
-            RowTrailing::Text(t) => {
-                label().text(t.clone()).color(tint.rgb()).font_size(11.5).into_element()
-            }
+            RowTrailing::Text(t) => label().text(t.clone()).color(tint.rgb()).font_size(11.5).into_element(),
         };
 
         rect()
@@ -976,14 +997,22 @@ mod tests {
 
     #[test]
     fn wifi_chip_active_and_sublabel() {
-        let mut net = NetworkSnapshot { available: true, enabled: true, ..Default::default() };
+        let mut net = NetworkSnapshot {
+            available: true,
+            enabled: true,
+            ..Default::default()
+        };
         net.active_ssid = Some("home".to_string());
         let (active, sub) = wifi_chip(&net);
         assert!(active);
         assert_eq!(sub, "home");
 
         // Enabled but no SSID -> "Off"; disabled likewise reads "Off".
-        let off = NetworkSnapshot { available: true, enabled: false, ..Default::default() };
+        let off = NetworkSnapshot {
+            available: true,
+            enabled: false,
+            ..Default::default()
+        };
         let (active, sub) = wifi_chip(&off);
         assert!(!active);
         assert_eq!(sub, "Off");
@@ -1013,7 +1042,11 @@ mod tests {
         assert!(active);
         assert_eq!(sub, "Speaker");
 
-        let empty = BluetoothSnapshot { available: true, powered: true, devices: vec![] };
+        let empty = BluetoothSnapshot {
+            available: true,
+            powered: true,
+            devices: vec![],
+        };
         let (active, sub) = bt_chip(&empty);
         assert!(!active);
         assert_eq!(sub, "Off");
@@ -1021,16 +1054,25 @@ mod tests {
 
     #[test]
     fn power_saver_toggle_swaps_saver_and_balanced() {
-        let saver = PowerSnapshot { available: true, profile: PowerProfile::PowerSaver };
+        let saver = PowerSnapshot {
+            available: true,
+            profile: PowerProfile::PowerSaver,
+        };
         assert!(power_saver_active(&saver));
         assert_eq!(next_power_profile(true), PowerProfile::Balanced);
 
-        let bal = PowerSnapshot { available: true, profile: PowerProfile::Balanced };
+        let bal = PowerSnapshot {
+            available: true,
+            profile: PowerProfile::Balanced,
+        };
         assert!(!power_saver_active(&bal));
         assert_eq!(next_power_profile(false), PowerProfile::PowerSaver);
 
         // Performance is not "power saver" and toggling into saver from it works.
-        let perf = PowerSnapshot { available: true, profile: PowerProfile::Performance };
+        let perf = PowerSnapshot {
+            available: true,
+            profile: PowerProfile::Performance,
+        };
         assert!(!power_saver_active(&perf));
     }
 
@@ -1057,11 +1099,29 @@ mod tests {
 
     #[test]
     fn battery_meta_states() {
-        let charging = BatterySnapshot { present: true, percentage: 42.4, charging: true, state: 1, ..Default::default() };
+        let charging = BatterySnapshot {
+            present: true,
+            percentage: 42.4,
+            charging: true,
+            state: 1,
+            ..Default::default()
+        };
         assert_eq!(battery_meta(&charging), "42% \u{00b7} Charging");
-        let full = BatterySnapshot { present: true, percentage: 100.0, charging: false, state: 4, ..Default::default() };
+        let full = BatterySnapshot {
+            present: true,
+            percentage: 100.0,
+            charging: false,
+            state: 4,
+            ..Default::default()
+        };
         assert_eq!(battery_meta(&full), "100% \u{00b7} Fully charged");
-        let disch = BatterySnapshot { present: true, percentage: 77.6, charging: false, state: 2, ..Default::default() };
+        let disch = BatterySnapshot {
+            present: true,
+            percentage: 77.6,
+            charging: false,
+            state: 2,
+            ..Default::default()
+        };
         assert_eq!(battery_meta(&disch), "78% \u{00b7} Discharging");
     }
 

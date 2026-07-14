@@ -14,8 +14,7 @@ use freya_animation::prelude::*;
 use freya_components::button::Button;
 use freya_core::prelude::*;
 use kobel_wayland::{
-    Anchor, Control, FrameStats, KeyPress, KeyboardInteractivity, Layer, Margins, Shell,
-    SurfaceConfig, SurfaceSize,
+    Anchor, Control, FrameStats, KeyPress, KeyboardInteractivity, Layer, Margins, Shell, SurfaceConfig, SurfaceSize,
 };
 use torin::prelude::{Alignment, Size};
 
@@ -89,8 +88,7 @@ fn spike_ui() -> impl IntoElement {
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,kobel_wayland=debug".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,kobel_wayland=debug".into()),
         )
         .init();
 
@@ -99,7 +97,12 @@ fn main() -> anyhow::Result<()> {
     let config = SurfaceConfig::new("kobel-spike", SurfaceSize::Exact { width: 0, height: 120 })
         .layer(Layer::Top)
         .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
-        .margins(Margins { top: 10, right: 12, bottom: 0, left: 12 })
+        .margins(Margins {
+            top: 10,
+            right: 12,
+            bottom: 0,
+            left: 12,
+        })
         .exclusive_zone(0)
         .keyboard_interactivity(KeyboardInteractivity::OnDemand);
 
@@ -107,24 +110,22 @@ fn main() -> anyhow::Result<()> {
 
     // Esc exits; 'k' cycles keyboard interactivity. The current mode is tracked here.
     let mut current = KeyboardInteractivity::OnDemand;
-    shell.on_key(move |press: KeyPress, control: &mut Control<'_>| {
-        match &press.key {
-            Key::Named(NamedKey::Escape) => {
-                tracing::info!("[spike] Esc -> exit");
-                control.exit();
-            }
-            Key::Character(c) if c == "k" && !press.repeat => {
-                current = match current {
-                    KeyboardInteractivity::None => KeyboardInteractivity::OnDemand,
-                    KeyboardInteractivity::OnDemand => KeyboardInteractivity::Exclusive,
-                    KeyboardInteractivity::Exclusive => KeyboardInteractivity::None,
-                    _ => KeyboardInteractivity::OnDemand,
-                };
-                tracing::info!("[spike] 'k' -> keyboard interactivity {current:?}");
-                control.set_keyboard_interactivity(press.surface, current);
-            }
-            _ => {}
+    shell.on_key(move |press: KeyPress, control: &mut Control<'_>| match &press.key {
+        Key::Named(NamedKey::Escape) => {
+            tracing::info!("[spike] Esc -> exit");
+            control.exit();
         }
+        Key::Character(c) if c == "k" && !press.repeat => {
+            current = match current {
+                KeyboardInteractivity::None => KeyboardInteractivity::OnDemand,
+                KeyboardInteractivity::OnDemand => KeyboardInteractivity::Exclusive,
+                KeyboardInteractivity::Exclusive => KeyboardInteractivity::None,
+                _ => KeyboardInteractivity::OnDemand,
+            };
+            tracing::info!("[spike] 'k' -> keyboard interactivity {current:?}");
+            control.set_keyboard_interactivity(press.surface, current);
+        }
+        _ => {}
     });
 
     tracing::info!("[spike] running; Esc to exit, 'k' to cycle keyboard interactivity");

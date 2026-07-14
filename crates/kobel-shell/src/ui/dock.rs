@@ -207,9 +207,7 @@ fn click_command(win_ids: &[String], focused: Option<usize>, launch_id: &str) ->
     }
     match focused {
         None => ShellMsg::ActivateWindow(win_ids[0].clone()),
-        Some(cur) if win_ids.len() > 1 => {
-            ShellMsg::ActivateWindow(win_ids[(cur + 1) % win_ids.len()].clone())
-        }
+        Some(cur) if win_ids.len() > 1 => ShellMsg::ActivateWindow(win_ids[(cur + 1) % win_ids.len()].clone()),
         Some(cur) => ShellMsg::MinimizeWindow(win_ids[cur].clone()),
     }
 }
@@ -223,7 +221,11 @@ fn wheel_command(win_ids: &[String], focused: Option<usize>, forward: bool) -> O
     }
     if len > 1 {
         let base = focused.unwrap_or(0);
-        let next = if forward { (base + 1) % len } else { (base + len - 1) % len };
+        let next = if forward {
+            (base + 1) % len
+        } else {
+            (base + len - 1) % len
+        };
         Some(ShellMsg::ActivateWindow(win_ids[next].clone()))
     } else if focused.is_none() {
         Some(ShellMsg::ActivateWindow(win_ids[0].clone()))
@@ -287,8 +289,7 @@ fn dots_overlay(total: usize, focused: Option<usize>, tokens: Tokens) -> Element
         .map(|i| {
             let idx = start + i;
             let on = focused == Some(idx);
-            let mini =
-                total > 4 && ((i == 0 && start > 0) || (i == n - 1 && start + 4 < total));
+            let mini = total > 4 && ((i == 0 && start > 0) || (i == n - 1 && start + 4 < total));
             Dot { on, mini }.into_element()
         })
         .collect();
@@ -348,8 +349,7 @@ impl Component for DockTile {
             let ws = windows_for(&pin_id, &snap.windows);
             let focused = ws.iter().position(|w| w.focused);
             let ids: Vec<String> = ws.iter().map(|w| w.id.clone()).collect();
-            let list: Vec<(String, String)> =
-                ws.iter().map(|w| (w.id.clone(), w.title.clone())).collect();
+            let list: Vec<(String, String)> = ws.iter().map(|w| (w.id.clone(), w.title.clone())).collect();
             (ids.len(), focused, ids, list)
         };
 
@@ -358,7 +358,11 @@ impl Component for DockTile {
         let tooltip_name = app_name.clone();
         let glyph = tokens.icon * 0.7; // AGS pixelSize 31 within the 44 tile
         let content: Element = if resolved {
-            AppIcon { path: icon_path, size: glyph }.into_element()
+            AppIcon {
+                path: icon_path,
+                size: glyph,
+            }
+            .into_element()
         } else {
             placeholder(&pin_id, tokens)
         };
@@ -500,8 +504,11 @@ fn dock_menu_model(
     if !windows.is_empty() {
         rows.push(MenuRow::Separator);
         for (i, (id, title)) in windows.iter().enumerate() {
-            let label =
-                if title.trim().is_empty() { format!("Window {}", i + 1) } else { title.clone() };
+            let label = if title.trim().is_empty() {
+                format!("Window {}", i + 1)
+            } else {
+                title.clone()
+            };
             let bus = bus.clone();
             let id = id.clone();
             rows.push(MenuRow::Item {
@@ -709,7 +716,12 @@ pub fn dock() -> impl IntoElement {
     // centering would float the slab into the middle of that extra space. The
     // headroom above stays empty except when a hovered tile's tooltip renders
     // into it (see DockTile/tile_tooltip).
-    rect().expanded().vertical().main_align(Alignment::End).cross_align(Alignment::Center).child(slab)
+    rect()
+        .expanded()
+        .vertical()
+        .main_align(Alignment::End)
+        .cross_align(Alignment::Center)
+        .child(slab)
 }
 
 // ---------------------------------------------------------------------------
@@ -761,10 +773,7 @@ mod tests {
 
     #[test]
     fn windows_match_exact_then_loosely() {
-        let ws = vec![
-            win("1", "firefox", false),
-            win("2", "org.gnome.Nautilus", true),
-        ];
+        let ws = vec![win("1", "firefox", false), win("2", "org.gnome.Nautilus", true)];
         // Exact.
         assert_eq!(windows_for("firefox", &ws).len(), 1);
         // Loose: pin id differs but shares the last dot component.
@@ -827,5 +836,4 @@ mod tests {
         // No windows -> nothing.
         assert!(wheel_command(&[], None, true).is_none());
     }
-
 }

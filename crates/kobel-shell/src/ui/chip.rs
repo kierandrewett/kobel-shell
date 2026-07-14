@@ -128,7 +128,10 @@ pub struct TooltipHover {
 
 /// Track a hover-delayed tooltip's visibility in the current component scope.
 pub fn use_tooltip_hover() -> TooltipHover {
-    TooltipHover { show: use_state(|| false), generation: use_state(|| 0u64) }
+    TooltipHover {
+        show: use_state(|| false),
+        generation: use_state(|| 0u64),
+    }
 }
 
 impl TooltipHover {
@@ -199,8 +202,14 @@ pub fn tooltip_bubble(text: &str, position: Position) -> Element {
 /// buttons, tray items) or a horizontal row (clock button, status pill).
 /// Every dimension is the caller's own exact number -- no shared defaults.
 pub enum HoverShape {
-    Square { side: f32 },
-    Row { min_height: f32, padding: (f32, f32), spacing: f32 },
+    Square {
+        side: f32,
+    },
+    Row {
+        min_height: f32,
+        padding: (f32, f32),
+        spacing: f32,
+    },
 }
 
 /// Build the [`HoverShape`]-laid-out shell with its hover-picked background,
@@ -208,10 +217,12 @@ pub enum HoverShape {
 /// every caller wants identical; only the pointer/press wiring differs.
 fn hover_shell(hover: Hover, shape: HoverShape, radius: f32, rest_bg: Color, hover_bg: Color) -> Rect {
     let shell = match shape {
-        HoverShape::Square { side } => {
-            rect().width(Size::px(side)).height(Size::px(side)).center()
-        }
-        HoverShape::Row { min_height, padding, spacing } => rect()
+        HoverShape::Square { side } => rect().width(Size::px(side)).height(Size::px(side)).center(),
+        HoverShape::Row {
+            min_height,
+            padding,
+            spacing,
+        } => rect()
             .horizontal()
             .min_height(Size::px(min_height))
             .padding(padding)
@@ -236,7 +247,9 @@ pub fn hover_button(
     hover_bg: Color,
     on_press: impl Into<EventHandler<Event<PressEventData>>>,
 ) -> Rect {
-    hover_shell(hover, shape, radius, rest_bg, hover_bg).hover(hover).on_press(on_press)
+    hover_shell(hover, shape, radius, rest_bg, hover_bg)
+        .hover(hover)
+        .on_press(on_press)
 }
 
 /// [`hover_button`], but the enter/leave pair also drives a [`TooltipHover`]
@@ -571,12 +584,22 @@ pub struct KSlider {
 impl KSlider {
     /// Full-size slider (volume/brightness rows).
     pub fn new(value: f64, on_change: impl Into<EventHandler<f64>>) -> Self {
-        Self { value, on_change: on_change.into(), rail: RAIL, knob: KNOB }
+        Self {
+            value,
+            on_change: on_change.into(),
+            rail: RAIL,
+            knob: KNOB,
+        }
     }
 
     /// Compact slider (mixer rows): same rail, a smaller knob.
     pub fn compact(value: f64, on_change: impl Into<EventHandler<f64>>) -> Self {
-        Self { value, on_change: on_change.into(), rail: RAIL, knob: KNOB_MINI }
+        Self {
+            value,
+            on_change: on_change.into(),
+            rail: RAIL,
+            knob: KNOB_MINI,
+        }
     }
 }
 

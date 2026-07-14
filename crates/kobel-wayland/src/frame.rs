@@ -43,7 +43,10 @@ pub struct FrameClock {
 
 impl FrameClock {
     pub fn new() -> Self {
-        Self { last_present: None, fps_ema: 0.0 }
+        Self {
+            last_present: None,
+            fps_ema: 0.0,
+        }
     }
 
     /// Record a present. Returns the milliseconds elapsed since the previous one
@@ -53,10 +56,15 @@ impl FrameClock {
         let dt = self.last_present.map(|t| now.duration_since(t).as_secs_f32() * 1000.0);
         self.last_present = Some(now);
         if let Some(ms) = dt
-            && ms > 0.0 {
-                let inst = 1000.0 / ms;
-                self.fps_ema = if self.fps_ema == 0.0 { inst } else { self.fps_ema * 0.9 + inst * 0.1 };
-            }
+            && ms > 0.0
+        {
+            let inst = 1000.0 / ms;
+            self.fps_ema = if self.fps_ema == 0.0 {
+                inst
+            } else {
+                self.fps_ema * 0.9 + inst * 0.1
+            };
+        }
         dt.unwrap_or(0.0)
     }
 

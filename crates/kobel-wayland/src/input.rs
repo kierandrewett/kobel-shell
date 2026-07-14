@@ -7,8 +7,8 @@
 // wp_fractional_scale_v1 fraction), matching the space measure_layout and
 // RenderPipeline render into. See docs/FREYA-PLAN.md section 3.
 
-use freya_core::integration::{MouseEventName, PlatformEvent, WheelEventName};
 use freya_core::events::data::{MouseButton, WheelSource};
+use freya_core::integration::{MouseEventName, PlatformEvent, WheelEventName};
 use keyboard_types::{Code, Key, Modifiers, NamedKey};
 use smithay_client_toolkit::seat::keyboard::{Keysym, Modifiers as SctkModifiers};
 use torin::prelude::CursorPoint;
@@ -34,7 +34,11 @@ pub fn map_button(code: u32) -> MouseButton {
 
 /// Build a pointer move event.
 pub fn mouse_move(cursor: CursorPoint) -> PlatformEvent {
-    PlatformEvent::Mouse { name: MouseEventName::MouseMove, cursor, button: None }
+    PlatformEvent::Mouse {
+        name: MouseEventName::MouseMove,
+        cursor,
+        button: None,
+    }
 }
 
 /// A synthetic move to a point no real content occupies, for when the
@@ -63,7 +67,11 @@ pub fn mouse_leave() -> PlatformEvent {
 /// Build a pointer press/release event. `pressed` selects down vs up.
 pub fn mouse_button(cursor: CursorPoint, button: u32, pressed: bool) -> PlatformEvent {
     PlatformEvent::Mouse {
-        name: if pressed { MouseEventName::MouseDown } else { MouseEventName::MouseUp },
+        name: if pressed {
+            MouseEventName::MouseDown
+        } else {
+            MouseEventName::MouseUp
+        },
         cursor,
         button: Some(map_button(button)),
     }
@@ -103,9 +111,11 @@ pub fn map_key(keysym: Keysym, utf8: Option<&str>) -> Key {
         return Key::Named(named);
     }
     if let Some(text) = utf8
-        && !text.is_empty() && !text.chars().all(char::is_control) {
-            return Key::Character(text.to_owned());
-        }
+        && !text.is_empty()
+        && !text.chars().all(char::is_control)
+    {
+        return Key::Character(text.to_owned());
+    }
     Key::Named(NamedKey::Unidentified)
 }
 
@@ -323,13 +333,20 @@ mod tests {
     #[test]
     fn control_only_text_is_unidentified() {
         // A control char with no named mapping should not become a Character.
-        assert_eq!(map_key(Keysym::NoSymbol, Some("\u{0}")), Key::Named(NamedKey::Unidentified));
+        assert_eq!(
+            map_key(Keysym::NoSymbol, Some("\u{0}")),
+            Key::Named(NamedKey::Unidentified)
+        );
         assert_eq!(map_key(Keysym::NoSymbol, None), Key::Named(NamedKey::Unidentified));
     }
 
     #[test]
     fn modifiers_translate_bitwise() {
-        let m = SctkModifiers { ctrl: true, shift: true, ..Default::default() };
+        let m = SctkModifiers {
+            ctrl: true,
+            shift: true,
+            ..Default::default()
+        };
         let out = map_modifiers(m);
         assert!(out.contains(Modifiers::CONTROL));
         assert!(out.contains(Modifiers::SHIFT));

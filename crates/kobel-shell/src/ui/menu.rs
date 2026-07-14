@@ -115,7 +115,11 @@ pub enum MenuRow {
     /// A 1px CHIP divider.
     Separator,
     /// A row that opens a nested submenu popup.
-    Submenu { label: String, enabled: bool, model: MenuModel },
+    Submenu {
+        label: String,
+        enabled: bool,
+        model: MenuModel,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -132,17 +136,26 @@ pub struct PopupPlacement {
 impl PopupPlacement {
     /// Grow downward from the bottom of the anchor (a menu under a bar button).
     pub fn below() -> Self {
-        Self { anchor: PopupAnchor::Bottom, gravity: PopupGravity::Bottom }
+        Self {
+            anchor: PopupAnchor::Bottom,
+            gravity: PopupGravity::Bottom,
+        }
     }
 
     /// Grow upward from the top of the anchor (a menu above a dock tile).
     pub fn above() -> Self {
-        Self { anchor: PopupAnchor::Top, gravity: PopupGravity::Top }
+        Self {
+            anchor: PopupAnchor::Top,
+            gravity: PopupGravity::Top,
+        }
     }
 
     /// Grow to the right of the anchor (a submenu flyout).
     pub fn rightward() -> Self {
-        Self { anchor: PopupAnchor::TopRight, gravity: PopupGravity::BottomRight }
+        Self {
+            anchor: PopupAnchor::TopRight,
+            gravity: PopupGravity::BottomRight,
+        }
     }
 }
 
@@ -170,7 +183,10 @@ pub struct PopupInner {
 
 impl PopupInner {
     pub fn new(wake: Box<dyn Fn()>) -> Self {
-        Self { queue: std::cell::RefCell::new(Vec::new()), wake }
+        Self {
+            queue: std::cell::RefCell::new(Vec::new()),
+            wake,
+        }
     }
 
     fn push(&self, op: PopupOp) {
@@ -211,7 +227,12 @@ impl PopupHost {
             tracing::warn!("[menu] open ignored: owner surface not resolved yet");
             return;
         };
-        self.inner.push(PopupOp::Open { parent, anchor_rect, placement, model });
+        self.inner.push(PopupOp::Open {
+            parent,
+            anchor_rect,
+            placement,
+            model,
+        });
     }
 
     /// Request that every open popup be dismissed.
@@ -247,7 +268,13 @@ impl Component for Menu {
                     children.push(separator());
                     y += SEP_H;
                 }
-                MenuRow::Item { label, glyph, enabled, danger, on_activate } => {
+                MenuRow::Item {
+                    label,
+                    glyph,
+                    enabled,
+                    danger,
+                    on_activate,
+                } => {
                     children.push(
                         MenuItem {
                             label: label.clone(),
@@ -365,10 +392,12 @@ impl Component for MenuItem {
             .hover(hover)
             .child(glyph_slot(self.glyph, label_color))
             .child(
-                rect()
-                    .width(Size::fill())
-                    .padding((0.0, 2.0))
-                    .child(label().text(self.label.clone()).color(label_color.rgb()).font_size(13.0)),
+                rect().width(Size::fill()).padding((0.0, 2.0)).child(
+                    label()
+                        .text(self.label.clone())
+                        .color(label_color.rgb())
+                        .font_size(13.0),
+                ),
             )
             .child(rect().width(Size::px(PAD_H)));
 
@@ -438,10 +467,12 @@ impl Component for SubmenuItem {
             .hover(hover)
             .child(glyph_slot(MenuGlyph::None, label_color))
             .child(
-                rect()
-                    .width(Size::fill())
-                    .padding((0.0, 2.0))
-                    .child(label().text(self.label.clone()).color(label_color.rgb()).font_size(13.0)),
+                rect().width(Size::fill()).padding((0.0, 2.0)).child(
+                    label()
+                        .text(self.label.clone())
+                        .color(label_color.rgb())
+                        .font_size(13.0),
+                ),
             )
             .child(
                 rect()
@@ -517,8 +548,7 @@ mod tests {
     /// a danger item) sums each row's own fixed height plus the sheet padding.
     #[test]
     fn mixed_rows_sum_their_own_fixed_heights() {
-        let model =
-            MenuModel::new(vec![item("Open"), item("Unpin"), MenuRow::Separator, item("Quit")]);
+        let model = MenuModel::new(vec![item("Open"), item("Unpin"), MenuRow::Separator, item("Quit")]);
         let expected = (2.0 * PAD_V + 3.0 * ITEM_H + SEP_H).ceil() as u32;
         assert_eq!(model.measured_height(), expected);
     }

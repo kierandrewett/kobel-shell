@@ -22,7 +22,9 @@ use calloop_wayland_source::WaylandSource;
 use freya_clipboard::copypasta::ClipboardProvider;
 use freya_core::integration::{KeyboardEventName, PlatformEvent};
 use freya_core::prelude::Element;
+use smithay_client_toolkit::compositor::Surface as SctkSurface;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
+use smithay_client_toolkit::globals::GlobalData;
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::seat::keyboard::{
@@ -30,16 +32,14 @@ use smithay_client_toolkit::seat::keyboard::{
 };
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 use smithay_client_toolkit::seat::{Capability, SeatHandler, SeatState};
-use smithay_client_toolkit::compositor::Surface as SctkSurface;
-use smithay_client_toolkit::globals::GlobalData;
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::{
     KeyboardInteractivity, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
 };
 use smithay_client_toolkit::shell::xdg::{XdgPositioner, XdgShell};
 use smithay_client_toolkit::{
-    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
-    delegate_registry, delegate_seat, registry_handlers,
+    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
+    delegate_seat, registry_handlers,
 };
 use torin::prelude::CursorPoint;
 use wayland_client::globals::registry_queue_init;
@@ -48,14 +48,12 @@ use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::{
     self, WpFractionalScaleManagerV1,
 };
-use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::{
-    self, WpFractionalScaleV1,
-};
+use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::{self, WpFractionalScaleV1};
+use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::{self, ZwpTextInputManagerV3};
+use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::{self, ZwpTextInputV3};
 use wayland_protocols::wp::viewporter::client::wp_viewport::{self, WpViewport};
 use wayland_protocols::wp::viewporter::client::wp_viewporter::{self, WpViewporter};
-use wayland_protocols::xdg::decoration::zv1::client::zxdg_decoration_manager_v1::{
-    self, ZxdgDecorationManagerV1,
-};
+use wayland_protocols::xdg::decoration::zv1::client::zxdg_decoration_manager_v1::{self, ZxdgDecorationManagerV1};
 use wayland_protocols::xdg::shell::client::xdg_popup::{self, XdgPopup};
 use wayland_protocols::xdg::shell::client::xdg_positioner::{
     Anchor as XdgAnchor, ConstraintAdjustment, Gravity as XdgGravity,
@@ -68,19 +66,15 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_h
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::{
     self, ZwlrForeignToplevelManagerV1,
 };
-use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::{
-    self, ZwpTextInputManagerV3,
-};
-use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::{self, ZwpTextInputV3};
 
 use crate::egl::Egl;
 use crate::frame::runner_waker;
 use crate::ime::{ImeCommit, ImeEvent, Preedit, decode_cursor};
-use crate::toplevel::{ToplevelInfo, decode_state_array};
 use crate::surface::{FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole};
+use crate::toplevel::{ToplevelInfo, decode_state_array};
 use crate::{
-    KeyPress, LoopWaker, OutputEvent, OutputId, PopupAnchor, PopupConfig, PopupGravity, Result,
-    SurfaceConfig, SurfaceId, SurfaceSize, input,
+    KeyPress, LoopWaker, OutputEvent, OutputId, PopupAnchor, PopupConfig, PopupGravity, Result, SurfaceConfig,
+    SurfaceId, SurfaceSize, input,
 };
 
 /// The shell host. Create it, add surfaces, then `run()` the event loop.
@@ -93,8 +87,7 @@ impl Shell {
     /// Connect to the compositor and initialize the EGL/graphics stack.
     pub fn new() -> Result<Self> {
         let conn = Connection::connect_to_env().context("connect to Wayland compositor")?;
-        let (globals, event_queue) =
-            registry_queue_init::<Host>(&conn).context("initialize Wayland registry")?;
+        let (globals, event_queue) = registry_queue_init::<Host>(&conn).context("initialize Wayland registry")?;
         let qh = event_queue.handle();
 
         // Log advertised globals for diagnostics; wp_fractional_scale_manager_v1 +
@@ -108,8 +101,7 @@ impl Shell {
             tracing::info!("[host] advertised fractional_scale={frac} viewporter={vp}");
         });
 
-        let event_loop: EventLoop<'static, Host> =
-            EventLoop::try_new().context("create calloop event loop")?;
+        let event_loop: EventLoop<'static, Host> = EventLoop::try_new().context("create calloop event loop")?;
         let loop_handle = event_loop.handle();
 
         WaylandSource::new(conn.clone(), event_queue)
@@ -130,10 +122,8 @@ impl Shell {
         let display_ptr = conn.backend().display_ptr() as *mut c_void;
         let egl = unsafe { Egl::new(display_ptr) }?;
 
-        let compositor_state =
-            CompositorState::bind(&globals, &qh).map_err(|e| anyhow!("bind wl_compositor: {e}"))?;
-        let layer_shell =
-            LayerShell::bind(&globals, &qh).map_err(|e| anyhow!("bind wlr-layer-shell: {e}"))?;
+        let compositor_state = CompositorState::bind(&globals, &qh).map_err(|e| anyhow!("bind wl_compositor: {e}"))?;
+        let layer_shell = LayerShell::bind(&globals, &qh).map_err(|e| anyhow!("bind wlr-layer-shell: {e}"))?;
 
         // xdg shell (xdg_wm_base): the popup primitive. Bound via sctk's XdgShell (it
         // also binds the optional decoration manager, unused here), but popups are
@@ -142,7 +132,11 @@ impl Shell {
         let xdg_shell = XdgShell::bind(&globals, &qh).ok();
         tracing::info!(
             "[host] xdg shell {}",
-            if xdg_shell.is_some() { "bound (xdg popups enabled)" } else { "absent (popups unavailable)" }
+            if xdg_shell.is_some() {
+                "bound (xdg popups enabled)"
+            } else {
+                "absent (popups unavailable)"
+            }
         );
 
         // Fractional scaling: bind wp_viewporter (stable) + staging
@@ -150,8 +144,7 @@ impl Shell {
         // so Host implements their Dispatch directly. Either absent -> integer
         // buffer_scale fallback (surface.rs). Version 1 is the only version.
         let viewporter = globals.bind::<WpViewporter, Host, _>(&qh, 1..=1, ()).ok();
-        let fractional_manager =
-            globals.bind::<WpFractionalScaleManagerV1, Host, _>(&qh, 1..=1, ()).ok();
+        let fractional_manager = globals.bind::<WpFractionalScaleManagerV1, Host, _>(&qh, 1..=1, ()).ok();
         tracing::info!(
             "[host] fractional scaling {}",
             if viewporter.is_some() && fractional_manager.is_some() {
@@ -167,11 +160,16 @@ impl Shell {
         // same as fractional-scale above. Absent -> dock never sees any windows
         // (GnoblinSnapshot.windows stays empty; connected/amber state is unaffected,
         // that's still Ping-based liveness over org.gnoblin.Shell).
-        let toplevel_manager =
-            globals.bind::<ZwlrForeignToplevelManagerV1, Host, _>(&qh, 1..=3, ()).ok();
+        let toplevel_manager = globals
+            .bind::<ZwlrForeignToplevelManagerV1, Host, _>(&qh, 1..=3, ())
+            .ok();
         tracing::info!(
             "[host] foreign-toplevel management {}",
-            if toplevel_manager.is_some() { "bound (window list/activate/minimize/close)" } else { "unavailable" }
+            if toplevel_manager.is_some() {
+                "bound (window list/activate/minimize/close)"
+            } else {
+                "unavailable"
+            }
         );
 
         // IME (CJK/compose input) for text fields: zwp_text_input_manager_v3, a
@@ -182,7 +180,11 @@ impl Shell {
         let text_input_manager = globals.bind::<ZwpTextInputManagerV3, Host, _>(&qh, 1..=1, ()).ok();
         tracing::info!(
             "[host] text input (IME) {}",
-            if text_input_manager.is_some() { "manager bound" } else { "unavailable" }
+            if text_input_manager.is_some() {
+                "manager bound"
+            } else {
+                "unavailable"
+            }
         );
 
         let host = Host {
@@ -228,12 +230,10 @@ impl Shell {
     /// Create a layer surface rendering `app`, not bound to a specific output.
     /// Returns its id. Prefer [`Shell::create_surface_on_outputs`] for per-output
     /// chrome (bar/osd); this is for compositor-placed or singleton surfaces.
-    pub fn create_surface(
-        &mut self,
-        config: SurfaceConfig,
-        app: impl Fn() -> Element + 'static,
-    ) -> Result<SurfaceId> {
-        self.host.create_surface_impl(config, None, |_| (), app).map(|(id, ())| id)
+    pub fn create_surface(&mut self, config: SurfaceConfig, app: impl Fn() -> Element + 'static) -> Result<SurfaceId> {
+        self.host
+            .create_surface_impl(config, None, |_| (), app)
+            .map(|(id, ())| id)
     }
 
     /// Create one copy of a surface per connected output, binding each to its output.
@@ -306,10 +306,7 @@ impl Shell {
     ///
     /// Register it BEFORE [`Shell::run`]; the eager pass here mounts the startup
     /// outputs synchronously so the caller can wire the manager against them.
-    pub fn on_output(
-        &mut self,
-        handler: impl FnMut(OutputEvent, &mut OutputControl<'_>) + 'static,
-    ) {
+    pub fn on_output(&mut self, handler: impl FnMut(OutputEvent, &mut OutputControl<'_>) + 'static) {
         self.host.output_handler = Some(Box::new(handler));
         self.host.announce_present_outputs();
     }
@@ -469,7 +466,10 @@ impl Control<'_> {
     /// risking a protocol violation; double-buffered, call [`Control::ime_commit`].
     pub fn ime_set_surrounding_text(&mut self, text: &str, cursor: i32, anchor: i32) {
         if text.len() > 4000 {
-            tracing::warn!("[host] ime_set_surrounding_text: {} bytes exceeds the 4000 byte protocol cap, skipped", text.len());
+            tracing::warn!(
+                "[host] ime_set_surrounding_text: {} bytes exceeds the 4000 byte protocol cap, skipped",
+                text.len()
+            );
             return;
         }
         if let Some(ti) = self.host.text_input.as_ref() {
@@ -676,9 +676,7 @@ impl Host {
         // first commit, so the very first configure already carries a hugged size.
         let (init_w, init_h, content) = match config.size {
             SurfaceSize::Exact { width, height } => (width, height, None),
-            SurfaceSize::ContentSized { width, max_height } => {
-                (width, max_height, Some((width, max_height)))
-            }
+            SurfaceSize::ContentSized { width, max_height } => (width, max_height, Some((width, max_height))),
         };
 
         let id = SurfaceId(self.next_id);
@@ -693,7 +691,12 @@ impl Host {
             output,
         );
         layer.set_anchor(config.anchor);
-        layer.set_margin(config.margins.top, config.margins.right, config.margins.bottom, config.margins.left);
+        layer.set_margin(
+            config.margins.top,
+            config.margins.right,
+            config.margins.bottom,
+            config.margins.left,
+        );
         layer.set_exclusive_zone(config.exclusive_zone);
         layer.set_keyboard_interactivity(config.keyboard_interactivity);
         layer.set_size(init_w, init_h);
@@ -724,11 +727,8 @@ impl Host {
             // connection (client_system backend), valid for the process lifetime --
             // the same pointer and the same safety argument as the Egl::new call
             // above.
-            let (_primary, clipboard) = unsafe {
-                freya_clipboard::copypasta::wayland_clipboard::create_clipboards_from_external(
-                    display_ptr,
-                )
-            };
+            let (_primary, clipboard) =
+                unsafe { freya_clipboard::copypasta::wayland_clipboard::create_clipboards_from_external(display_ptr) };
             Box::new(clipboard) as Box<dyn ClipboardProvider>
         });
         let (mut surface, extra) = FreyaLayerSurface::new(
@@ -755,9 +755,7 @@ impl Host {
             let viewport = viewporter.get_viewport(&wl, &self.qh, ());
             let fractional = manager.get_fractional_scale(&wl, &self.qh, id);
             surface.enable_fractional(viewport, fractional);
-            tracing::info!(
-                "[host] surface {id:?} fractional scaling enabled (wp_viewport + wp_fractional_scale_v1)"
-            );
+            tracing::info!("[host] surface {id:?} fractional scaling enabled (wp_viewport + wp_fractional_scale_v1)");
         }
         if surface.is_content_sized()
             && let Some((w, h)) = surface.measure_if_dirty()
@@ -829,15 +827,19 @@ impl Host {
             | ConstraintAdjustment::FlipY;
         let (ax, ay, aw, ah) = config.anchor_rect;
         let (aw, ah) = (aw.max(1), ah.max(1));
-        let geometry = PopupGeometry { anchor_rect: (ax, ay, aw, ah), anchor, gravity, constraint };
+        let geometry = PopupGeometry {
+            anchor_rect: (ax, ay, aw, ah),
+            anchor,
+            gravity,
+            constraint,
+        };
 
         // xdg objects. The parent xdg_surface is passed directly for a popup-parented
         // popup (submenu); for a layer-parented popup it is None and the layer surface
         // adopts the popup via zwlr_layer_surface_v1.get_popup below.
         let parent_popup_xdg = self.surfaces[parent_idx].popup().map(|p| p.xdg_surface.clone());
         let xdg_shell = self.xdg_shell.as_ref().expect("xdg_shell present (checked above)");
-        let positioner =
-            XdgPositioner::new(xdg_shell).map_err(|e| anyhow!("create xdg_positioner: {e}"))?;
+        let positioner = XdgPositioner::new(xdg_shell).map_err(|e| anyhow!("create xdg_positioner: {e}"))?;
         positioner.set_size(init_w as i32, init_h as i32);
         positioner.set_anchor_rect(ax, ay, aw, ah);
         positioner.set_anchor(anchor);
@@ -927,7 +929,13 @@ impl Host {
             let ids: Vec<SurfaceId> = self.surfaces.iter().map(|s| s.id).collect();
             self.kb_focus = focus_after_single_close(&ids, self.kb_focus, pos);
             self.surfaces.remove(pos);
-            self.dispatch_output(OutputEvent::SurfaceClosed { output: None, surface: id }, None);
+            self.dispatch_output(
+                OutputEvent::SurfaceClosed {
+                    output: None,
+                    surface: id,
+                },
+                None,
+            );
         }
         if self.surfaces.is_empty() {
             self.exit = true;
@@ -939,8 +947,11 @@ impl Host {
     /// torn down so its open menus go with it. Fires [`OutputEvent::SurfaceClosed`]
     /// for each retired popup.
     fn retire_descendant_popups(&mut self, roots: &[SurfaceId]) {
-        let links: Vec<(SurfaceId, Option<SurfaceId>)> =
-            self.surfaces.iter().map(|s| (s.id, s.popup().map(|p| p.parent))).collect();
+        let links: Vec<(SurfaceId, Option<SurfaceId>)> = self
+            .surfaces
+            .iter()
+            .map(|s| (s.id, s.popup().map(|p| p.parent)))
+            .collect();
         let doomed = popup_descendants(&links, roots);
         // Remove child-first (reverse of the breadth-first discovery order) so a nested
         // popup is destroyed before its parent popup -- xdg requires popups be torn
@@ -955,7 +966,13 @@ impl Host {
             }
         }
         for id in doomed {
-            self.dispatch_output(OutputEvent::SurfaceClosed { output: None, surface: id }, None);
+            self.dispatch_output(
+                OutputEvent::SurfaceClosed {
+                    output: None,
+                    surface: id,
+                },
+                None,
+            );
         }
     }
 
@@ -1022,12 +1039,7 @@ impl Host {
         }
         let mut created = Vec::with_capacity(outputs.len());
         for output in &outputs {
-            created.push(self.create_surface_impl(
-                config.clone(),
-                Some(output),
-                &mut setup,
-                app.clone(),
-            )?);
+            created.push(self.create_surface_impl(config.clone(), Some(output), &mut setup, app.clone())?);
         }
         Ok(created)
     }
@@ -1308,7 +1320,13 @@ impl Host {
         });
 
         if let Some(mut handler) = self.key_handler.take() {
-            let press = KeyPress { key, code, modifiers, repeat, surface: sid };
+            let press = KeyPress {
+                key,
+                code,
+                modifiers,
+                repeat,
+                surface: sid,
+            };
             let mut control = Control { host: self };
             handler(press, &mut control);
             self.key_handler = Some(handler);
@@ -1363,13 +1381,7 @@ impl CompositorHandler for Host {
     ) {
     }
 
-    fn frame(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        surface: &wl_surface::WlSurface,
-        _time: u32,
-    ) {
+    fn frame(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, surface: &wl_surface::WlSurface, _time: u32) {
         if let Some(idx) = self.index_of(surface) {
             self.surfaces[idx].frame_pending = false;
         }
@@ -1408,12 +1420,7 @@ impl OutputHandler for Host {
 
     fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
 
-    fn output_destroyed(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        output: wl_output::WlOutput,
-    ) {
+    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
         // sctk still lists `output` in OutputState until this returns; destroy_output
         // tears down its surfaces and notifies the app (which excludes it from
         // OutputControl::remaining when rebinding singletons).
@@ -1423,8 +1430,7 @@ impl OutputHandler for Host {
 
 impl LayerShellHandler for Host {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
-        let Some(idx) = self.surfaces.iter().position(|s| s.wl_surface() == layer.wl_surface())
-        else {
+        let Some(idx) = self.surfaces.iter().position(|s| s.wl_surface() == layer.wl_surface()) else {
             return;
         };
         let id = self.surfaces[idx].id;
@@ -1467,9 +1473,7 @@ impl LayerShellHandler for Host {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        if let Some(idx) =
-            self.surfaces.iter().position(|s| s.wl_surface() == layer.wl_surface())
-        {
+        if let Some(idx) = self.surfaces.iter().position(|s| s.wl_surface() == layer.wl_surface()) {
             self.configure_surface(idx, configure.new_size);
         }
     }
@@ -1665,11 +1669,11 @@ impl PointerHandler for Host {
                 PointerEventKind::Release { button, .. } => {
                     self.surfaces[idx].feed_event(input::mouse_button(cursor, button, false));
                 }
-                PointerEventKind::Axis { horizontal, vertical, .. } => {
-                    let dx = input::axis_pixels(horizontal.absolute, horizontal.value120, horizontal.discrete)
-                        * scale;
-                    let dy = input::axis_pixels(vertical.absolute, vertical.value120, vertical.discrete)
-                        * scale;
+                PointerEventKind::Axis {
+                    horizontal, vertical, ..
+                } => {
+                    let dx = input::axis_pixels(horizontal.absolute, horizontal.value120, horizontal.discrete) * scale;
+                    let dy = input::axis_pixels(vertical.absolute, vertical.value120, vertical.discrete) * scale;
                     if dx != 0.0 || dy != 0.0 {
                         self.surfaces[idx].feed_event(input::wheel(cursor, dx, dy));
                     }
@@ -1699,27 +1703,11 @@ delegate_registry!(Host);
 // (preferred_scale), routed to its surface by the SurfaceId udata.
 
 impl Dispatch<WpViewporter, ()> for Host {
-    fn event(
-        _: &mut Self,
-        _: &WpViewporter,
-        _: wp_viewporter::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
+    fn event(_: &mut Self, _: &WpViewporter, _: wp_viewporter::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
 }
 
 impl Dispatch<WpViewport, ()> for Host {
-    fn event(
-        _: &mut Self,
-        _: &WpViewport,
-        _: wp_viewport::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
+    fn event(_: &mut Self, _: &WpViewport, _: wp_viewport::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
 }
 
 impl Dispatch<WpFractionalScaleManagerV1, ()> for Host {
@@ -1786,11 +1774,16 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Host {
                 tracing::debug!("[host] toplevel {id} created ({:?})", toplevel.id());
                 host.toplevels.push(TrackedToplevel {
                     handle: toplevel,
-                    info: ToplevelInfo { id: id.to_string(), ..Default::default() },
+                    info: ToplevelInfo {
+                        id: id.to_string(),
+                        ..Default::default()
+                    },
                 });
             }
             zwlr_foreign_toplevel_manager_v1::Event::Finished => {
-                tracing::warn!("[host] zwlr_foreign_toplevel_manager_v1 finished (compositor withdrew it); window list frozen");
+                tracing::warn!(
+                    "[host] zwlr_foreign_toplevel_manager_v1 finished (compositor withdrew it); window list frozen"
+                );
                 host.toplevel_manager = None;
             }
             _ => {}
@@ -1911,16 +1904,27 @@ impl Dispatch<ZwpTextInputV3, ()> for Host {
                     host.dispatch_ime(ImeEvent::Leave(sid));
                 }
             }
-            Event::PreeditString { text, cursor_begin, cursor_end } => {
+            Event::PreeditString {
+                text,
+                cursor_begin,
+                cursor_end,
+            } => {
                 host.ime_pending.preedit = text.map(|text| {
                     let (cursor_begin, cursor_end) = decode_cursor(cursor_begin, cursor_end);
-                    Preedit { text, cursor_begin, cursor_end }
+                    Preedit {
+                        text,
+                        cursor_begin,
+                        cursor_end,
+                    }
                 });
             }
             Event::CommitString { text } => {
                 host.ime_pending.commit = text;
             }
-            Event::DeleteSurroundingText { before_length, after_length } => {
+            Event::DeleteSurroundingText {
+                before_length,
+                after_length,
+            } => {
                 host.ime_pending.delete_before = before_length;
                 host.ime_pending.delete_after = after_length;
             }
@@ -1988,7 +1992,8 @@ impl Dispatch<XdgSurface, SurfaceId> for Host {
                 return;
             };
             let Some(size) = state.surfaces[idx].popup().map(|p| {
-                p.xdg_surface.set_window_geometry(0, 0, p.pending.0 as i32, p.pending.1 as i32);
+                p.xdg_surface
+                    .set_window_geometry(0, 0, p.pending.0 as i32, p.pending.1 as i32);
                 p.pending
             }) else {
                 return;
@@ -2105,11 +2110,7 @@ fn retire_plan(
 /// the post-removal list, or `None` if the focused surface WAS the removed one. This
 /// is the exact id-based fixup LayerShellHandler::closed applies, extracted so it is
 /// unit-testable without a live compositor (companion to [`retire_plan`]).
-fn focus_after_single_close(
-    ids: &[SurfaceId],
-    focus: Option<usize>,
-    removed: usize,
-) -> Option<usize> {
+fn focus_after_single_close(ids: &[SurfaceId], focus: Option<usize>, removed: usize) -> Option<usize> {
     let focused_id = focus.and_then(|i| ids.get(i)).copied();
     focused_id.and_then(|fid| {
         ids.iter()
@@ -2125,10 +2126,7 @@ fn focus_after_single_close(
 /// (roots EXCLUDED); the caller removes them in reverse so nested popups are torn
 /// down before their parents. Extracted from [`Host::retire_descendant_popups`] so
 /// the parent-teardown fan-out is unit-testable without a live compositor.
-fn popup_descendants(
-    links: &[(SurfaceId, Option<SurfaceId>)],
-    roots: &[SurfaceId],
-) -> Vec<SurfaceId> {
+fn popup_descendants(links: &[(SurfaceId, Option<SurfaceId>)], roots: &[SurfaceId]) -> Vec<SurfaceId> {
     let mut frontier: Vec<SurfaceId> = roots.to_vec();
     let mut out: Vec<SurfaceId> = Vec::new();
     while let Some(parent) = frontier.pop() {
@@ -2203,11 +2201,7 @@ mod tests {
     #[test]
     fn focus_above_all_removed_is_unchanged() {
         // Focus on index 0; a later surface (index 2) is removed -> index 0 unchanged.
-        let bindings = [
-            (sid(0), Some(oid(1))),
-            (sid(1), Some(oid(1))),
-            (sid(2), Some(oid(2))),
-        ];
+        let bindings = [(sid(0), Some(oid(1))), (sid(1), Some(oid(1))), (sid(2), Some(oid(2)))];
         let (doomed, focus) = retire_plan(&bindings, Some(0), oid(2));
         assert_eq!(doomed, vec![2]);
         assert_eq!(focus, Some(0));

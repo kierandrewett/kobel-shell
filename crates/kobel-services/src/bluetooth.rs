@@ -56,10 +56,7 @@ trait Device1 {
     fn disconnect(&self) -> zbus::Result<()>;
 }
 
-pub(crate) async fn run(
-    events: UnboundedSender<ServiceEvent>,
-    mut cmd_rx: UnboundedReceiver<BtCommand>,
-) {
+pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: UnboundedReceiver<BtCommand>) {
     let conn = match Connection::system().await {
         Ok(conn) => conn,
         Err(e) => {
@@ -223,11 +220,7 @@ async fn refresh(
             paired,
         });
     }
-    devices.sort_by(|a, b| {
-        b.connected
-            .cmp(&a.connected)
-            .then_with(|| a.alias.cmp(&b.alias))
-    });
+    devices.sort_by(|a, b| b.connected.cmp(&a.connected).then_with(|| a.alias.cmp(&b.alias)));
     *dev_index = index;
 
     let snapshot = BluetoothSnapshot {
@@ -285,12 +278,7 @@ async fn handle_command(
 /// leaking the task and its connection/proxy clones forever.
 const DEVICE_ACTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn device_action(
-    conn: &Connection,
-    dev_index: &HashMap<String, OwnedObjectPath>,
-    address: &str,
-    connect: bool,
-) {
+fn device_action(conn: &Connection, dev_index: &HashMap<String, OwnedObjectPath>, address: &str, connect: bool) {
     let verb = if connect { "connect" } else { "disconnect" };
     let Some(path) = dev_index.get(address) else {
         tracing::warn!("[bluetooth] {verb} target not found: {address}");
@@ -313,13 +301,17 @@ fn device_action(
                 return;
             }
         };
-        let call = async { if connect { device.connect().await } else { device.disconnect().await } };
+        let call = async {
+            if connect {
+                device.connect().await
+            } else {
+                device.disconnect().await
+            }
+        };
         match tokio::time::timeout(DEVICE_ACTION_TIMEOUT, call).await {
             Ok(Ok(())) => tracing::info!("[bluetooth] {verb} {address} ok"),
             Ok(Err(e)) => tracing::warn!("[bluetooth] {verb} {address} failed: {e}"),
-            Err(_) => tracing::warn!(
-                "[bluetooth] {verb} {address} timed out after {DEVICE_ACTION_TIMEOUT:?}"
-            ),
+            Err(_) => tracing::warn!("[bluetooth] {verb} {address} timed out after {DEVICE_ACTION_TIMEOUT:?}"),
         }
     });
 }

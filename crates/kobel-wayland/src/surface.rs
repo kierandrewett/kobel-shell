@@ -320,8 +320,11 @@ impl FreyaLayerSurface {
             scale_num,
             logical_size: initial_logical,
             physical_size: physical,
-            content: content
-                .map(|(width, max_height)| ContentSized { width, max_height, last_requested_h: 0 }),
+            content: content.map(|(width, max_height)| ContentSized {
+                width,
+                max_height,
+                last_requested_h: 0,
+            }),
             configured: false,
             frame_pending: false,
             layout_dirty: true,
@@ -439,11 +442,7 @@ impl FreyaLayerSurface {
     /// Attach the wp_viewport + wp_fractional_scale_v1 add-ons, switching this
     /// surface to fractional scaling. Called once by the host right after
     /// construction when the compositor advertised both globals.
-    pub(crate) fn enable_fractional(
-        &mut self,
-        viewport: WpViewport,
-        fractional: WpFractionalScaleV1,
-    ) {
+    pub(crate) fn enable_fractional(&mut self, viewport: WpViewport, fractional: WpFractionalScaleV1) {
         self.viewport = Some(viewport);
         self.fractional = Some(fractional);
     }
@@ -524,8 +523,11 @@ impl FreyaLayerSurface {
     /// pixels (see input.rs / conn.rs).
     pub(crate) fn feed_event(&mut self, event: PlatformEvent) {
         let scale_factor = self.scale_factor();
-        let processed = EventsMeasurerAdapter { tree: &mut self.tree, scale_factor }
-            .run(&mut vec![event], &mut self.nodes_state, None);
+        let processed = EventsMeasurerAdapter {
+            tree: &mut self.tree,
+            scale_factor,
+        }
+        .run(&mut vec![event], &mut self.nodes_state, None);
         let _ = self.events_sender.unbounded_send(EventsChunk::Processed(processed));
     }
 
@@ -539,8 +541,10 @@ impl FreyaLayerSurface {
         while let Ok(chunk) = self.events_receiver.try_recv() {
             match chunk {
                 EventsChunk::Processed(processed) => {
-                    EventsExecutorAdapter { runner: &mut self.runner }
-                        .run(&mut self.nodes_state, processed);
+                    EventsExecutorAdapter {
+                        runner: &mut self.runner,
+                    }
+                    .run(&mut self.nodes_state, processed);
                 }
                 EventsChunk::Batch(events) => {
                     for ev in events {
@@ -627,8 +631,12 @@ impl FreyaLayerSurface {
             Some(c) => (c.width, c.max_height),
             None => return None,
         };
-        let content_phys =
-            self.tree.layout.get(&NodeId::ROOT).map(|n| n.inner_sizes.height).unwrap_or(0.0);
+        let content_phys = self
+            .tree
+            .layout
+            .get(&NodeId::ROOT)
+            .map(|n| n.inner_sizes.height)
+            .unwrap_or(0.0);
         let logical_h = content_logical_height(content_phys, self.scale_factor(), max_height);
         let c = self.content.as_mut().expect("content present");
         if logical_h != c.last_requested_h {
@@ -674,7 +682,9 @@ impl FreyaLayerSurface {
             self.frames_since_log = 0;
             tracing::info!(
                 "[host] surface {:?} fps={:.0} frame={:.1}ms",
-                self.id, stats.fps, stats.last_frame_ms
+                self.id,
+                stats.fps,
+                stats.last_frame_ms
             );
         }
     }

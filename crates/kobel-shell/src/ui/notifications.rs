@@ -25,13 +25,13 @@ use freya_components::scrollviews::ScrollView;
 use freya_core::prelude::*;
 use torin::prelude::{Alignment, Content, Direction, Size};
 
-use kobel_services::{Command, MediaSnapshot, Notification, NotifdSnapshot};
+use kobel_services::{Command, MediaSnapshot, NotifdSnapshot, Notification};
 
 use super::chip::{HoverExt, use_hover};
 use super::panels::OpenProgress;
 use super::{
-    AppIcon, ICON_BELL, ICON_BELL_SLASH, ICON_CHECK, ICON_CLOSE, ICON_DISC, ICON_MUSIC, ICON_PAUSE,
-    ICON_PLAY, ICON_SKIP_BACK, ICON_SKIP_FWD, ICON_TRASH, icon,
+    AppIcon, ICON_BELL, ICON_BELL_SLASH, ICON_CHECK, ICON_CLOSE, ICON_DISC, ICON_MUSIC, ICON_PAUSE, ICON_PLAY,
+    ICON_SKIP_BACK, ICON_SKIP_FWD, ICON_TRASH, icon,
 };
 use crate::manager::{ShellBus, ShellMsg};
 use crate::motion::{self, use_spring};
@@ -102,11 +102,17 @@ pub(crate) fn resolve_toasts(
         let age = now_ms.saturating_sub(arrived);
         if critical || age < TOAST_MS {
             if live < MAX_TOASTS {
-                out.push(LiveToast { id, phase: ToastPhase::In });
+                out.push(LiveToast {
+                    id,
+                    phase: ToastPhase::In,
+                });
                 live += 1;
             }
         } else if age < TOAST_MS + TOAST_OUT_MS {
-            out.push(LiveToast { id, phase: ToastPhase::Out });
+            out.push(LiveToast {
+                id,
+                phase: ToastPhase::Out,
+            });
         }
     }
     out
@@ -177,12 +183,7 @@ impl Component for Toasts {
         let serving = notifd.read().serving;
         let dnd = notifd.read().dnd;
         let suppressed = dnd || *drawer_open.0.read();
-        let store: Vec<(u32, bool)> = notifd
-            .read()
-            .notifications
-            .iter()
-            .map(|n| (n.id, n.critical))
-            .collect();
+        let store: Vec<(u32, bool)> = notifd.read().notifications.iter().map(|n| (n.id, n.critical)).collect();
 
         // Subscribe to expiry bumps so 3.8s-later re-renders actually happen.
         let _ = *tick.read();
@@ -267,7 +268,11 @@ impl Component for Toasts {
                 Some(
                     rect()
                         .key(lt.id)
-                        .child(ToastCard { n: n.clone(), phase: lt.phase, rects: card_rects })
+                        .child(ToastCard {
+                            n: n.clone(),
+                            phase: lt.phase,
+                            rects: card_rects,
+                        })
                         .into_element(),
                 )
             })
@@ -287,19 +292,16 @@ impl Component for Toasts {
         };
         // Publish on change only (deps dedup vs the last-sent region), and prune
         // bounds for unmounted toasts so `card_rects` never grows without bound.
-        use_side_effect_with_deps(
-            &(region.clone(), live_ids.clone()),
-            move |(region, live_ids)| {
-                let mut card_rects = card_rects;
-                let alive: HashSet<u32> = live_ids.iter().copied().collect();
-                // Hoist the peek() borrow out before write() (State gotcha).
-                let stale = card_rects.peek().keys().any(|id| !alive.contains(id));
-                if stale {
-                    card_rects.write().retain(|id, _| alive.contains(id));
-                }
-                bus.send(ShellMsg::ToastsRegion(region.clone()));
-            },
-        );
+        use_side_effect_with_deps(&(region.clone(), live_ids.clone()), move |(region, live_ids)| {
+            let mut card_rects = card_rects;
+            let alive: HashSet<u32> = live_ids.iter().copied().collect();
+            // Hoist the peek() borrow out before write() (State gotcha).
+            let stale = card_rects.peek().keys().any(|id| !alive.contains(id));
+            if stale {
+                card_rects.write().retain(|id, _| alive.contains(id));
+            }
+            bus.send(ShellMsg::ToastsRegion(region.clone()));
+        });
 
         let column = rect()
             .vertical()
@@ -357,30 +359,27 @@ impl Component for ToastCard {
         // input strip would otherwise linger where the wrapper sits during the
         // slide). The parent unions these into the input region; per-frame updates
         // during the slide are correct, and the parent dedups unchanged values.
-        rect()
-            .offset_x((1.0 - t) * TOAST_SLIDE)
-            .opacity(t)
-            .child(
-                rect()
-                    .on_sized(move |e: Event<SizedEventData>| {
-                        // Wayland regions take integer rects: floor the top-left and
-                        // ceil the bottom-right so the integer rect fully COVERS the
-                        // fractional (spring-translated) card bounds instead of
-                        // under-covering an edge.
-                        let a = e.area;
-                        let left = a.origin.x.floor() as i32;
-                        let top = a.origin.y.floor() as i32;
-                        let right = (a.origin.x + a.size.width).ceil() as i32;
-                        let bottom = (a.origin.y + a.size.height).ceil() as i32;
-                        let next = (left, top, right - left, bottom - top);
-                        // Hoist the peek() borrow out before write() (State gotcha).
-                        let prev = rects.peek().get(&id).copied();
-                        if prev != Some(next) {
-                            rects.write().insert(id, next);
-                        }
-                    })
-                    .child(notif_card(&self.n, true, true, Size::px(NCARD_W))),
-            )
+        rect().offset_x((1.0 - t) * TOAST_SLIDE).opacity(t).child(
+            rect()
+                .on_sized(move |e: Event<SizedEventData>| {
+                    // Wayland regions take integer rects: floor the top-left and
+                    // ceil the bottom-right so the integer rect fully COVERS the
+                    // fractional (spring-translated) card bounds instead of
+                    // under-covering an edge.
+                    let a = e.area;
+                    let left = a.origin.x.floor() as i32;
+                    let top = a.origin.y.floor() as i32;
+                    let right = (a.origin.x + a.size.width).ceil() as i32;
+                    let bottom = (a.origin.y + a.size.height).ceil() as i32;
+                    let next = (left, top, right - left, bottom - top);
+                    // Hoist the peek() borrow out before write() (State gotcha).
+                    let prev = rects.peek().get(&id).copied();
+                    if prev != Some(next) {
+                        rects.write().insert(id, next);
+                    }
+                })
+                .child(notif_card(&self.n, true, true, Size::px(NCARD_W))),
+        )
     }
 }
 
@@ -487,12 +486,7 @@ fn empty_state() -> Element {
         .corner_radius(theme::RADIUS_CARD)
         .shadow((0.0, 6.0, 18.0, 0.0, (0, 0, 0, 77)))
         .child(icon(ICON_CHECK, 22.0, theme::MUT))
-        .child(
-            label()
-                .text("All caught up")
-                .color(theme::MUT.rgb())
-                .font_size(12.5),
-        )
+        .child(label().text("All caught up").color(theme::MUT.rgb()).font_size(12.5))
         .into_element()
 }
 
@@ -525,19 +519,14 @@ type CardStyle = (Color, f32, (f32, f32, f32, f32, (u8, u8, u8, u8)));
 /// `translucent` selects the toast backing (the one sanctioned translucency) vs the
 /// opaque drawer PANEL.
 fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Size) -> Element {
-    let (bg, pad_h, shadow): CardStyle = if translucent
-    {
+    let (bg, pad_h, shadow): CardStyle = if translucent {
         (
             Color::from_af32rgb(0.82, 16, 13, 20),
             13.0,
             (0.0, 18.0, 40.0, 0.0, (5, 3, 10, 115)),
         )
     } else {
-        (
-            theme::PANEL.rgb().into(),
-            12.0,
-            (0.0, 6.0, 18.0, 0.0, (0, 0, 0, 77)),
-        )
+        (theme::PANEL.rgb().into(), 12.0, (0.0, 6.0, 18.0, 0.0, (0, 0, 0, 77)))
     };
 
     let tile = rect()
@@ -622,8 +611,12 @@ fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Siz
             .iter()
             .filter(|(_, label)| !label.is_empty())
             .map(|(key, label)| {
-                ActionButton { id: n.id, action_key: key.clone(), label: label.clone() }
-                    .into_element()
+                ActionButton {
+                    id: n.id,
+                    action_key: key.clone(),
+                    label: label.clone(),
+                }
+                .into_element()
             })
             .collect();
         if !actions.is_empty() {
@@ -644,9 +637,11 @@ fn notif_card(n: &Notification, translucent: bool, interactive: bool, width: Siz
 /// Themed icon *names* are not resolvable without an icon theme, so they fall back.
 fn card_glyph(n: &Notification) -> Element {
     match n.app_icon.as_deref() {
-        Some(path) if path.starts_with('/') => {
-            AppIcon { path: Some(PathBuf::from(path)), size: 15.0 }.into_element()
+        Some(path) if path.starts_with('/') => AppIcon {
+            path: Some(PathBuf::from(path)),
+            size: 15.0,
         }
+        .into_element(),
         _ => icon(ICON_BELL, 15.0, theme::MUT).into_element(),
     }
 }
@@ -654,11 +649,7 @@ fn card_glyph(n: &Notification) -> Element {
 /// Format a Unix-seconds receipt time as local `HH:MM` (ags `toCardData.when`).
 fn fmt_when(time: i64) -> String {
     chrono::DateTime::from_timestamp(time, 0)
-        .map(|dt| {
-            dt.with_timezone(&chrono::Local)
-                .format("%H:%M")
-                .to_string()
-        })
+        .map(|dt| dt.with_timezone(&chrono::Local).format("%H:%M").to_string())
         .unwrap_or_default()
 }
 
@@ -879,9 +870,18 @@ fn media_player_row(
         .horizontal()
         .cross_align(Alignment::Center)
         .spacing(1.0)
-        .child(MediaButton { action: MediaAction::Prev, playing })
-        .child(MediaButton { action: MediaAction::PlayPause, playing })
-        .child(MediaButton { action: MediaAction::Next, playing });
+        .child(MediaButton {
+            action: MediaAction::Prev,
+            playing,
+        })
+        .child(MediaButton {
+            action: MediaAction::PlayPause,
+            playing,
+        })
+        .child(MediaButton {
+            action: MediaAction::Next,
+            playing,
+        });
 
     let row = rect()
         .horizontal()
@@ -927,12 +927,7 @@ fn media_empty_row() -> Element {
         .main_align(Alignment::Center)
         .cross_align(Alignment::Start)
         .spacing(2.0)
-        .child(
-            label()
-                .text("Nothing playing")
-                .color(theme::MUT.rgb())
-                .font_size(12.0),
-        )
+        .child(label().text("Nothing playing").color(theme::MUT.rgb()).font_size(12.0))
         .child(
             label()
                 .text("Media controls appear when a player starts")
@@ -1113,7 +1108,13 @@ mod tests {
     #[test]
     fn fresh_toast_is_live() {
         let live = resolve_toasts(0, &[(1, false)], &arrivals(&[(1, 0)]));
-        assert_eq!(live, vec![LiveToast { id: 1, phase: ToastPhase::In }]);
+        assert_eq!(
+            live,
+            vec![LiveToast {
+                id: 1,
+                phase: ToastPhase::In
+            }]
+        );
     }
 
     #[test]
@@ -1123,12 +1124,18 @@ mod tests {
         // Still live one ms before the window closes.
         assert_eq!(
             resolve_toasts(TOAST_MS - 1, &store, &arr),
-            vec![LiveToast { id: 1, phase: ToastPhase::In }]
+            vec![LiveToast {
+                id: 1,
+                phase: ToastPhase::In
+            }]
         );
         // Leaving at the window edge.
         assert_eq!(
             resolve_toasts(TOAST_MS, &store, &arr),
-            vec![LiveToast { id: 1, phase: ToastPhase::Out }]
+            vec![LiveToast {
+                id: 1,
+                phase: ToastPhase::Out
+            }]
         );
         // Gone once the out tail elapses.
         assert!(resolve_toasts(TOAST_MS + TOAST_OUT_MS, &store, &arr).is_empty());
@@ -1137,7 +1144,13 @@ mod tests {
     #[test]
     fn critical_toast_is_sticky() {
         let live = resolve_toasts(10_000_000, &[(7, true)], &arrivals(&[(7, 0)]));
-        assert_eq!(live, vec![LiveToast { id: 7, phase: ToastPhase::In }]);
+        assert_eq!(
+            live,
+            vec![LiveToast {
+                id: 7,
+                phase: ToastPhase::In
+            }]
+        );
     }
 
     #[test]
@@ -1152,10 +1165,7 @@ mod tests {
         let arr = arrivals(&[(1, 0), (2, 0), (3, 0), (4, 0)]);
         let live = resolve_toasts(0, &store, &arr);
         assert_eq!(live.len(), MAX_TOASTS);
-        assert_eq!(
-            live.iter().map(|t| t.id).collect::<Vec<_>>(),
-            vec![4, 3, 2]
-        );
+        assert_eq!(live.iter().map(|t| t.id).collect::<Vec<_>>(), vec![4, 3, 2]);
     }
 
     #[test]
@@ -1167,6 +1177,12 @@ mod tests {
         let live = resolve_toasts(now, &store, &arr);
         // 3 live (4, 3, 2) + 1 leaving (1) -- the leaving toast is not capped out.
         assert_eq!(live.len(), 4);
-        assert_eq!(live[3], LiveToast { id: 1, phase: ToastPhase::Out });
+        assert_eq!(
+            live[3],
+            LiveToast {
+                id: 1,
+                phase: ToastPhase::Out
+            }
+        );
     }
 }

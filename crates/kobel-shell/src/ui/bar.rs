@@ -20,19 +20,19 @@ use freya_engine::prelude::AlphaType;
 use torin::prelude::{Alignment, Content, Position, Size};
 
 use kobel_services::{
-    AudioSnapshot, BatterySnapshot, Command, GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot,
-    TrayIcon, TrayItem, TrayMenu, TrayMenuItem, TrayMenuItemKind, TraySnapshot, TrayToggleKind,
+    AudioSnapshot, BatterySnapshot, Command, GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot, TrayIcon, TrayItem,
+    TrayMenu, TrayMenuItem, TrayMenuItemKind, TraySnapshot, TrayToggleKind,
 };
 
 use super::chip::{
-    HoverShape, TOOLTIP_GAP, TOOLTIP_HEADROOM, hover_button, hover_button_with_tooltip,
-    tooltip_bubble, use_hover, use_tooltip_hover,
+    HoverShape, TOOLTIP_GAP, TOOLTIP_HEADROOM, hover_button, hover_button_with_tooltip, tooltip_bubble, use_hover,
+    use_tooltip_hover,
 };
 use super::menu::{MenuGlyph, MenuModel, MenuRow, PopupHost, PopupPlacement};
 use super::notifications::badge_text;
 use super::{
-    AppIcon, ICON_APP, ICON_BATTERY, ICON_BELL, ICON_MAGNIFIER, ICON_POWER, ICON_SPEAKER_MUTE,
-    ICON_SPEAKER_WAVE, ICON_WIFI, ICON_WIFI_OFF, IconButton, icon,
+    AppIcon, ICON_APP, ICON_BATTERY, ICON_BELL, ICON_MAGNIFIER, ICON_POWER, ICON_SPEAKER_MUTE, ICON_SPEAKER_WAVE,
+    ICON_WIFI, ICON_WIFI_OFF, IconButton, icon,
 };
 use crate::manager::{ShellBus, ShellMsg, SurfaceKey};
 use crate::theme;
@@ -115,14 +115,9 @@ impl Component for FocusedTitle {
         let text = match g.windows.iter().find(|w| w.focused) {
             None => "desktop".to_string(),
             Some(focused) => {
-                let siblings: Vec<&_> =
-                    g.windows.iter().filter(|w| w.app_id == focused.app_id).collect();
+                let siblings: Vec<&_> = g.windows.iter().filter(|w| w.app_id == focused.app_id).collect();
                 if siblings.len() > 1 {
-                    let index = siblings
-                        .iter()
-                        .position(|w| w.id == focused.id)
-                        .unwrap_or(0)
-                        + 1;
+                    let index = siblings.iter().position(|w| w.id == focused.id).unwrap_or(0) + 1;
                     format!("{} -- window {}/{}", focused.title, index, siblings.len())
                 } else {
                     focused.title.clone()
@@ -161,10 +156,7 @@ struct ClockButton;
 /// Format the wall clock as `(HH:MM, short date)`.
 fn clock_text() -> (String, String) {
     let now = chrono::Local::now();
-    (
-        now.format("%H:%M").to_string(),
-        now.format("%a %-d %b").to_string(),
-    )
+    (now.format("%H:%M").to_string(), now.format("%a %-d %b").to_string())
 }
 
 impl Component for ClockButton {
@@ -189,26 +181,25 @@ impl Component for ClockButton {
 
         hover_button(
             hover,
-            HoverShape::Row { min_height: 31.0, padding: (0.0, 12.0), spacing: 8.0 },
+            HoverShape::Row {
+                min_height: 31.0,
+                padding: (0.0, 12.0),
+                spacing: 8.0,
+            },
             theme::RADIUS_BUTTON,
             Color::TRANSPARENT,
             theme::PANEL2.rgb().into(),
             move |_| bus.send(ShellMsg::Toggle(SurfaceKey::Calendar)),
         )
-            .child(
-                label()
-                    .text(time)
-                    .color(theme::TX.rgb())
-                    .font_size(13.5)
-                    .font_weight(theme::FONT_WEIGHT_SEMIBOLD as i32)
-                    .font_family(theme::FONT_FAMILY_DATA),
-            )
-            .child(
-                label()
-                    .text(date)
-                    .color(theme::MUT.rgb())
-                    .font_size(11.5),
-            )
+        .child(
+            label()
+                .text(time)
+                .color(theme::TX.rgb())
+                .font_size(13.5)
+                .font_weight(theme::FONT_WEIGHT_SEMIBOLD as i32)
+                .font_family(theme::FONT_FAMILY_DATA),
+        )
+        .child(label().text(date).color(theme::MUT.rgb()).font_size(11.5))
     }
 }
 
@@ -264,7 +255,11 @@ impl Component for StatusPill {
 
         let mut pill = hover_button(
             hover,
-            HoverShape::Row { min_height: 30.0, padding: (0.0, 13.0), spacing: 10.0 },
+            HoverShape::Row {
+                min_height: 30.0,
+                padding: (0.0, 13.0),
+                spacing: 10.0,
+            },
             theme::RADIUS_PILL,
             theme::PANEL2.rgb().into(),
             theme::CHIP.rgb().into(),
@@ -312,10 +307,11 @@ impl Component for BellButton {
         let count = notifd.read().notifications.len();
         let ctl = tokens.ctl();
 
-        let mut root = rect()
-            .width(Size::px(ctl))
-            .height(Size::px(ctl))
-            .child(IconButton { icon: ICON_BELL, icon_size: 15.0, target: SurfaceKey::Drawer });
+        let mut root = rect().width(Size::px(ctl)).height(Size::px(ctl)).child(IconButton {
+            icon: ICON_BELL,
+            icon_size: 15.0,
+            target: SurfaceKey::Drawer,
+        });
 
         if let Some(text) = badge_text(count) {
             // Absolute overlay pinned to the button's top-right; a leaf pill with
@@ -358,8 +354,10 @@ impl Component for TrayRow {
     fn render(&self) -> impl IntoElement {
         let tray = use_consume::<State<TraySnapshot>>();
         let items = tray.read().items.clone();
-        let buttons: Vec<Element> =
-            items.into_iter().map(|item| TrayButton { item }.into_element()).collect();
+        let buttons: Vec<Element> = items
+            .into_iter()
+            .map(|item| TrayButton { item }.into_element())
+            .collect();
         rect()
             .horizontal()
             .cross_align(Alignment::Center)
@@ -409,28 +407,28 @@ impl Component for TrayButton {
             move |_| bus.send(ShellMsg::Service(Command::ActivateTrayItem(address.clone()))),
         )
         .overflow(Overflow::Clip)
-            .on_mouse_down(move |e: Event<MouseEventData>| {
-                if e.button == Some(MouseButton::Middle) {
-                    mid_bus.send(ShellMsg::Service(Command::SecondaryActivateTrayItem(
-                        mid_address.clone(),
-                    )));
-                }
-            })
-            .on_secondary_down(move |e: Event<PressEventData>| {
-                let Some(menu) = menu.as_ref() else {
-                    return;
-                };
-                // Ask the item to refresh its menu just before we show it, per the
-                // com.canonical.dbusmenu AboutToShow contract.
-                menu_bus.send(ShellMsg::Service(Command::TrayMenuAboutToShow {
-                    address: menu_address.clone(),
-                }));
-                let model = tray_menu_model(&menu_address, menu, &menu_bus);
-                let anchor = press_anchor(&e);
-                // The bar sits at the top, so the menu grows downward from the click.
-                popup.open(anchor, PopupPlacement::below(), model);
-            })
-            .child(tray_glyph(&self.item.icon));
+        .on_mouse_down(move |e: Event<MouseEventData>| {
+            if e.button == Some(MouseButton::Middle) {
+                mid_bus.send(ShellMsg::Service(Command::SecondaryActivateTrayItem(
+                    mid_address.clone(),
+                )));
+            }
+        })
+        .on_secondary_down(move |e: Event<PressEventData>| {
+            let Some(menu) = menu.as_ref() else {
+                return;
+            };
+            // Ask the item to refresh its menu just before we show it, per the
+            // com.canonical.dbusmenu AboutToShow contract.
+            menu_bus.send(ShellMsg::Service(Command::TrayMenuAboutToShow {
+                address: menu_address.clone(),
+            }));
+            let model = tray_menu_model(&menu_address, menu, &menu_bus);
+            let anchor = press_anchor(&e);
+            // The bar sits at the top, so the menu grows downward from the click.
+            popup.open(anchor, PopupPlacement::below(), model);
+        })
+        .child(tray_glyph(&self.item.icon));
 
         // The tooltip must escape the button's own clip (Overflow::Clip above is
         // for the icon), so it is a sibling in a NON-clipping wrapper, not a
@@ -517,9 +515,14 @@ fn tray_row(address: &str, item: &TrayMenuItem, bus: &ShellBus) -> MenuRow {
 /// pixmap decoded into a Skia image, or the generic app glyph as a fallback.
 fn tray_glyph(tray_icon: &TrayIcon) -> Element {
     match tray_icon {
-        TrayIcon::Path(path) => AppIcon { path: Some(path.clone()), size: 18.0 }.into_element(),
-        TrayIcon::Pixmap { width, height, argb } => pixmap_image(*width, *height, argb)
-            .unwrap_or_else(|| icon(ICON_APP, 18.0, theme::MUT).into_element()),
+        TrayIcon::Path(path) => AppIcon {
+            path: Some(path.clone()),
+            size: 18.0,
+        }
+        .into_element(),
+        TrayIcon::Pixmap { width, height, argb } => {
+            pixmap_image(*width, *height, argb).unwrap_or_else(|| icon(ICON_APP, 18.0, theme::MUT).into_element())
+        }
         TrayIcon::None => icon(ICON_APP, 18.0, theme::MUT).into_element(),
     }
 }

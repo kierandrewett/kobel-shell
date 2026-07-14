@@ -115,13 +115,22 @@ fn is_all_day(start_epoch: i64, end_epoch: i64) -> bool {
 fn raw_to_event(raw: RawEvent) -> CalendarEvent {
     let (uid, summary, start_epoch, end_epoch, _extras) = raw;
     let all_day = is_all_day(start_epoch, end_epoch);
-    CalendarEvent { uid, summary, start_epoch, end_epoch, all_day }
+    CalendarEvent {
+        uid,
+        summary,
+        start_epoch,
+        end_epoch,
+        all_day,
+    }
 }
 
 /// Build a snapshot from the current cache (HashMap iteration order is
 /// unspecified, but the UI re-groups by day, so order does not matter).
 fn snapshot(has_calendars: bool, cache: &HashMap<String, CalendarEvent>) -> CalendarSnapshot {
-    CalendarSnapshot { has_calendars, events: cache.values().cloned().collect() }
+    CalendarSnapshot {
+        has_calendars,
+        events: cache.values().cloned().collect(),
+    }
 }
 
 /// Calendar service task. Connects once, subscribes to `EventsAddedOrUpdated` +
@@ -130,10 +139,7 @@ fn snapshot(has_calendars: bool, cache: &HashMap<String, CalendarEvent>) -> Cale
 /// the blocking predecessor relied on), maintains a live per-uid cache, applies
 /// adds/removes as they stream in, and emits `ServiceEvent::Calendar` on every
 /// change. Never claims a bus name, so shutdown just aborts the task.
-pub(crate) async fn run(
-    events: UnboundedSender<ServiceEvent>,
-    mut cmd_rx: UnboundedReceiver<CalendarCommand>,
-) {
+pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: UnboundedReceiver<CalendarCommand>) {
     let conn = match Connection::session().await {
         Ok(conn) => conn,
         Err(e) => {
@@ -242,7 +248,10 @@ mod tests {
     fn epoch(y: i32, mo: u32, day: u32, h: u32, mi: u32) -> i64 {
         Local
             .from_local_datetime(
-                &NaiveDate::from_ymd_opt(y, mo, day).unwrap().and_hms_opt(h, mi, 0).unwrap(),
+                &NaiveDate::from_ymd_opt(y, mo, day)
+                    .unwrap()
+                    .and_hms_opt(h, mi, 0)
+                    .unwrap(),
             )
             .single()
             .unwrap()

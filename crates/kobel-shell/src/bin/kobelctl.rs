@@ -59,5 +59,9 @@ fn main() -> ExitCode {
     }
     let reply = reply.trim();
     println!("{reply}");
-    if reply == "ok" { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if reply == "ok" {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }

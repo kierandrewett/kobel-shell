@@ -80,7 +80,10 @@ pub fn fuzzy(query: &str, target: &str) -> Option<FuzzyMatch> {
     }
 
     if qi == query_lower.len() {
-        Some(FuzzyMatch { score: score - target_chars.len() as f32 * LENGTH_PENALTY, marks })
+        Some(FuzzyMatch {
+            score: score - target_chars.len() as f32 * LENGTH_PENALTY,
+            marks,
+        })
     } else {
         None
     }
@@ -224,7 +227,11 @@ mod tests {
         // Multi-byte lead char (COFFEE, 3 bytes in UTF-8) before the match;
         // a byte-indexed implementation would panic or misalign marks.
         let m = fuzzy("fire", "\u{2615}firefox").expect("fire is a subsequence");
-        assert_eq!(m.marks, vec![1, 2, 3, 4], "marks must be char indices, not byte offsets");
+        assert_eq!(
+            m.marks,
+            vec![1, 2, 3, 4],
+            "marks must be char indices, not byte offsets"
+        );
     }
 
     #[test]

@@ -30,8 +30,8 @@ use kobel_wayland::Preedit;
 use super::fuzzy::{Frecency, fuzzy};
 use super::panels::{ImeFeed, KeyFeed, OpenProgress, use_open_scale};
 use super::{
-    AppIcon, ICON_CALCULATOR, ICON_GLOBE, ICON_LOCK, ICON_LOGOUT, ICON_MAGNIFIER,
-    ICON_MOON, ICON_POWER, ICON_RESTART, ICON_TERMINAL, dock, icon,
+    AppIcon, ICON_CALCULATOR, ICON_GLOBE, ICON_LOCK, ICON_LOGOUT, ICON_MAGNIFIER, ICON_MOON, ICON_POWER, ICON_RESTART,
+    ICON_TERMINAL, dock, icon,
 };
 use crate::manager::{ShellBus, ShellMsg, SurfaceKey};
 use crate::theme::{self, Rgb};
@@ -156,10 +156,16 @@ pub(crate) fn classify_key(key: &Key, code: &Code, mods: Modifiers) -> Stroke {
             NamedKey::ArrowUp => return Stroke::Up,
             NamedKey::ArrowDown => return Stroke::Down,
             NamedKey::ArrowLeft => {
-                return Stroke::Left { shift: mods.shift(), word: mods.ctrl() };
+                return Stroke::Left {
+                    shift: mods.shift(),
+                    word: mods.ctrl(),
+                };
             }
             NamedKey::ArrowRight => {
-                return Stroke::Right { shift: mods.shift(), word: mods.ctrl() };
+                return Stroke::Right {
+                    shift: mods.shift(),
+                    word: mods.ctrl(),
+                };
             }
             NamedKey::Home => return Stroke::Home { shift: mods.shift() },
             NamedKey::End => return Stroke::End { shift: mods.shift() },
@@ -299,9 +305,7 @@ impl Editor {
                 }
             }
             Stroke::Tab { back } => {
-                if !*back
-                    && let Some(g) = ghost
-                {
+                if !*back && let Some(g) = ghost {
                     self.query = g.to_string();
                     self.cursor = self.query.len();
                     self.anchor = None;
@@ -609,14 +613,20 @@ fn results(query: &str, apps: &AppsSnapshot, frecency: &Frecency) -> Vec<Section
 
     // ':' -> typed gnoblin command rows only.
     if let Some(rest) = qt.strip_prefix(':') {
-        return vec![Section { title: "commands", rows: command_rows(rest.trim()) }];
+        return vec![Section {
+            title: "commands",
+            rows: command_rows(rest.trim()),
+        }];
     }
 
     let mut out: Vec<Section> = Vec::new();
 
     // '=' prefix or math-looking -> a calculator row.
     if let Some(row) = calculator_row(qt) {
-        out.push(Section { title: "calculator", rows: vec![row] });
+        out.push(Section {
+            title: "calculator",
+            rows: vec![row],
+        });
     }
 
     // Apps: fuzzy over name (with keyword fallback), score + frecency boost.
@@ -675,19 +685,35 @@ fn results(query: &str, apps: &AppsSnapshot, frecency: &Frecency) -> Vec<Section
         _ => false,
     };
     if !app_rows.is_empty() || !act_rows.is_empty() {
-        let best = if best_from_apps { app_rows.remove(0) } else { act_rows.remove(0) };
-        out.push(Section { title: "best match", rows: vec![best] });
+        let best = if best_from_apps {
+            app_rows.remove(0)
+        } else {
+            act_rows.remove(0)
+        };
+        out.push(Section {
+            title: "best match",
+            rows: vec![best],
+        });
     }
     if !app_rows.is_empty() {
-        out.push(Section { title: "apps", rows: app_rows });
+        out.push(Section {
+            title: "apps",
+            rows: app_rows,
+        });
     }
     act_rows.truncate(3);
     if !act_rows.is_empty() {
-        out.push(Section { title: "actions", rows: act_rows });
+        out.push(Section {
+            title: "actions",
+            rows: act_rows,
+        });
     }
 
     // Web: always the last real row.
-    out.push(Section { title: "web", rows: vec![web_row(qt)] });
+    out.push(Section {
+        title: "web",
+        rows: vec![web_row(qt)],
+    });
     out
 }
 
@@ -776,9 +802,7 @@ fn url_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -834,7 +858,10 @@ const CMD_SPECS: &[CmdSpec] = &[
         usage: "notifs on|off",
         hint: "Release/own org.freedesktop.Notifications",
         resolve: |arg| {
-            parse_on_off(arg).map(|on| Command::SetFeature { name: "notifications".into(), on })
+            parse_on_off(arg).map(|on| Command::SetFeature {
+                name: "notifications".into(),
+                on,
+            })
         },
     },
 ];
@@ -1237,8 +1264,7 @@ impl Component for Launcher {
                 let Some(event) = event.as_ref() else {
                     return;
                 };
-                let stroke =
-                    classify_key(&event.press.key, &event.press.code, event.press.modifiers);
+                let stroke = classify_key(&event.press.key, &event.press.code, event.press.modifiers);
 
                 // Paste needs the clipboard fetched (IO) before Editor can apply it --
                 // Editor never performs IO itself, so this short-circuits before the
@@ -1301,9 +1327,7 @@ impl Component for Launcher {
                     }
                     Outcome::Close => bus.send(ShellMsg::CloseAll),
                     Outcome::Run => match flat_get(&sections, editor.selected) {
-                        Some(row) => {
-                            run_action(&row.action, &row.name, &bus, frecency, query, selected)
-                        }
+                        Some(row) => run_action(&row.action, &row.name, &bus, frecency, query, selected),
                         None => close_and_reset(&bus, query, selected),
                     },
                 }
@@ -1330,11 +1354,7 @@ impl Component for Launcher {
                         cursor: *cursor.peek(),
                         anchor: *anchor.peek(),
                     };
-                    editor.apply_ime_commit(
-                        payload.delete_before,
-                        payload.delete_after,
-                        payload.commit.as_deref(),
-                    );
+                    editor.apply_ime_commit(payload.delete_before, payload.delete_after, payload.commit.as_deref());
                     sync_ime_surrounding_text(&bus, &editor);
                     query.set(editor.query);
                     selected.set(editor.selected);
@@ -1460,7 +1480,11 @@ fn field_row(
     };
 
     let plain = |s: &str| {
-        label().text(s.to_string()).color(theme::TX.rgb()).font_size(FIELD_FONT).max_lines(1usize)
+        label()
+            .text(s.to_string())
+            .color(theme::TX.rgb())
+            .font_size(FIELD_FONT)
+            .max_lines(1usize)
     };
 
     let mut text = rect()
@@ -1500,13 +1524,17 @@ fn field_row(
         let mut drag_area = use_state(Area::default);
 
         text = text.child(
-            rect().width(Size::px(0.0)).height(Size::px(0.0)).overflow(Overflow::Clip).child(
-                paragraph()
-                    .width(Size::px(2000.0))
-                    .max_lines(Some(1usize))
-                    .holder(holder.clone())
-                    .span(Span::new(owned_query.clone()).font_size(FIELD_FONT)),
-            ),
+            rect()
+                .width(Size::px(0.0))
+                .height(Size::px(0.0))
+                .overflow(Overflow::Clip)
+                .child(
+                    paragraph()
+                        .width(Size::px(2000.0))
+                        .max_lines(Some(1usize))
+                        .holder(holder.clone())
+                        .span(Span::new(owned_query.clone()).font_size(FIELD_FONT)),
+                ),
         );
 
         text = text.on_sized(move |e: Event<SizedEventData>| drag_area.set(e.area));
@@ -1517,8 +1545,7 @@ fn field_row(
             if !e.data().is_primary() {
                 return;
             }
-            let Some(sk_paragraph) = down_holder.0.borrow().as_ref().map(|h| h.paragraph.clone())
-            else {
+            let Some(sk_paragraph) = down_holder.0.borrow().as_ref().map(|h| h.paragraph.clone()) else {
                 return;
             };
             let x = e.element_location().x as f32;
@@ -1533,8 +1560,7 @@ fn field_row(
             if !*dragging.peek() {
                 return;
             }
-            let Some(sk_paragraph) = move_holder.0.borrow().as_ref().map(|h| h.paragraph.clone())
-            else {
+            let Some(sk_paragraph) = move_holder.0.borrow().as_ref().map(|h| h.paragraph.clone()) else {
                 return;
             };
             let area = drag_area.read();
@@ -1558,7 +1584,11 @@ fn field_row(
             text = text.child(plain(before));
         }
         let pe_text = |s: &str| {
-            label().text(s.to_string()).color(theme::TX.rgb()).font_size(FIELD_FONT).max_lines(1usize)
+            label()
+                .text(s.to_string())
+                .color(theme::TX.rgb())
+                .font_size(FIELD_FONT)
+                .max_lines(1usize)
         };
         let mut pe_row = rect().horizontal().background(theme::CHIP.rgb()).corner_radius(2.0);
         match (pe.cursor_begin, pe.cursor_end) {
@@ -1579,12 +1609,9 @@ fn field_row(
             text = text.child(plain(after));
         }
     } else if query.is_empty() {
-        text = text.child(mk_caret()).child(
-            label()
-                .text(PLACEHOLDER)
-                .color(theme::DIM.rgb())
-                .font_size(FIELD_FONT),
-        );
+        text = text
+            .child(mk_caret())
+            .child(label().text(PLACEHOLDER).color(theme::DIM.rgb()).font_size(FIELD_FONT));
     } else if let Some((start, end)) = selection {
         // A range is selected: before / highlighted-selection / after, no
         // blinking caret (matches ordinary text-field convention).
@@ -1675,7 +1702,13 @@ fn empty_state(apps: &AppsSnapshot, frecency: State<Frecency>) -> Element {
                 Some(app) => (app.id.clone(), app.name.clone(), app.icon.clone()),
                 None => (pin.clone(), pin.clone(), None),
             };
-            AppTile { launch_id, name, icon_path, frecency }.into_element()
+            AppTile {
+                launch_id,
+                name,
+                icon_path,
+                frecency,
+            }
+            .into_element()
         })
         .collect();
 
@@ -1723,7 +1756,10 @@ impl Component for AppTile {
             .background(chip_bg)
             .center()
             .overflow(Overflow::Clip)
-            .child(AppIcon { path: self.icon_path.clone(), size: TILE_GLYPH });
+            .child(AppIcon {
+                path: self.icon_path.clone(),
+                size: TILE_GLYPH,
+            });
 
         rect()
             .vertical()
@@ -1778,14 +1814,7 @@ fn results_list(
         );
         for row in &section.rows {
             let is_sel = flat_idx == selected;
-            list = list.child(row_view(
-                row,
-                is_sel,
-                bus.clone(),
-                frecency,
-                query,
-                selected_state,
-            ));
+            list = list.child(row_view(row, is_sel, bus.clone(), frecency, query, selected_state));
             flat_idx += 1;
         }
     }
@@ -1809,7 +1838,11 @@ fn row_view(
 
     // Icon frame: a 28x28 PANEL2 well around the row glyph.
     let glyph: Element = match &row.icon {
-        RowIcon::App(path) => AppIcon { path: path.clone(), size: RI_GLYPH }.into_element(),
+        RowIcon::App(path) => AppIcon {
+            path: path.clone(),
+            size: RI_GLYPH,
+        }
+        .into_element(),
         RowIcon::Symbol(bytes) => icon(bytes, 16.0, theme::MUT).into_element(),
     };
     let frame = rect()
@@ -1842,20 +1875,13 @@ fn row_view(
         .corner_radius(theme::RADIUS_ROW)
         .padding((7.0, 10.0))
         .background(bg)
-        .on_press(move |_| {
-            run_action(&action, &run_name, &bus, frecency, query, selected_state)
-        })
+        .on_press(move |_| run_action(&action, &run_name, &bus, frecency, query, selected_state))
         .child(frame)
         .child(name)
         .child(hint);
 
     if selected {
-        r = r.child(
-            label()
-                .text("\u{21B5}")
-                .color(theme::MUT.rgb())
-                .font_size(ROW_FONT),
-        );
+        r = r.child(label().text("\u{21B5}").color(theme::MUT.rgb()).font_size(ROW_FONT));
     }
     r.into_element()
 }
@@ -1893,9 +1919,7 @@ fn name_element(name: &str, marks: &[usize]) -> Element {
 /// A styled name span: LEAF when matched, TX otherwise.
 fn span(text: &str, marked: bool) -> Span<'static> {
     let color: Rgb = if marked { theme::LEAF } else { theme::TX };
-    Span::new(text.to_string())
-        .color(color.rgb())
-        .font_size(ROW_FONT)
+    Span::new(text.to_string()).color(color.rgb()).font_size(ROW_FONT)
 }
 
 // ---------------------------------------------------------------------------
@@ -2003,7 +2027,10 @@ mod tests {
         // glyph.
         test.press_cursor((area.min_x() as f64 + 1.0, y as f64));
         let near_start = reported.get().expect("on_click fired for a click near the start");
-        assert!(near_start <= 2, "click near x=0 should land at/near byte 0, got {near_start}");
+        assert!(
+            near_start <= 2,
+            "click near x=0 should land at/near byte 0, got {near_start}"
+        );
 
         // A click within the field but past the rendered text's ~74px extent
         // (the paragraph's own clip-parent `text` is ~396px wide here, well
@@ -2062,8 +2089,14 @@ mod tests {
         assert!(reported_click.get().is_some(), "press fires on_click first");
         test.move_cursor((end_x, y));
         test.sync_and_update();
-        let dragged = reported_drag.get().expect("on_drag fired while dragging past the down-point");
-        assert_eq!(dragged, query.len(), "drag past the text clamps to the query's byte length");
+        let dragged = reported_drag
+            .get()
+            .expect("on_drag fired while dragging past the down-point");
+        assert_eq!(
+            dragged,
+            query.len(),
+            "drag past the text clamps to the query's byte length"
+        );
 
         // Release, then move again: on_drag must NOT keep firing once the
         // drag has ended (a stray move after release would silently keep
@@ -2166,7 +2199,10 @@ mod tests {
     #[test]
     fn command_rows_resolve_typed_commands() {
         // reload / scripts need no args.
-        assert!(matches!(&command_rows("reload")[0].action, RowAction::Command(Command::Reload)));
+        assert!(matches!(
+            &command_rows("reload")[0].action,
+            RowAction::Command(Command::Reload)
+        ));
         assert!(matches!(
             &command_rows("scripts")[0].action,
             RowAction::Command(Command::ReloadScripts)
@@ -2371,7 +2407,12 @@ mod tests {
 
     #[test]
     fn editor_ctrl_backspace_clears_word() {
-        let mut e = Editor { query: "hello world  ".into(), selected: 0, cursor: 13, anchor: None };
+        let mut e = Editor {
+            query: "hello world  ".into(),
+            selected: 0,
+            cursor: 13,
+            anchor: None,
+        };
         e.apply(&Stroke::Backspace { word: true }, None, 0);
         assert_eq!(e.query, "hello ");
         e.apply(&Stroke::Backspace { word: true }, None, 0);
@@ -2380,7 +2421,12 @@ mod tests {
 
     #[test]
     fn editor_escape_clears_then_closes() {
-        let mut e = Editor { query: "abc".into(), selected: 2, cursor: 3, anchor: None };
+        let mut e = Editor {
+            query: "abc".into(),
+            selected: 2,
+            cursor: 3,
+            anchor: None,
+        };
         assert_eq!(e.apply(&Stroke::Escape, None, 5), Outcome::Redraw);
         assert_eq!(e.query, "");
         assert_eq!(e.selected, 0);
@@ -2389,12 +2435,22 @@ mod tests {
 
     #[test]
     fn editor_tab_accepts_ghost_then_cycles() {
-        let mut e = Editor { query: "fir".into(), selected: 0, cursor: 3, anchor: None };
+        let mut e = Editor {
+            query: "fir".into(),
+            selected: 0,
+            cursor: 3,
+            anchor: None,
+        };
         // Plain Tab with a ghost accepts the completion.
         e.apply(&Stroke::Tab { back: false }, Some("Firefox"), 3);
         assert_eq!(e.query, "Firefox");
         // Shift+Tab never accepts the ghost; it cycles backwards (wraps).
-        let mut e = Editor { query: "fir".into(), selected: 0, cursor: 3, anchor: None };
+        let mut e = Editor {
+            query: "fir".into(),
+            selected: 0,
+            cursor: 3,
+            anchor: None,
+        };
         e.apply(&Stroke::Tab { back: true }, Some("Firefox"), 3);
         assert_eq!(e.query, "fir");
         assert_eq!(e.selected, 2);
@@ -2405,7 +2461,12 @@ mod tests {
 
     #[test]
     fn editor_arrows_wrap_selection() {
-        let mut e = Editor { query: "x".into(), selected: 0, cursor: 1, anchor: None };
+        let mut e = Editor {
+            query: "x".into(),
+            selected: 0,
+            cursor: 1,
+            anchor: None,
+        };
         e.apply(&Stroke::Up, None, 3);
         assert_eq!(e.selected, 2);
         e.apply(&Stroke::Down, None, 3);
@@ -2417,20 +2478,51 @@ mod tests {
 
     #[test]
     fn editor_enter_requests_run() {
-        let mut e = Editor { query: "fire".into(), selected: 0, cursor: 4, anchor: None };
+        let mut e = Editor {
+            query: "fire".into(),
+            selected: 0,
+            cursor: 4,
+            anchor: None,
+        };
         assert_eq!(e.apply(&Stroke::Enter, None, 3), Outcome::Run);
     }
 
     #[test]
     fn editor_left_right_move_the_cursor_without_selecting() {
-        let mut e = Editor { query: "abc".into(), selected: 0, cursor: 3, anchor: None };
-        e.apply(&Stroke::Left { shift: false, word: false }, None, 0);
+        let mut e = Editor {
+            query: "abc".into(),
+            selected: 0,
+            cursor: 3,
+            anchor: None,
+        };
+        e.apply(
+            &Stroke::Left {
+                shift: false,
+                word: false,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.cursor, 2);
         assert_eq!(e.anchor, None);
-        e.apply(&Stroke::Right { shift: false, word: false }, None, 0);
+        e.apply(
+            &Stroke::Right {
+                shift: false,
+                word: false,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.cursor, 3);
         // Left/Right at the string edges are no-ops, never panic.
-        e.apply(&Stroke::Right { shift: false, word: false }, None, 0);
+        e.apply(
+            &Stroke::Right {
+                shift: false,
+                word: false,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.cursor, 3);
     }
 
@@ -2438,7 +2530,12 @@ mod tests {
     fn editor_insert_and_backspace_operate_at_the_cursor_not_the_end() {
         // Cursor placed between "ab" and "cd" -- typing/backspacing must act
         // there, not append/trim at the string end (the old hand-rolled bug).
-        let mut e = Editor { query: "abcd".into(), selected: 0, cursor: 2, anchor: None };
+        let mut e = Editor {
+            query: "abcd".into(),
+            selected: 0,
+            cursor: 2,
+            anchor: None,
+        };
         e.apply(&Stroke::Text("X".into()), None, 0);
         assert_eq!(e.query, "abXcd");
         assert_eq!(e.cursor, 3);
@@ -2449,18 +2546,49 @@ mod tests {
 
     #[test]
     fn editor_ctrl_left_right_jump_by_word() {
-        let mut e = Editor { query: "foo bar baz".into(), selected: 0, cursor: 11, anchor: None };
-        e.apply(&Stroke::Left { shift: false, word: true }, None, 0);
+        let mut e = Editor {
+            query: "foo bar baz".into(),
+            selected: 0,
+            cursor: 11,
+            anchor: None,
+        };
+        e.apply(
+            &Stroke::Left {
+                shift: false,
+                word: true,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.cursor, 8); // start of "baz"
-        e.apply(&Stroke::Left { shift: false, word: true }, None, 0);
+        e.apply(
+            &Stroke::Left {
+                shift: false,
+                word: true,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.cursor, 4); // start of "bar"
-        e.apply(&Stroke::Right { shift: false, word: true }, None, 0);
+        e.apply(
+            &Stroke::Right {
+                shift: false,
+                word: true,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.cursor, 7); // end of "bar"
     }
 
     #[test]
     fn editor_home_end_jump_to_string_edges() {
-        let mut e = Editor { query: "hello".into(), selected: 0, cursor: 2, anchor: None };
+        let mut e = Editor {
+            query: "hello".into(),
+            selected: 0,
+            cursor: 2,
+            anchor: None,
+        };
         e.apply(&Stroke::Home { shift: false }, None, 0);
         assert_eq!(e.cursor, 0);
         e.apply(&Stroke::End { shift: false }, None, 0);
@@ -2469,7 +2597,12 @@ mod tests {
 
     #[test]
     fn editor_click_at_places_cursor_and_clears_selection() {
-        let mut e = Editor { query: "hello world".into(), selected: 3, cursor: 11, anchor: Some(0) };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 3,
+            cursor: 11,
+            anchor: Some(0),
+        };
         e.click_at(5);
         assert_eq!(e.cursor, 5);
         assert_eq!(e.anchor, None);
@@ -2481,7 +2614,12 @@ mod tests {
 
     #[test]
     fn editor_click_at_clamps_past_end_and_snaps_mid_codepoint() {
-        let mut e = Editor { query: "café".into(), selected: 0, cursor: 0, anchor: None };
+        let mut e = Editor {
+            query: "café".into(),
+            selected: 0,
+            cursor: 0,
+            anchor: None,
+        };
         // Past the end of the (5-byte) string clamps to the length.
         e.click_at(999);
         assert_eq!(e.cursor, e.query.len());
@@ -2524,19 +2662,50 @@ mod tests {
 
     #[test]
     fn editor_shift_left_starts_and_grows_a_selection() {
-        let mut e = Editor { query: "hello".into(), selected: 0, cursor: 5, anchor: None };
-        e.apply(&Stroke::Left { shift: true, word: false }, None, 0);
+        let mut e = Editor {
+            query: "hello".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: None,
+        };
+        e.apply(
+            &Stroke::Left {
+                shift: true,
+                word: false,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.selection_range(), Some((4, 5)));
-        e.apply(&Stroke::Left { shift: true, word: false }, None, 0);
+        e.apply(
+            &Stroke::Left {
+                shift: true,
+                word: false,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.selection_range(), Some((3, 5)));
         // A non-shift move collapses the selection to the cursor.
-        e.apply(&Stroke::Right { shift: false, word: false }, None, 0);
+        e.apply(
+            &Stroke::Right {
+                shift: false,
+                word: false,
+            },
+            None,
+            0,
+        );
         assert_eq!(e.selection_range(), None);
     }
 
     #[test]
     fn editor_typing_replaces_the_selection() {
-        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: Some(0),
+        };
         e.apply(&Stroke::Text("Goodbye".into()), None, 0);
         assert_eq!(e.query, "Goodbye world");
         assert_eq!(e.cursor, 7);
@@ -2545,7 +2714,12 @@ mod tests {
 
     #[test]
     fn editor_backspace_deletes_the_selection_instead_of_one_char() {
-        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: Some(0),
+        };
         e.apply(&Stroke::Backspace { word: false }, None, 0);
         assert_eq!(e.query, " world");
         assert_eq!(e.cursor, 0);
@@ -2554,7 +2728,12 @@ mod tests {
 
     #[test]
     fn editor_delete_key_removes_forward() {
-        let mut e = Editor { query: "abcd".into(), selected: 0, cursor: 1, anchor: None };
+        let mut e = Editor {
+            query: "abcd".into(),
+            selected: 0,
+            cursor: 1,
+            anchor: None,
+        };
         e.apply(&Stroke::Delete { word: false }, None, 0);
         assert_eq!(e.query, "acd");
         assert_eq!(e.cursor, 1);
@@ -2565,8 +2744,20 @@ mod tests {
         // "cafe\u{301}" (e + combining acute) has a multi-byte tail; left/right
         // must never land inside a UTF-8 sequence.
         let s = "caf\u{e9}"; // "caf" + latin small e with acute (2-byte UTF-8)
-        let mut e = Editor { query: s.into(), selected: 0, cursor: s.len(), anchor: None };
-        e.apply(&Stroke::Left { shift: false, word: false }, None, 0);
+        let mut e = Editor {
+            query: s.into(),
+            selected: 0,
+            cursor: s.len(),
+            anchor: None,
+        };
+        e.apply(
+            &Stroke::Left {
+                shift: false,
+                word: false,
+            },
+            None,
+            0,
+        );
         assert!(s.is_char_boundary(e.cursor));
         assert_eq!(&s[e.cursor..], "\u{e9}");
     }
@@ -2584,7 +2775,12 @@ mod tests {
         // A plain commit_string (no preceding preedit/delete) inserts at the
         // cursor and advances it, just like typing -- the common case for a
         // single-keystroke CJK candidate accept with no compose sequence.
-        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: None };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: None,
+        };
         e.apply_ime_commit(0, 0, Some(""));
         assert_eq!(e.query, "hello world"); // empty commit is a no-op insert
         e.apply_ime_commit(0, 0, Some("!"));
@@ -2594,7 +2790,12 @@ mod tests {
 
     #[test]
     fn ime_commit_replaces_a_selection() {
-        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: Some(0),
+        };
         e.apply_ime_commit(0, 0, Some("goodbye"));
         assert_eq!(e.query, "goodbye world");
         assert_eq!(e.cursor, 7);
@@ -2606,7 +2807,12 @@ mod tests {
         // A CJK correction round-trip: the IME asks to delete 2 bytes before and
         // 1 after the cursor (e.g. replacing a mis-composed syllable), then
         // commits the corrected text.
-        let mut e = Editor { query: "abXcd".into(), selected: 0, cursor: 3, anchor: None };
+        let mut e = Editor {
+            query: "abXcd".into(),
+            selected: 0,
+            cursor: 3,
+            anchor: None,
+        };
         e.apply_ime_commit(2, 1, Some("Y"));
         // delete_before=2 removes "bX" ([1,3)); delete_after=1 removes "c" ([3,4));
         // the combined [1,4) range leaves "a"+"d", "Y" lands at the resulting cursor 1.
@@ -2616,7 +2822,12 @@ mod tests {
 
     #[test]
     fn ime_commit_delete_only_no_commit_text() {
-        let mut e = Editor { query: "hello".into(), selected: 0, cursor: 5, anchor: None };
+        let mut e = Editor {
+            query: "hello".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: None,
+        };
         e.apply_ime_commit(3, 0, None);
         assert_eq!(e.query, "he");
         assert_eq!(e.cursor, 2);
@@ -2624,7 +2835,12 @@ mod tests {
 
     #[test]
     fn ime_commit_delete_before_clamps_at_string_start() {
-        let mut e = Editor { query: "ab".into(), selected: 0, cursor: 1, anchor: None };
+        let mut e = Editor {
+            query: "ab".into(),
+            selected: 0,
+            cursor: 1,
+            anchor: None,
+        };
         e.apply_ime_commit(100, 0, Some("Z"));
         assert_eq!(e.query, "Zb");
         assert_eq!(e.cursor, 1);
@@ -2632,7 +2848,12 @@ mod tests {
 
     #[test]
     fn ime_commit_delete_after_clamps_at_string_end() {
-        let mut e = Editor { query: "ab".into(), selected: 0, cursor: 1, anchor: None };
+        let mut e = Editor {
+            query: "ab".into(),
+            selected: 0,
+            cursor: 1,
+            anchor: None,
+        };
         e.apply_ime_commit(0, 100, Some("Z")); // delete "b" onward, then insert Z
         assert_eq!(e.query, "aZ");
         assert_eq!(e.cursor, 2);
@@ -2644,7 +2865,12 @@ mod tests {
         // deleting 1 byte before must clamp back to the FULL codepoint's start,
         // not land mid-UTF-8-sequence (which would panic on the replace_range).
         let s = "caf\u{e9}"; // "caf" + 2-byte e-acute
-        let mut e = Editor { query: s.into(), selected: 0, cursor: s.len(), anchor: None };
+        let mut e = Editor {
+            query: s.into(),
+            selected: 0,
+            cursor: s.len(),
+            anchor: None,
+        };
         e.apply_ime_commit(1, 0, Some("e"));
         assert_eq!(e.query, "cafe");
         assert_eq!(e.cursor, 4);
@@ -2652,29 +2878,54 @@ mod tests {
 
     #[test]
     fn ime_commit_resets_selected_row() {
-        let mut e = Editor { query: String::new(), selected: 3, cursor: 0, anchor: None };
+        let mut e = Editor {
+            query: String::new(),
+            selected: 3,
+            cursor: 0,
+            anchor: None,
+        };
         e.apply_ime_commit(0, 0, Some("x"));
         assert_eq!(e.selected, 0);
     }
 
     #[test]
     fn selected_text_none_without_a_real_selection() {
-        let e = Editor { query: "hello".into(), selected: 0, cursor: 2, anchor: None };
+        let e = Editor {
+            query: "hello".into(),
+            selected: 0,
+            cursor: 2,
+            anchor: None,
+        };
         assert_eq!(e.selected_text(), None);
         // A collapsed anchor==cursor is not a selection either.
-        let e = Editor { query: "hello".into(), selected: 0, cursor: 2, anchor: Some(2) };
+        let e = Editor {
+            query: "hello".into(),
+            selected: 0,
+            cursor: 2,
+            anchor: Some(2),
+        };
         assert_eq!(e.selected_text(), None);
     }
 
     #[test]
     fn selected_text_returns_the_selected_range() {
-        let e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        let e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: Some(0),
+        };
         assert_eq!(e.selected_text(), Some("hello"));
     }
 
     #[test]
     fn cut_returns_text_and_deletes_it() {
-        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: Some(0),
+        };
         assert_eq!(e.selected_text().map(str::to_string), Some("hello".to_string()));
         assert!(e.apply(&Stroke::Cut, None, 0) == Outcome::Redraw);
         assert_eq!(e.query, " world");
@@ -2684,7 +2935,12 @@ mod tests {
 
     #[test]
     fn copy_never_mutates_the_query() {
-        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: Some(0),
+        };
         e.apply(&Stroke::Copy, None, 0);
         assert_eq!(e.query, "hello world");
         assert_eq!(e.anchor, Some(0));
@@ -2692,7 +2948,12 @@ mod tests {
 
     #[test]
     fn cut_with_nothing_selected_is_a_no_op() {
-        let mut e = Editor { query: "hello".into(), selected: 0, cursor: 2, anchor: None };
+        let mut e = Editor {
+            query: "hello".into(),
+            selected: 0,
+            cursor: 2,
+            anchor: None,
+        };
         e.apply(&Stroke::Cut, None, 0);
         assert_eq!(e.query, "hello");
         assert_eq!(e.cursor, 2);
@@ -2700,7 +2961,12 @@ mod tests {
 
     #[test]
     fn paste_inserts_at_cursor() {
-        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: None };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: None,
+        };
         e.paste(",");
         assert_eq!(e.query, "hello, world");
         assert_eq!(e.cursor, 6);
@@ -2708,7 +2974,12 @@ mod tests {
 
     #[test]
     fn paste_replaces_a_selection() {
-        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        let mut e = Editor {
+            query: "hello world".into(),
+            selected: 0,
+            cursor: 5,
+            anchor: Some(0),
+        };
         e.paste("goodbye");
         assert_eq!(e.query, "goodbye world");
         assert_eq!(e.cursor, 7);
@@ -2720,9 +2991,17 @@ mod tests {
         use kobel_wayland::Preedit;
         // A collapsed cursor (begin == end) is what field_row renders an inner
         // caret for; hidden (None, None) renders no inner caret.
-        let collapsed = Preedit { text: "n".into(), cursor_begin: Some(1), cursor_end: Some(1) };
+        let collapsed = Preedit {
+            text: "n".into(),
+            cursor_begin: Some(1),
+            cursor_end: Some(1),
+        };
         assert_eq!(collapsed.cursor_begin, collapsed.cursor_end);
-        let hidden = Preedit { text: "n".into(), cursor_begin: None, cursor_end: None };
+        let hidden = Preedit {
+            text: "n".into(),
+            cursor_begin: None,
+            cursor_end: None,
+        };
         assert!(hidden.cursor_begin.is_none() && hidden.cursor_end.is_none());
     }
 

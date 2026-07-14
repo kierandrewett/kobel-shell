@@ -83,11 +83,7 @@ const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// [`serve_at`]'s implementation, with the per-request timeout as a parameter so
 /// tests can use a short one instead of waiting out the production default.
-fn serve_at_with_timeout(
-    path: PathBuf,
-    bus: ShellBus,
-    timeout: std::time::Duration,
-) -> std::io::Result<PathBuf> {
+fn serve_at_with_timeout(path: PathBuf, bus: ShellBus, timeout: std::time::Duration) -> std::io::Result<PathBuf> {
     // Unlink a stale socket from a previous run; bind fails with EADDRINUSE otherwise.
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
@@ -171,7 +167,10 @@ mod tests {
 
     #[test]
     fn parses_close_all_quit_ping() {
-        assert!(matches!(parse_line("close-all"), Ok(Request::Forward(ShellMsg::CloseAll))));
+        assert!(matches!(
+            parse_line("close-all"),
+            Ok(Request::Forward(ShellMsg::CloseAll))
+        ));
         assert!(matches!(parse_line("quit"), Ok(Request::Forward(ShellMsg::Quit))));
         assert!(matches!(parse_line("ping"), Ok(Request::Ping)));
     }
@@ -186,10 +185,16 @@ mod tests {
 
     #[test]
     fn rejects_trailing_tokens() {
-        assert_eq!(parse_line("toggle launcher extra").unwrap_err(), "unexpected argument: extra");
+        assert_eq!(
+            parse_line("toggle launcher extra").unwrap_err(),
+            "unexpected argument: extra"
+        );
         assert_eq!(parse_line("quit now").unwrap_err(), "unexpected argument: now");
         assert_eq!(parse_line("ping pong").unwrap_err(), "unexpected argument: pong");
-        assert_eq!(parse_line("close-all please").unwrap_err(), "unexpected argument: please");
+        assert_eq!(
+            parse_line("close-all please").unwrap_err(),
+            "unexpected argument: please"
+        );
     }
 
     #[test]
@@ -206,8 +211,7 @@ mod tests {
         use std::os::unix::net::UnixStream;
 
         let (bus, rx) = ShellBus::new();
-        let path = std::env::temp_dir()
-            .join(format!("kobel-shell-ipc-test-{}.sock", std::process::id()));
+        let path = std::env::temp_dir().join(format!("kobel-shell-ipc-test-{}.sock", std::process::id()));
         serve_at(path.clone(), bus).expect("bind test control socket");
 
         let send = |cmd: &str| -> String {
@@ -239,8 +243,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let (bus, _rx) = ShellBus::new();
-        let path = std::env::temp_dir()
-            .join(format!("kobel-shell-ipc-perm-test-{}.sock", std::process::id()));
+        let path = std::env::temp_dir().join(format!("kobel-shell-ipc-perm-test-{}.sock", std::process::id()));
         serve_at(path.clone(), bus).expect("bind test control socket");
 
         let mode = std::fs::metadata(&path).expect("stat socket").permissions().mode() & 0o777;
@@ -255,11 +258,9 @@ mod tests {
         use std::time::{Duration, Instant};
 
         let (bus, _rx) = ShellBus::new();
-        let path = std::env::temp_dir()
-            .join(format!("kobel-shell-ipc-silent-test-{}.sock", std::process::id()));
+        let path = std::env::temp_dir().join(format!("kobel-shell-ipc-silent-test-{}.sock", std::process::id()));
         // A short deadline keeps this test fast; production uses REQUEST_TIMEOUT (5s).
-        serve_at_with_timeout(path.clone(), bus, Duration::from_millis(200))
-            .expect("bind test control socket");
+        serve_at_with_timeout(path.clone(), bus, Duration::from_millis(200)).expect("bind test control socket");
 
         // Connect but never send a byte, let alone a newline -- and hold the
         // connection open past the timeout so the fix's read (not just the

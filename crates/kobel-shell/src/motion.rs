@@ -358,10 +358,7 @@ mod tests {
             s.step(FRAME, PANEL_OPEN);
             peak = peak.max(s.x);
         }
-        assert!(
-            peak > 1.0 + 1e-3,
-            "expected overshoot past target, peak was {peak}"
-        );
+        assert!(peak > 1.0 + 1e-3, "expected overshoot past target, peak was {peak}");
     }
 
     #[test]
@@ -418,10 +415,7 @@ mod tests {
         let v_before = s.v;
         s.step(FRAME, FLING);
         assert!(s.x > x_before, "impulse should carry the value forward");
-        assert!(
-            s.v < v_before,
-            "spring + damping should bleed the kicked velocity"
-        );
+        assert!(s.v < v_before, "spring + damping should bleed the kicked velocity");
     }
 
     #[test]

@@ -20,8 +20,8 @@ use std::rc::Rc;
 
 use freya_core::prelude::*;
 use kobel_wayland::{
-    Anchor, Control, KeyPress, KeyboardInteractivity, Layer, Margins, OutputEvent, PopupConfig,
-    Shell, SurfaceConfig, SurfaceId, SurfaceSize,
+    Anchor, Control, KeyPress, KeyboardInteractivity, Layer, Margins, OutputEvent, PopupConfig, Shell, SurfaceConfig,
+    SurfaceId, SurfaceSize,
 };
 use torin::prelude::{Alignment, Size};
 
@@ -83,8 +83,7 @@ fn popup_ui() -> impl IntoElement {
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,kobel_wayland=debug".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,kobel_wayland=debug".into()),
         )
         .init();
 
@@ -101,7 +100,12 @@ fn main() -> anyhow::Result<()> {
     let config = SurfaceConfig::new("kobel-popup-demo", SurfaceSize::Exact { width: 0, height: 120 })
         .layer(Layer::Top)
         .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
-        .margins(Margins { top: 10, right: 12, bottom: 0, left: 12 })
+        .margins(Margins {
+            top: 10,
+            right: 12,
+            bottom: 0,
+            left: 12,
+        })
         .exclusive_zone(0)
         .keyboard_interactivity(KeyboardInteractivity::OnDemand);
     let parent_id = {
@@ -168,10 +172,11 @@ fn main() -> anyhow::Result<()> {
         let shared = shared.clone();
         shell.on_output(move |event, _control| {
             if let OutputEvent::SurfaceClosed { surface, .. } = event
-                && shared.popup.get() == Some(surface) {
-                    shared.popup.set(None);
-                    tracing::info!("[popup-demo] app notified: popup {surface:?} closed");
-                }
+                && shared.popup.get() == Some(surface)
+            {
+                shared.popup.set(None);
+                tracing::info!("[popup-demo] app notified: popup {surface:?} closed");
+            }
         });
     }
 

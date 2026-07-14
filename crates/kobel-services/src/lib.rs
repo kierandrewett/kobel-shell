@@ -27,31 +27,30 @@ mod notifd;
 mod sysctl;
 mod tray;
 
+pub use apps::{AppEntry, AppsSnapshot};
 pub use audio::{AudioSnapshot, AudioStream};
 pub use battery::BatterySnapshot;
-pub use gnoblin::{GnoblinSnapshot, GnoblinWindow};
-pub use apps::{AppEntry, AppsSnapshot};
-pub use mpris::{MediaSnapshot, PlayerInfo};
 pub use bluetooth::{BluetoothSnapshot, BtDevice};
 pub use calendar::{CalendarEvent, CalendarSnapshot};
+pub use gnoblin::{GnoblinSnapshot, GnoblinWindow};
+pub use mpris::{MediaSnapshot, PlayerInfo};
 pub use network::{AccessPointInfo, NetworkSnapshot};
-pub use sysctl::{BrightnessSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot};
 pub use notifd::{NotifdSnapshot, Notification};
+pub use sysctl::{BrightnessSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot};
 pub use tray::{
-    TrayIcon, TrayItem, TrayMenu, TrayMenuItem, TrayMenuItemKind, TraySnapshot, TrayToggle,
-    TrayToggleKind,
+    TrayIcon, TrayItem, TrayMenu, TrayMenuItem, TrayMenuItemKind, TraySnapshot, TrayToggle, TrayToggleKind,
 };
 
-use audio::{AudioCommand, AudioMsg};
-use gnoblin::GnoblinCommand;
 use apps::AppsCommand;
-use mpris::MprisCommand;
-use network::NetworkCommand;
+use audio::{AudioCommand, AudioMsg};
 use bluetooth::BtCommand;
 use calendar::CalendarCommand;
+use gnoblin::GnoblinCommand;
+use mpris::MprisCommand;
+use network::NetworkCommand;
+use notifd::NotifdCommand;
 use sysctl::{BrightnessCommand, PowerCommand, SettingsCommand};
 use tray::TrayCommand;
-use notifd::NotifdCommand;
 
 /// Deadline for one command's D-Bus round-trip inside a service's sequential
 /// event loop (a `tokio::select!` processing one command/event at a time).
@@ -218,14 +217,7 @@ impl Services {
                     .enable_all()
                     .build()
                     .expect("[services] failed to build tokio runtime");
-                rt.block_on(run(
-                    cmd_rx,
-                    event_rx,
-                    event_tx,
-                    on_event,
-                    audio_router_tx,
-                    shutdown_rx,
-                ));
+                rt.block_on(run(cmd_rx, event_rx, event_tx, on_event, audio_router_tx, shutdown_rx));
             })
             .expect("[services] failed to spawn services thread");
 
@@ -333,10 +325,7 @@ async fn run(
                     let _ = audio_tx.send(AudioMsg::Command(AudioCommand::SetMuted(m)));
                 }
                 Command::SetStreamVolume { id, volume } => {
-                    let _ = audio_tx.send(AudioMsg::Command(AudioCommand::SetStreamVolume {
-                        id,
-                        volume,
-                    }));
+                    let _ = audio_tx.send(AudioMsg::Command(AudioCommand::SetStreamVolume { id, volume }));
                 }
                 Command::LaunchApp(id) => {
                     let _ = apps_tx.send(AppsCommand::Launch(id));

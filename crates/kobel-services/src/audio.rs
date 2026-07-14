@@ -108,11 +108,7 @@ fn should_enqueue_refresh(pending: &AtomicBool) -> bool {
     !pending.swap(true, Ordering::AcqRel)
 }
 
-pub(crate) fn run(
-    events: UnboundedSender<ServiceEvent>,
-    self_tx: Sender<AudioMsg>,
-    rx: Receiver<AudioMsg>,
-) {
+pub(crate) fn run(events: UnboundedSender<ServiceEvent>, self_tx: Sender<AudioMsg>, rx: Receiver<AudioMsg>) {
     let mainloop = match Mainloop::new() {
         Some(mainloop) => Rc::new(RefCell::new(mainloop)),
         None => {
@@ -138,28 +134,23 @@ pub(crate) fn run(
     {
         let ml_ref = mainloop.clone();
         let ctx_ref = context.clone();
-        context
-            .borrow_mut()
-            .set_state_callback(Some(Box::new(move || {
-                // SAFETY: sound because (a) `mainloop`/`context` never leave this
-                // function's owning thread -- every Rc clone used across this
-                // module's closures stays on the single thread `run()` executes
-                // on, so there is no cross-thread data race to worry about, and
-                // (b) `get_state`/`signal` are read-only PA accessor calls into
-                // the C-side context/mainloop, touching none of the Rust
-                // wrapper's own fields the outer live borrow is protecting --
-                // this aliases past RefCell's check without racing real mutation.
-                let state = unsafe { (*ctx_ref.as_ptr()).get_state() };
-                if matches!(state, State::Ready | State::Failed | State::Terminated) {
-                    unsafe { (*ml_ref.as_ptr()).signal(false) };
-                }
-            })));
+        context.borrow_mut().set_state_callback(Some(Box::new(move || {
+            // SAFETY: sound because (a) `mainloop`/`context` never leave this
+            // function's owning thread -- every Rc clone used across this
+            // module's closures stays on the single thread `run()` executes
+            // on, so there is no cross-thread data race to worry about, and
+            // (b) `get_state`/`signal` are read-only PA accessor calls into
+            // the C-side context/mainloop, touching none of the Rust
+            // wrapper's own fields the outer live borrow is protecting --
+            // this aliases past RefCell's check without racing real mutation.
+            let state = unsafe { (*ctx_ref.as_ptr()).get_state() };
+            if matches!(state, State::Ready | State::Failed | State::Terminated) {
+                unsafe { (*ml_ref.as_ptr()).signal(false) };
+            }
+        })));
     }
 
-    if let Err(e) = context
-        .borrow_mut()
-        .connect(None, FlagSet::NOFLAGS, None)
-    {
+    if let Err(e) = context.borrow_mut().connect(None, FlagSet::NOFLAGS, None) {
         tracing::error!("[audio] context connect failed: {e:?}");
         return;
     }

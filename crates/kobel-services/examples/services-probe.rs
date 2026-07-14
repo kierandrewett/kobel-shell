@@ -67,10 +67,7 @@ fn main() {
                             item.title, item.address,
                         );
                     }
-                    None => println!(
-                        "[probe]   {} ({}) -> no menu",
-                        item.title, item.address,
-                    ),
+                    None => println!("[probe]   {} ({}) -> no menu", item.title, item.address,),
                 }
             }
         }

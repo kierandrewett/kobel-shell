@@ -107,7 +107,13 @@ pub struct ShellBus {
 impl ShellBus {
     pub fn new() -> (Self, mpsc::Receiver<ShellMsg>) {
         let (tx, rx) = mpsc::channel();
-        (Self { tx, waker: Arc::new(OnceLock::new()) }, rx)
+        (
+            Self {
+                tx,
+                waker: Arc::new(OnceLock::new()),
+            },
+            rx,
+        )
     }
 
     pub fn send(&self, msg: ShellMsg) {
@@ -671,9 +677,7 @@ impl Manager {
                 {
                     Self::log_trace_event(*key, t, "first_tick", now);
                 }
-                if settled
-                    && let Some(t) = r.trace.take()
-                {
+                if settled && let Some(t) = r.trace.take() {
                     Self::log_trace_event(*key, &t, "settled", now);
                     Self::emit_motion(*key, &t, now);
                 }
@@ -790,17 +794,36 @@ mod tests {
         let dismiss = SurfaceId::new(9);
         let lp = Rc::new(RefCell::new(Vec::new()));
         let qp = Rc::new(RefCell::new(Vec::new()));
-        manager.register_reveal(SurfaceKey::Launcher, launcher, KeyboardInteractivity::Exclusive, recording(&lp));
-        manager.register_reveal(SurfaceKey::QuickSettings, qs, KeyboardInteractivity::OnDemand, recording(&qp));
+        manager.register_reveal(
+            SurfaceKey::Launcher,
+            launcher,
+            KeyboardInteractivity::Exclusive,
+            recording(&lp),
+        );
+        manager.register_reveal(
+            SurfaceKey::QuickSettings,
+            qs,
+            KeyboardInteractivity::OnDemand,
+            recording(&qp),
+        );
         manager.set_dismiss(dismiss);
         let mut host = FakeHost::default();
 
         bus.send(ShellMsg::Toggle(SurfaceKey::Launcher));
         manager.tick(&mut host);
-        assert!(host.region.contains(&(launcher, false)), "launcher gets a full input region");
+        assert!(
+            host.region.contains(&(launcher, false)),
+            "launcher gets a full input region"
+        );
         assert!(host.kb.contains(&(launcher, KeyboardInteractivity::Exclusive)));
-        assert!(host.region.contains(&(dismiss, false)), "dismiss catches clicks while open");
-        assert!(lp.borrow().last().is_some_and(|&v| v > 0.0), "launcher opacity springs off zero");
+        assert!(
+            host.region.contains(&(dismiss, false)),
+            "dismiss catches clicks while open"
+        );
+        assert!(
+            lp.borrow().last().is_some_and(|&v| v > 0.0),
+            "launcher opacity springs off zero"
+        );
 
         // Opening QS closes the launcher (one-open rule) and settles it click-through.
         host.kb.clear();
@@ -810,7 +833,10 @@ mod tests {
         assert!(host.region.contains(&(qs, false)));
         assert!(host.kb.contains(&(qs, KeyboardInteractivity::OnDemand)));
         manager.advance(1.0, &mut host);
-        assert!(host.region.contains(&(launcher, true)), "displaced launcher becomes click-through on settle");
+        assert!(
+            host.region.contains(&(launcher, true)),
+            "displaced launcher becomes click-through on settle"
+        );
         assert!(host.kb.contains(&(launcher, KeyboardInteractivity::None)));
     }
 
@@ -819,7 +845,12 @@ mod tests {
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
         let id = SurfaceId::new(7);
-        manager.register_reveal(SurfaceKey::Drawer, id, KeyboardInteractivity::OnDemand, Box::new(|_| {}));
+        manager.register_reveal(
+            SurfaceKey::Drawer,
+            id,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
         manager.set_dismiss(SurfaceId::new(0));
         let mut host = FakeHost::default();
 
@@ -831,7 +862,10 @@ mod tests {
 
         bus.send(ShellMsg::CloseAll);
         manager.tick(&mut host);
-        assert!(host.region.contains(&(SurfaceId::new(0), true)), "dismiss goes click-through once nothing is open");
+        assert!(
+            host.region.contains(&(SurfaceId::new(0), true)),
+            "dismiss goes click-through once nothing is open"
+        );
         manager.advance(1.0, &mut host); // settle close
         assert!(host.region.contains(&(id, true)));
         assert!(host.kb.contains(&(id, KeyboardInteractivity::None)));
@@ -842,7 +876,12 @@ mod tests {
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
         let id = SurfaceId::new(5);
-        manager.register_reveal(SurfaceKey::Calendar, id, KeyboardInteractivity::OnDemand, Box::new(|_| {}));
+        manager.register_reveal(
+            SurfaceKey::Calendar,
+            id,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
         manager.set_dismiss(SurfaceId::new(0));
         let mut host = FakeHost::default();
 
@@ -858,10 +897,16 @@ mod tests {
         manager.tick(&mut host);
         manager.advance(1.0, &mut host); // settle -> should settle OPEN, not tear down
         assert!(
-            !host.kb.iter().any(|&(i, m)| i == id && m == KeyboardInteractivity::None),
+            !host
+                .kb
+                .iter()
+                .any(|&(i, m)| i == id && m == KeyboardInteractivity::None),
             "reopened surface must not be torn down to kb None"
         );
-        assert!(host.region.contains(&(id, false)), "reopened surface keeps a full input region");
+        assert!(
+            host.region.contains(&(id, false)),
+            "reopened surface keeps a full input region"
+        );
     }
 
     #[test]
@@ -887,13 +932,22 @@ mod tests {
         manager.set_reduced_motion(true);
         let id = SurfaceId::new(3);
         let p = Rc::new(RefCell::new(Vec::new()));
-        manager.register_reveal(SurfaceKey::QuickSettings, id, KeyboardInteractivity::OnDemand, recording(&p));
+        manager.register_reveal(
+            SurfaceKey::QuickSettings,
+            id,
+            KeyboardInteractivity::OnDemand,
+            recording(&p),
+        );
         manager.set_dismiss(SurfaceId::new(0));
         let mut host = FakeHost::default();
 
         bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings));
         manager.tick(&mut host);
-        assert_eq!(p.borrow().last().copied(), Some(1.0), "reduced motion opens fully in one tick");
+        assert_eq!(
+            p.borrow().last().copied(),
+            Some(1.0),
+            "reduced motion opens fully in one tick"
+        );
         assert!(!manager.any_active(), "no spring left running after a snapped open");
         assert!(host.region.contains(&(id, false)));
         assert!(host.kb.contains(&(id, KeyboardInteractivity::OnDemand)));
@@ -902,9 +956,16 @@ mod tests {
         host.region.clear();
         bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings));
         manager.tick(&mut host);
-        assert_eq!(p.borrow().last().copied(), Some(0.0), "reduced motion closes fully in one tick");
+        assert_eq!(
+            p.borrow().last().copied(),
+            Some(0.0),
+            "reduced motion closes fully in one tick"
+        );
         assert!(!manager.any_active());
-        assert!(host.region.contains(&(id, true)), "closed surface becomes click-through immediately");
+        assert!(
+            host.region.contains(&(id, true)),
+            "closed surface becomes click-through immediately"
+        );
         assert!(host.kb.contains(&(id, KeyboardInteractivity::None)));
     }
 
@@ -1037,13 +1098,22 @@ mod tests {
         let cards = vec![(5, 6, 100, 40), (5, 60, 100, 40)];
         bus.send(ShellMsg::ToastsRegion(cards.clone()));
         manager.tick(&mut host);
-        assert!(host.rects.contains(&(t0, cards.clone())), "output 0 gets the card rects");
-        assert!(host.rects.contains(&(t1, cards.clone())), "output 1 gets the card rects");
+        assert!(
+            host.rects.contains(&(t0, cards.clone())),
+            "output 0 gets the card rects"
+        );
+        assert!(
+            host.rects.contains(&(t1, cards.clone())),
+            "output 1 gets the card rects"
+        );
 
         host.rects.clear();
         bus.send(ShellMsg::ToastsRegion(Vec::new()));
         manager.tick(&mut host);
-        assert!(host.rects.contains(&(t0, Vec::new())), "no toasts -> empty (click-through) region");
+        assert!(
+            host.rects.contains(&(t0, Vec::new())),
+            "no toasts -> empty (click-through) region"
+        );
         assert!(host.rects.contains(&(t1, Vec::new())));
     }
 }

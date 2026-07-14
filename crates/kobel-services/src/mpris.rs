@@ -85,10 +85,7 @@ struct PlayerSlot {
 /// MPRIS aggregator task. Discovers players (ListNames + NameOwnerChanged),
 /// spawns a watcher per player, folds their updates into the active-player
 /// snapshot, and routes control commands.
-pub(crate) async fn run(
-    events: UnboundedSender<ServiceEvent>,
-    mut cmd_rx: UnboundedReceiver<MprisCommand>,
-) {
+pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: UnboundedReceiver<MprisCommand>) {
     let conn = match Connection::session().await {
         Ok(conn) => conn,
         Err(e) => {
@@ -198,11 +195,7 @@ fn spawn_player(
     if slots.contains_key(bus_name) {
         return;
     }
-    let handle = tokio::spawn(player_task(
-        conn.clone(),
-        bus_name.to_owned(),
-        updates.clone(),
-    ));
+    let handle = tokio::spawn(player_task(conn.clone(), bus_name.to_owned(), updates.clone()));
     slots.insert(bus_name.to_owned(), PlayerSlot { handle, info: None });
     order.push(bus_name.to_owned());
     tracing::info!("[mpris] tracking player {bus_name}");
@@ -265,11 +258,7 @@ async fn handle_command(conn: &Connection, active: Option<&str>, cmd: MprisComma
 /// Watch one player: initial read, then re-read on PropertiesChanged / Seeked
 /// and refresh Position on a 1s tick while Playing (Position is excluded from
 /// PropertiesChanged by the MPRIS spec, so it must be polled).
-async fn player_task(
-    conn: Connection,
-    bus_name: String,
-    updates: UnboundedSender<(String, PlayerInfo)>,
-) {
+async fn player_task(conn: Connection, bus_name: String, updates: UnboundedSender<(String, PlayerInfo)>) {
     let Some(proxy) = build_player_proxy(&conn, &bus_name).await else {
         return;
     };
@@ -387,10 +376,7 @@ fn decode_metadata(mut meta: HashMap<String, OwnedValue>) -> (String, String, Op
         .remove("xesam:title")
         .and_then(|v| String::try_from(v).ok())
         .unwrap_or_default();
-    let artist = meta
-        .remove("xesam:artist")
-        .and_then(first_artist)
-        .unwrap_or_default();
+    let artist = meta.remove("xesam:artist").and_then(first_artist).unwrap_or_default();
     let art_path = meta
         .remove("mpris:artUrl")
         .and_then(|v| String::try_from(v).ok())
@@ -474,7 +460,10 @@ mod tests {
     #[test]
     fn first_artist_falls_back_to_a_plain_string() {
         // Some players send xesam:artist as a bare string instead of an array.
-        assert_eq!(first_artist(owned("Boards of Canada")), Some("Boards of Canada".to_string()));
+        assert_eq!(
+            first_artist(owned("Boards of Canada")),
+            Some("Boards of Canada".to_string())
+        );
     }
 
     #[test]

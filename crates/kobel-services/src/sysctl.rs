@@ -178,12 +178,7 @@ async fn logind_session() -> Option<LogindSessionProxy<'static>> {
     }
 }
 
-async fn set_brightness(
-    session: Option<&LogindSessionProxy<'_>>,
-    name: &str,
-    level: f32,
-    max: u64,
-) {
+async fn set_brightness(session: Option<&LogindSessionProxy<'_>>, name: &str, level: f32, max: u64) {
     let Some(session) = session else {
         tracing::warn!("[brightness] SetBrightness ignored: no logind session");
         return;
@@ -225,10 +220,7 @@ fn read_u64(path: &Path) -> Option<u64> {
 // ---- power profiles -------------------------------------------------------
 
 /// net.hadess.PowerProfiles task. Absent service -> available=false once.
-pub(crate) async fn run_power(
-    events: UnboundedSender<ServiceEvent>,
-    mut cmd_rx: UnboundedReceiver<PowerCommand>,
-) {
+pub(crate) async fn run_power(events: UnboundedSender<ServiceEvent>, mut cmd_rx: UnboundedReceiver<PowerCommand>) {
     let conn = match Connection::system().await {
         Ok(conn) => conn,
         Err(e) => {
@@ -315,11 +307,7 @@ async fn power_changes(conn: &Connection) -> Option<BoxStream<'static, Propertie
         .build()
         .await
         .ok()?;
-    props
-        .receive_properties_changed()
-        .await
-        .ok()
-        .map(StreamExt::boxed)
+    props.receive_properties_changed().await.ok().map(StreamExt::boxed)
 }
 
 fn parse_profile(value: &str) -> PowerProfile {
@@ -515,14 +503,21 @@ mod tests {
 
     #[test]
     fn profile_str_round_trips_through_parse_profile() {
-        for p in [PowerProfile::PowerSaver, PowerProfile::Balanced, PowerProfile::Performance] {
+        for p in [
+            PowerProfile::PowerSaver,
+            PowerProfile::Balanced,
+            PowerProfile::Performance,
+        ] {
             assert_eq!(parse_profile(profile_str(p)), p);
         }
     }
 
     #[test]
     fn monitor_value_takes_the_part_after_the_first_colon() {
-        assert_eq!(monitor_value("color-scheme: 'prefer-dark'"), Some("'prefer-dark'".to_string()));
+        assert_eq!(
+            monitor_value("color-scheme: 'prefer-dark'"),
+            Some("'prefer-dark'".to_string())
+        );
         // A value that itself contains a colon (e.g. a URI) keeps everything
         // after the FIRST colon, not just up to the next one.
         assert_eq!(
@@ -556,8 +551,7 @@ mod tests {
     /// so read_u64/read_level are tested against real file I/O like the
     /// production sysfs reads, not just string parsing.
     fn scratch_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("kobel-sysctl-test-{tag}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("kobel-sysctl-test-{tag}-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         dir
     }

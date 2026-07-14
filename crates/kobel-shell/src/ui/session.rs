@@ -234,12 +234,7 @@ fn tile_colors(action: Action, selected: bool, armed: bool) -> (Color, theme::Rg
 /// Apply a press to `action`: arm a confirm-required action (starting the revert
 /// timer) or fire it (send the service verb, then close). Non-confirm actions and
 /// an already-armed action fire immediately.
-fn do_press(
-    action: Action,
-    mut armed: State<Option<Action>>,
-    mut generation: State<u64>,
-    bus: &ShellBus,
-) {
+fn do_press(action: Action, mut armed: State<Option<Action>>, mut generation: State<u64>, bus: &ShellBus) {
     // peek's temporary must not live across the arms (match-scrutinee temporaries
     // survive the whole match; the arms write `armed`).
     let armed_now = *armed.peek();
@@ -334,12 +329,7 @@ enum Action {
 }
 
 /// Row order, wired to the selection index and the centered row.
-const ACTIONS: [Action; 4] = [
-    Action::Lock,
-    Action::Logout,
-    Action::Restart,
-    Action::Shutdown,
-];
+const ACTIONS: [Action; 4] = [Action::Lock, Action::Logout, Action::Restart, Action::Shutdown];
 
 impl Action {
     fn label(self) -> &'static str {
@@ -469,7 +459,10 @@ mod tests {
             decide_press(Some(Action::Restart), Action::Restart),
             PressOutcome::Fire(SessionVerb::Restart)
         );
-        assert_eq!(decide_press(None, Action::Shutdown), PressOutcome::Arm(Action::Shutdown));
+        assert_eq!(
+            decide_press(None, Action::Shutdown),
+            PressOutcome::Arm(Action::Shutdown)
+        );
         assert_eq!(
             decide_press(Some(Action::Shutdown), Action::Shutdown),
             PressOutcome::Fire(SessionVerb::Shutdown)

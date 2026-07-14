@@ -145,7 +145,12 @@ pub struct Margins {
 impl Margins {
     /// Uniform margin on all edges.
     pub fn all(value: i32) -> Self {
-        Self { top: value, right: value, bottom: value, left: value }
+        Self {
+            top: value,
+            right: value,
+            bottom: value,
+            left: value,
+        }
     }
 }
 
@@ -303,11 +308,7 @@ impl PopupConfig {
     /// A menu-below-a-button default: anchored to the bottom edge of `anchor_rect`,
     /// growing downward (bottom gravity). Override with [`PopupConfig::anchor`] /
     /// [`PopupConfig::gravity`].
-    pub fn new(
-        namespace: impl Into<String>,
-        anchor_rect: (i32, i32, i32, i32),
-        size: SurfaceSize,
-    ) -> Self {
+    pub fn new(namespace: impl Into<String>, anchor_rect: (i32, i32, i32, i32), size: SurfaceSize) -> Self {
         Self {
             namespace: namespace.into(),
             anchor_rect,

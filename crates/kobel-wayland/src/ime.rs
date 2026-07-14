@@ -102,20 +102,30 @@ mod tests {
 
     #[test]
     fn commit_with_text_is_not_empty() {
-        let c = ImeCommit { commit: Some("a".to_string()), ..Default::default() };
+        let c = ImeCommit {
+            commit: Some("a".to_string()),
+            ..Default::default()
+        };
         assert!(!c.is_empty());
     }
 
     #[test]
     fn commit_with_only_delete_is_not_empty() {
-        let c = ImeCommit { delete_before: 1, ..Default::default() };
+        let c = ImeCommit {
+            delete_before: 1,
+            ..Default::default()
+        };
         assert!(!c.is_empty());
     }
 
     #[test]
     fn commit_with_only_preedit_is_not_empty() {
         let c = ImeCommit {
-            preedit: Some(Preedit { text: "x".to_string(), cursor_begin: None, cursor_end: None }),
+            preedit: Some(Preedit {
+                text: "x".to_string(),
+                cursor_begin: None,
+                cursor_end: None,
+            }),
             ..Default::default()
         };
         assert!(!c.is_empty());

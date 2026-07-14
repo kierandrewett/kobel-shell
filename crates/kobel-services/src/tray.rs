@@ -16,9 +16,7 @@ use std::path::{Path, PathBuf};
 
 use system_tray::client::{ActivateRequest, Client, Event};
 use system_tray::item::{IconPixmap, StatusNotifierItem};
-use system_tray::menu::{
-    MenuItem as SniMenuItem, MenuType, ToggleState, ToggleType, TrayMenu as SniMenu,
-};
+use system_tray::menu::{MenuItem as SniMenuItem, MenuType, ToggleState, ToggleType, TrayMenu as SniMenu};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -62,7 +60,11 @@ pub enum TrayIcon {
     /// StatusNotifierItem spec, "Icons"). The bytes are kept as-is; a renderer
     /// wanting Skia's little-endian BGRA8888/`N32` layout must byte-swap per
     /// pixel (`A,R,G,B` -> `B,G,R,A`).
-    Pixmap { width: u32, height: u32, argb: Vec<u8> },
+    Pixmap {
+        width: u32,
+        height: u32,
+        argb: Vec<u8>,
+    },
     None,
 }
 
@@ -139,10 +141,7 @@ pub(crate) enum TrayCommand {
 /// DBusMenu layouts) into a deterministic `TraySnapshot` on every change, and
 /// routes activate / menu commands. Menu-update events refresh the tree in
 /// place and re-emit; they never remove items from tracking.
-pub(crate) async fn run(
-    events: UnboundedSender<ServiceEvent>,
-    mut cmd_rx: UnboundedReceiver<TrayCommand>,
-) {
+pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: UnboundedReceiver<TrayCommand>) {
     // `Client::new` starts the watcher server, registers us as a host, and
     // spawns the item/menu listeners. It also maintains an authoritative item
     // cache (the crate's default `data` feature) which we read on every event.
@@ -263,12 +262,7 @@ async fn resolve_icon_cached(
     theme: Option<&str>,
     icon_cache: &mut HashMap<IconKey, Option<PathBuf>>,
 ) -> TrayIcon {
-    if let Some(name) = item
-        .icon_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(name) = item.icon_name.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         let theme_path = item.icon_theme_path.clone();
         let key = (name.to_owned(), theme.map(str::to_owned), theme_path.clone());
         let name_owned = name.to_owned();
@@ -390,8 +384,14 @@ fn convert_menu_item(item: &SniMenuItem) -> TrayMenuItem {
     // DBusMenu `On` == toggled; `Off`/`Indeterminate` render as not-on.
     let on = item.toggle_state == ToggleState::On;
     let toggle = match item.toggle_type {
-        ToggleType::Checkmark => Some(TrayToggle { kind: TrayToggleKind::Check, on }),
-        ToggleType::Radio => Some(TrayToggle { kind: TrayToggleKind::Radio, on }),
+        ToggleType::Checkmark => Some(TrayToggle {
+            kind: TrayToggleKind::Check,
+            on,
+        }),
+        ToggleType::Radio => Some(TrayToggle {
+            kind: TrayToggleKind::Radio,
+            on,
+        }),
         ToggleType::CannotBeToggled => None,
     };
     TrayMenuItem {
@@ -616,11 +616,7 @@ mod tests {
             Some(PathBuf::from("/should/not/happen"))
         })
         .await;
-        assert_eq!(
-            calls.load(Ordering::SeqCst),
-            2,
-            "a cached miss is not re-resolved"
-        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "a cached miss is not re-resolved");
     }
 
     /// Build a standard, enabled, visible fixture menu item.
@@ -707,11 +703,17 @@ mod tests {
 
         assert_eq!(
             menu.items[1].toggle,
-            Some(TrayToggle { kind: TrayToggleKind::Check, on: true }),
+            Some(TrayToggle {
+                kind: TrayToggleKind::Check,
+                on: true
+            }),
         );
         assert_eq!(
             menu.items[2].toggle,
-            Some(TrayToggle { kind: TrayToggleKind::Radio, on: false }),
+            Some(TrayToggle {
+                kind: TrayToggleKind::Radio,
+                on: false
+            }),
         );
 
         assert!(!menu.items[3].enabled, "disabled flag carried");
@@ -719,13 +721,16 @@ mod tests {
     }
 
     fn pixmap(width: i32, height: i32, pixel_count: usize) -> IconPixmap {
-        IconPixmap { width, height, pixels: vec![0u8; pixel_count] }
+        IconPixmap {
+            width,
+            height,
+            pixels: vec![0u8; pixel_count],
+        }
     }
 
     #[test]
     fn largest_pixmap_picks_the_biggest_valid_one() {
-        let pixmaps =
-            vec![pixmap(16, 16, 1024), pixmap(64, 64, 16384), pixmap(32, 32, 4096)];
+        let pixmaps = vec![pixmap(16, 16, 1024), pixmap(64, 64, 16384), pixmap(32, 32, 4096)];
         let picked = largest_pixmap(&pixmaps).expect("a valid pixmap exists");
         assert_eq!((picked.width, picked.height), (64, 64), "largest area wins");
     }
@@ -738,9 +743,16 @@ mod tests {
         let malformed = vec![
             pixmap(0, 64, 1024),
             pixmap(64, 0, 1024),
-            IconPixmap { width: 32, height: 32, pixels: Vec::new() },
+            IconPixmap {
+                width: 32,
+                height: 32,
+                pixels: Vec::new(),
+            },
         ];
-        assert!(largest_pixmap(&malformed).is_none(), "no valid pixmap among malformed entries");
+        assert!(
+            largest_pixmap(&malformed).is_none(),
+            "no valid pixmap among malformed entries"
+        );
 
         // A single valid entry among malformed ones is still found.
         let mixed = vec![pixmap(0, 64, 1024), pixmap(16, 16, 256)];

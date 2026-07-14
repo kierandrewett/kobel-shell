@@ -13,8 +13,8 @@ use std::rc::Rc;
 
 use anyhow::{Context as _, anyhow};
 use freya_engine::prelude::{
-    ColorType, DirectContext, Format, FramebufferInfo, Interface, Surface as SkiaSurface,
-    SurfaceOrigin, backend_render_targets, direct_contexts, wrap_backend_render_target,
+    ColorType, DirectContext, Format, FramebufferInfo, Interface, Surface as SkiaSurface, SurfaceOrigin,
+    backend_render_targets, direct_contexts, wrap_backend_render_target,
 };
 use khronos_egl as egl;
 use wayland_client::Proxy;
@@ -75,41 +75,50 @@ impl Egl {
     /// must outlive it).
     pub unsafe fn new(display_ptr: *mut c_void) -> anyhow::Result<Self> {
         // SAFETY: loads libEGL.so.1 from the system.
-        let instance = unsafe { EglInstance::load_required() }
-            .map_err(|e| anyhow!("failed to load libEGL: {e}"))?;
+        let instance = unsafe { EglInstance::load_required() }.map_err(|e| anyhow!("failed to load libEGL: {e}"))?;
 
         // SAFETY: display_ptr is a valid, live wl_display per this fn's precondition.
-        let display = unsafe { instance.get_display(display_ptr) }
-            .ok_or_else(|| anyhow!("eglGetDisplay returned no display"))?;
+        let display =
+            unsafe { instance.get_display(display_ptr) }.ok_or_else(|| anyhow!("eglGetDisplay returned no display"))?;
 
         let (major, minor) = instance.initialize(display).context("eglInitialize failed")?;
         tracing::info!("[egl] initialized EGL {major}.{minor}");
 
-        instance.bind_api(egl::OPENGL_ES_API).context("eglBindAPI(OpenGL ES) failed")?;
+        instance
+            .bind_api(egl::OPENGL_ES_API)
+            .context("eglBindAPI(OpenGL ES) failed")?;
 
         // Try a GLES 3 config/context first, falling back to GLES 2. Some drivers
         // gate ES3 contexts behind configs advertising OPENGL_ES3_BIT.
-        let (config, context) = Self::choose_config_and_context(&instance, display, 3, egl::OPENGL_ES3_BIT)
-            .or_else(|e3| {
+        let (config, context) =
+            Self::choose_config_and_context(&instance, display, 3, egl::OPENGL_ES3_BIT).or_else(|e3| {
                 tracing::warn!("[egl] GLES3 config/context unavailable ({e3:#}); falling back to GLES2");
                 Self::choose_config_and_context(&instance, display, 2, egl::OPENGL_ES2_BIT)
             })?;
 
-        let stencil_size =
-            instance.get_config_attrib(display, config, egl::STENCIL_SIZE).unwrap_or(0) as usize;
-        let num_samples =
-            instance.get_config_attrib(display, config, egl::SAMPLES).unwrap_or(0) as usize;
+        let stencil_size = instance
+            .get_config_attrib(display, config, egl::STENCIL_SIZE)
+            .unwrap_or(0) as usize;
+        let num_samples = instance.get_config_attrib(display, config, egl::SAMPLES).unwrap_or(0) as usize;
         if stencil_size == 0 {
             tracing::warn!("[egl] chosen config has no stencil buffer; Skia clipping may misrender");
         }
         tracing::info!("[egl] config: stencil={stencil_size} samples={num_samples}");
 
         // fbo 0 = the EGL window surface's default framebuffer.
-        let fb_info =
-            FramebufferInfo { fboid: 0, format: Format::RGBA8.into(), ..Default::default() };
+        let fb_info = FramebufferInfo {
+            fboid: 0,
+            format: Format::RGBA8.into(),
+            ..Default::default()
+        };
 
         Ok(Self {
-            core: Rc::new(EglCore { instance, display, config, context }),
+            core: Rc::new(EglCore {
+                instance,
+                display,
+                config,
+                context,
+            }),
             gr_context: None,
             fb_info,
             num_samples,
@@ -148,8 +157,13 @@ impl Egl {
             .context("eglChooseConfig failed")?
             .ok_or_else(|| anyhow!("no EGL config with RGBA8 + stencil + window support"))?;
 
-        let context_attrs =
-            [egl::CONTEXT_MAJOR_VERSION, client_major, egl::CONTEXT_MINOR_VERSION, 0, egl::NONE];
+        let context_attrs = [
+            egl::CONTEXT_MAJOR_VERSION,
+            client_major,
+            egl::CONTEXT_MINOR_VERSION,
+            0,
+            egl::NONE,
+        ];
         let context = instance
             .create_context(display, config, None, &context_attrs)
             .context("eglCreateContext failed")?;
@@ -158,16 +172,11 @@ impl Egl {
     }
 
     /// Create an EGL window surface backing `wl_surface` at the given physical size.
-    pub fn create_surface(
-        &self,
-        wl_surface: &WlSurface,
-        width: i32,
-        height: i32,
-    ) -> anyhow::Result<LayerEglSurface> {
+    pub fn create_surface(&self, wl_surface: &WlSurface, width: i32, height: i32) -> anyhow::Result<LayerEglSurface> {
         let width = width.max(1);
         let height = height.max(1);
-        let wl_egl = WlEglSurface::new(wl_surface.id(), width, height)
-            .map_err(|e| anyhow!("WlEglSurface::new failed: {e}"))?;
+        let wl_egl =
+            WlEglSurface::new(wl_surface.id(), width, height).map_err(|e| anyhow!("WlEglSurface::new failed: {e}"))?;
         // SAFETY: wl_egl.ptr() is a valid EGLNativeWindow for this display/platform.
         let surface = unsafe {
             self.core.instance.create_window_surface(
@@ -178,7 +187,13 @@ impl Egl {
             )
         }
         .context("eglCreateWindowSurface failed")?;
-        Ok(LayerEglSurface { core: self.core.clone(), surface, wl_egl, width, height })
+        Ok(LayerEglSurface {
+            core: self.core.clone(),
+            surface,
+            wl_egl,
+            width,
+            height,
+        })
     }
 
     /// Bind `surface` for rendering and ensure the shared Skia context exists.
@@ -211,8 +226,7 @@ impl Egl {
             }
         })
         .ok_or_else(|| anyhow!("failed to build Skia GL interface via eglGetProcAddress"))?;
-        direct_contexts::make_gl(interface, None)
-            .ok_or_else(|| anyhow!("failed to create Skia GL DirectContext"))
+        direct_contexts::make_gl(interface, None).ok_or_else(|| anyhow!("failed to create Skia GL DirectContext"))
     }
 
     /// Wrap the current window surface's default framebuffer as a fresh Skia surface

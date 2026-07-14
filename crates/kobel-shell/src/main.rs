@@ -21,14 +21,13 @@ use std::sync::mpsc;
 
 use freya_core::prelude::{IntoElement, State, WritableUtils};
 use kobel_services::{
-    AppsSnapshot, AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot,
-    CalendarSnapshot, GnoblinSnapshot, GnoblinWindow, MediaSnapshot, NetworkSnapshot,
-    NotifdSnapshot, PowerSnapshot, ServiceEvent, Services, SettingsSnapshot, TraySnapshot,
+    AppsSnapshot, AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot, CalendarSnapshot,
+    GnoblinSnapshot, GnoblinWindow, MediaSnapshot, NetworkSnapshot, NotifdSnapshot, PowerSnapshot, ServiceEvent,
+    Services, SettingsSnapshot, TraySnapshot,
 };
 use kobel_wayland::{
-    Anchor, Control, ImeEvent, KeyboardInteractivity, Layer, Margins, OutputControl, OutputEvent,
-    OutputId, PopupConfig, Shell, SurfaceConfig, SurfaceContexts, SurfaceId, SurfaceSize,
-    ToplevelInfo,
+    Anchor, Control, ImeEvent, KeyboardInteractivity, Layer, Margins, OutputControl, OutputEvent, OutputId,
+    PopupConfig, Shell, SurfaceConfig, SurfaceContexts, SurfaceId, SurfaceSize, ToplevelInfo,
 };
 
 use crate::manager::{Manager, ShellBus, ShellMsg, SurfaceKey};
@@ -58,15 +57,15 @@ struct SurfaceStates {
 /// QS snapshots (network/bluetooth/brightness/power/settings), all seeded Default:
 /// State<Gnoblin/Audio/Battery/Apps/Media/Network/Bluetooth/Brightness/Power/
 /// Settings Snapshot>, State<Tokens>, ShellBus.
-fn provide_contexts(
-    cx: &mut SurfaceContexts<'_>,
-    bus: &ShellBus,
-    tokens: theme::Tokens,
-) -> SurfaceStates {
+fn provide_contexts(cx: &mut SurfaceContexts<'_>, bus: &ShellBus, tokens: theme::Tokens) -> SurfaceStates {
     let gnoblin = cx.provide(|| State::create(GnoblinSnapshot::default()));
     // AudioSnapshot has no Default; seed a silent, empty-mixer snapshot.
     let audio = cx.provide(|| {
-        State::create(AudioSnapshot { volume: 0.0, muted: false, streams: Vec::new() })
+        State::create(AudioSnapshot {
+            volume: 0.0,
+            muted: false,
+            streams: Vec::new(),
+        })
     });
     let battery = cx.provide(|| State::create(BatterySnapshot::default()));
     let apps = cx.provide(|| State::create(AppsSnapshot::default()));
@@ -133,8 +132,7 @@ fn provide_panel_contexts(
     // ImeFeed on the launcher only -- the sole surface with a real text-editing
     // target. main.rs's `on_ime` handler gates `enable`/`disable` on membership in
     // the registry's `ime_feeds` map, which this populates (see mount_one_singleton).
-    let ime_feed = (key == SurfaceKey::Launcher)
-        .then(|| cx.provide(|| ui::panels::ImeFeed(State::create(None))).0);
+    let ime_feed = (key == SurfaceKey::Launcher).then(|| cx.provide(|| ui::panels::ImeFeed(State::create(None))).0);
     (states, progress.0, keyfeed, ime_feed)
 }
 
@@ -158,9 +156,7 @@ fn provide_toast_contexts(
 fn kb_open(key: SurfaceKey) -> KeyboardInteractivity {
     match key {
         SurfaceKey::Launcher | SurfaceKey::Session => KeyboardInteractivity::Exclusive,
-        SurfaceKey::QuickSettings | SurfaceKey::Calendar | SurfaceKey::Drawer => {
-            KeyboardInteractivity::OnDemand
-        }
+        SurfaceKey::QuickSettings | SurfaceKey::Calendar | SurfaceKey::Drawer => KeyboardInteractivity::OnDemand,
     }
 }
 
@@ -185,10 +181,18 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
             "kobel-launcher",
             // Content-sized: hugs the sheet (field + results/empty state + footer),
             // bounded at 700px so a long results list scrolls rather than overflows.
-            SurfaceSize::ContentSized { width: t.launcher_w as u32, max_height: 700 },
+            SurfaceSize::ContentSized {
+                width: t.launcher_w as u32,
+                max_height: 700,
+            },
         )
         .anchor(Anchor::TOP)
-        .margins(Margins { top: 56, right: 0, bottom: 0, left: 0 })
+        .margins(Margins {
+            top: 56,
+            right: 0,
+            bottom: 0,
+            left: 0,
+        })
         // The only surface with a real text field -- Ctrl+C/X/V (ui/launcher.rs).
         .clipboard(true),
         // TOP+RIGHT.
@@ -196,19 +200,35 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
             "kobel-qs",
             // Content-sized: hugs the sheet; the height changes at runtime as drills
             // (wifi/bt/mixer) open, which the host re-measures. Bounded at 640px.
-            SurfaceSize::ContentSized { width: t.panel_w as u32, max_height: 640 },
+            SurfaceSize::ContentSized {
+                width: t.panel_w as u32,
+                max_height: 640,
+            },
         )
         .anchor(Anchor::TOP | Anchor::RIGHT)
-        .margins(Margins { top: panel_top, right: edge, bottom: 0, left: 0 }),
+        .margins(Margins {
+            top: panel_top,
+            right: edge,
+            bottom: 0,
+            left: 0,
+        }),
         // TOP (centered).
         SurfaceKey::Calendar => base(
             "kobel-calendar",
             // Content-sized: hugs the six-week grid + events card, which grows with
             // the selected day's event count. Bounded at 520px.
-            SurfaceSize::ContentSized { width: t.calendar_w as u32, max_height: 520 },
+            SurfaceSize::ContentSized {
+                width: t.calendar_w as u32,
+                max_height: 520,
+            },
         )
         .anchor(Anchor::TOP)
-        .margins(Margins { top: panel_top, right: 0, bottom: 0, left: 0 }),
+        .margins(Margins {
+            top: panel_top,
+            right: 0,
+            bottom: 0,
+            left: 0,
+        }),
         // TOP+RIGHT+BOTTOM full-height right rail (ags marginRight=12 only): the
         // bottom anchor fills the height axis from `top` down to the screen edge, so
         // only the top/right insets are set. `top: panel_top` (not 0) is deliberate:
@@ -223,10 +243,18 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
         // content sizing would fight that anchoring. It stays a fixed full-height rail.
         SurfaceKey::Drawer => base(
             "kobel-drawer",
-            SurfaceSize::Exact { width: t.panel_w as u32, height: 0 },
+            SurfaceSize::Exact {
+                width: t.panel_w as u32,
+                height: 0,
+            },
         )
         .anchor(Anchor::TOP | Anchor::RIGHT | Anchor::BOTTOM)
-        .margins(Margins { top: panel_top, right: 12, bottom: 0, left: 0 }),
+        .margins(Margins {
+            top: panel_top,
+            right: 12,
+            bottom: 0,
+            left: 0,
+        }),
         // All edges: full-screen (both axes filled, so size is 0x0).
         SurfaceKey::Session => base("kobel-session", SurfaceSize::Exact { width: 0, height: 0 })
             .anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT),
@@ -243,12 +271,23 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
 /// sits below the visible bar with no on-screen position change.
 fn bar_config(t: &theme::Tokens) -> SurfaceConfig {
     let bar_h = t.bar_h as u32;
-    SurfaceConfig::new("kobel-bar", SurfaceSize::Exact { width: 0, height: ui::bar::bar_surface_height(t) })
-        .layer(Layer::Top)
-        .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
-        .margins(Margins { top: t.gap as i32, right: t.edge as i32, bottom: 0, left: t.edge as i32 })
-        .exclusive_zone(t.gap as i32 + bar_h as i32)
-        .keyboard_interactivity(KeyboardInteractivity::None)
+    SurfaceConfig::new(
+        "kobel-bar",
+        SurfaceSize::Exact {
+            width: 0,
+            height: ui::bar::bar_surface_height(t),
+        },
+    )
+    .layer(Layer::Top)
+    .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
+    .margins(Margins {
+        top: t.gap as i32,
+        right: t.edge as i32,
+        bottom: 0,
+        left: t.edge as i32,
+    })
+    .exclusive_zone(t.gap as i32 + bar_h as i32)
+    .keyboard_interactivity(KeyboardInteractivity::None)
 }
 
 /// OSD layer config: per-output, bottom-anchored, 72px up, fixed ~230x44,
@@ -257,11 +296,19 @@ fn bar_config(t: &theme::Tokens) -> SurfaceConfig {
 fn osd_config() -> SurfaceConfig {
     SurfaceConfig::new(
         "kobel-osd",
-        SurfaceSize::Exact { width: ui::osd::OSD_SURFACE_W, height: ui::osd::OSD_SURFACE_H },
+        SurfaceSize::Exact {
+            width: ui::osd::OSD_SURFACE_W,
+            height: ui::osd::OSD_SURFACE_H,
+        },
     )
     .layer(Layer::Top)
     .anchor(Anchor::BOTTOM)
-    .margins(Margins { top: 0, right: 0, bottom: 72, left: 0 })
+    .margins(Margins {
+        top: 0,
+        right: 0,
+        bottom: 72,
+        left: 0,
+    })
     .keyboard_interactivity(KeyboardInteractivity::None)
     .input_region_empty(true)
 }
@@ -280,7 +327,11 @@ fn dock_config(t: &theme::Tokens) -> SurfaceConfig {
     // virtual pointer is confined to the work area, so a reserved bottom zone
     // is otherwise unreachable by the injector -- zeroing it lets the gate
     // right-click a real dock tile. Never set in production.
-    let exclusive = if dock_hittest_zone() { 0 } else { t.gap as i32 + dock_h as i32 };
+    let exclusive = if dock_hittest_zone() {
+        0
+    } else {
+        t.gap as i32 + dock_h as i32
+    };
     // The surface itself is taller than the visual dock (dock_surface_height
     // adds TOOLTIP_HEADROOM above it); BOTTOM-only anchoring means the extra
     // height extends upward from the fixed bottom margin, so the tile row's
@@ -295,7 +346,12 @@ fn dock_config(t: &theme::Tokens) -> SurfaceConfig {
     )
     .layer(Layer::Top)
     .anchor(Anchor::BOTTOM)
-    .margins(Margins { top: 0, right: 0, bottom: t.gap as i32, left: 0 })
+    .margins(Margins {
+        top: 0,
+        right: 0,
+        bottom: t.gap as i32,
+        left: 0,
+    })
     .exclusive_zone(exclusive)
     .keyboard_interactivity(KeyboardInteractivity::None)
 }
@@ -321,7 +377,12 @@ fn toasts_config() -> SurfaceConfig {
     )
     .layer(Layer::Top)
     .anchor(Anchor::TOP | Anchor::RIGHT)
-    .margins(Margins { top: 58, right: 12, bottom: 0, left: 0 })
+    .margins(Margins {
+        top: 58,
+        right: 12,
+        bottom: 0,
+        left: 0,
+    })
     .keyboard_interactivity(KeyboardInteractivity::None)
     .input_region_empty(true)
 }
@@ -415,7 +476,11 @@ impl Registry {
         self.per_output
             .values()
             .flat_map(|b| b.chrome.iter().map(|c| &c.states))
-            .chain(self.singletons.iter().flat_map(|s| s.surfaces.iter().map(|ss| &ss.states)))
+            .chain(
+                self.singletons
+                    .iter()
+                    .flat_map(|s| s.surfaces.iter().map(|ss| &ss.states)),
+            )
     }
 
     /// The toasts overlay ids across all outputs (for `Manager::register_toasts`). The
@@ -461,7 +526,11 @@ fn mount_output_chrome(
         || ui::bar::bar().into_element(),
     )?;
     bar_owner.set(Some(bar_id));
-    chrome.push(ChromeSurface { id: bar_id, states: bar_states, drawer_flag: None });
+    chrome.push(ChromeSurface {
+        id: bar_id,
+        states: bar_states,
+        drawer_flag: None,
+    });
 
     let (osd_id, osd_states) = control.create_on(
         output,
@@ -469,7 +538,11 @@ fn mount_output_chrome(
         |cx| provide_contexts(cx, bus, tokens),
         || ui::osd::osd().into_element(),
     )?;
-    chrome.push(ChromeSurface { id: osd_id, states: osd_states, drawer_flag: None });
+    chrome.push(ChromeSurface {
+        id: osd_id,
+        states: osd_states,
+        drawer_flag: None,
+    });
 
     // The dock opens its right-click context menu (PopupHost) and renders from the
     // live, editable pin list (DockPins, seeded from disk).
@@ -486,7 +559,11 @@ fn mount_output_chrome(
         || ui::dock::dock().into_element(),
     )?;
     dock_owner.set(Some(dock_id));
-    chrome.push(ChromeSurface { id: dock_id, states: dock_states, drawer_flag: None });
+    chrome.push(ChromeSurface {
+        id: dock_id,
+        states: dock_states,
+        drawer_flag: None,
+    });
 
     let (toasts_id, (toast_states, drawer_flag)) = control.create_on(
         output,
@@ -494,7 +571,11 @@ fn mount_output_chrome(
         |cx| provide_toast_contexts(cx, bus, tokens),
         || ui::notifications::toasts().into_element(),
     )?;
-    chrome.push(ChromeSurface { id: toasts_id, states: toast_states, drawer_flag: Some(drawer_flag) });
+    chrome.push(ChromeSurface {
+        id: toasts_id,
+        states: toast_states,
+        drawer_flag: Some(drawer_flag),
+    });
 
     Ok(OutputBundle { chrome })
 }
@@ -519,12 +600,20 @@ fn drain_popups(
 ) {
     for op in popups.drain() {
         match op {
-            PopupOp::Open { parent, anchor_rect, placement, model } => {
+            PopupOp::Open {
+                parent,
+                anchor_rect,
+                placement,
+                model,
+            } => {
                 let height = model.measured_height().min(MENU_MAX_H);
                 let cfg = PopupConfig::new(
                     "kobel-menu",
                     anchor_rect,
-                    SurfaceSize::Exact { width: ui::menu::MENU_W as u32, height },
+                    SurfaceSize::Exact {
+                        width: ui::menu::MENU_W as u32,
+                        height,
+                    },
                 )
                 .anchor(placement.anchor)
                 .gravity(placement.gravity);
@@ -649,11 +738,23 @@ fn mount_singletons(
 ) -> anyhow::Result<Singletons> {
     let mut surfaces = Vec::with_capacity(1 + SurfaceKey::ALL.len());
     surfaces.push(mount_one_singleton(
-        control, output, SingletonRole::Dismiss, bus, tokens, manager, registry,
+        control,
+        output,
+        SingletonRole::Dismiss,
+        bus,
+        tokens,
+        manager,
+        registry,
     )?);
     for key in SurfaceKey::ALL {
         surfaces.push(mount_one_singleton(
-            control, output, SingletonRole::Panel(key), bus, tokens, manager, registry,
+            control,
+            output,
+            SingletonRole::Panel(key),
+            bus,
+            tokens,
+            manager,
+            registry,
         )?);
     }
     Ok(Singletons { output, surfaces })
@@ -712,9 +813,7 @@ fn handle_surface_closed(
         // toast-surface list from the survivors (its DrawerOpen flag went with it).
         let ids = registry.borrow().toast_ids();
         manager.borrow_mut().register_toasts(ids);
-        tracing::info!(
-            "[shell] surface {surface:?} closed: dropped chrome bookkeeping (output {output:?})"
-        );
+        tracing::info!("[shell] surface {surface:?} closed: dropped chrome bookkeeping (output {output:?})");
         return;
     }
 
@@ -745,7 +844,9 @@ fn handle_surface_closed(
         // Meanwhile leave a panel pointing at an inert reveal so the queued CloseAll
         // never animates its dead OpenProgress State (the rebind replaces it).
         if let SingletonRole::Panel(key) = role {
-            manager.borrow_mut().register_reveal(key, surface, kb_open(key), Box::new(|_| {}));
+            manager
+                .borrow_mut()
+                .register_reveal(key, surface, kb_open(key), Box::new(|_| {}));
             bus.send(ShellMsg::CloseAll);
         }
         return;
@@ -764,16 +865,16 @@ fn handle_surface_closed(
             if matches!(role, SingletonRole::Panel(_)) {
                 bus.send(ShellMsg::CloseAll);
             }
-            tracing::info!(
-                "[shell] singleton {surface:?} ({role:?}) closed; recreated as {new_id:?} on {target:?}"
-            );
+            tracing::info!("[shell] singleton {surface:?} ({role:?}) closed; recreated as {new_id:?} on {target:?}");
         }
         Err(e) => {
             tracing::error!("[shell] recreate singleton {surface:?} ({role:?}) failed: {e:#}");
             // Replace the stale reveal with an inert one so CloseAll clears the
             // manager's open-state without writing a dead OpenProgress State.
             if let SingletonRole::Panel(key) = role {
-                manager.borrow_mut().register_reveal(key, surface, kb_open(key), Box::new(|_| {}));
+                manager
+                    .borrow_mut()
+                    .register_reveal(key, surface, kb_open(key), Box::new(|_| {}));
                 bus.send(ShellMsg::CloseAll);
             }
         }
@@ -1161,7 +1262,10 @@ fn main() -> anyhow::Result<()> {
                 for surface in reg.all_states() {
                     let mut handle = surface.gnoblin;
                     let connected = handle.read().connected;
-                    handle.set_if_modified(GnoblinSnapshot { connected, windows: windows.clone() });
+                    handle.set_if_modified(GnoblinSnapshot {
+                        connected,
+                        windows: windows.clone(),
+                    });
                 }
             }
             let quit = manager.borrow_mut().tick(control);
@@ -1268,11 +1372,20 @@ mod tests {
         let t = theme::FLOATING;
         let drawer = panel_config(SurfaceKey::Drawer, &t);
         assert_eq!(drawer.margins.top, t.panel_top() as i32);
-        assert_ne!(drawer.margins.top, 0, "top:0 previously rendered the MediaCard under the bar");
+        assert_ne!(
+            drawer.margins.top, 0,
+            "top:0 previously rendered the MediaCard under the bar"
+        );
         // Full-height rail: BOTTOM anchored alongside TOP+RIGHT, height axis
         // compositor-filled (Exact height 0), deliberately NOT content-sized.
         assert_eq!(drawer.anchor, Anchor::TOP | Anchor::RIGHT | Anchor::BOTTOM);
-        assert_eq!(drawer.size, SurfaceSize::Exact { width: t.panel_w as u32, height: 0 });
+        assert_eq!(
+            drawer.size,
+            SurfaceSize::Exact {
+                width: t.panel_w as u32,
+                height: 0
+            }
+        );
     }
 
     /// Every on-demand surface starts closed the same way: no keyboard, empty
@@ -1313,8 +1426,14 @@ mod tests {
             panel_config(SurfaceKey::Calendar, &t).size,
             SurfaceSize::ContentSized { .. }
         ));
-        assert!(matches!(panel_config(SurfaceKey::Drawer, &t).size, SurfaceSize::Exact { .. }));
-        assert!(matches!(panel_config(SurfaceKey::Session, &t).size, SurfaceSize::Exact { .. }));
+        assert!(matches!(
+            panel_config(SurfaceKey::Drawer, &t).size,
+            SurfaceSize::Exact { .. }
+        ));
+        assert!(matches!(
+            panel_config(SurfaceKey::Session, &t).size,
+            SurfaceSize::Exact { .. }
+        ));
     }
 
     /// The launcher is the sole surface with a real text field -- the only one
@@ -1323,9 +1442,16 @@ mod tests {
     fn panel_config_only_launcher_gets_a_clipboard() {
         let t = theme::FLOATING;
         assert!(panel_config(SurfaceKey::Launcher, &t).clipboard);
-        for key in [SurfaceKey::QuickSettings, SurfaceKey::Calendar, SurfaceKey::Drawer, SurfaceKey::Session]
-        {
-            assert!(!panel_config(key, &t).clipboard, "{key:?} must not get a clipboard provider");
+        for key in [
+            SurfaceKey::QuickSettings,
+            SurfaceKey::Calendar,
+            SurfaceKey::Drawer,
+            SurfaceKey::Session,
+        ] {
+            assert!(
+                !panel_config(key, &t).clipboard,
+                "{key:?} must not get a clipboard provider"
+            );
         }
     }
 
@@ -1353,6 +1479,12 @@ mod tests {
         );
         // The surface height itself IS the taller value: paint-only headroom,
         // must never affect window tiling (only the exclusive zone above does).
-        assert_eq!(cfg.size, SurfaceSize::Exact { width: 0, height: surface_h });
+        assert_eq!(
+            cfg.size,
+            SurfaceSize::Exact {
+                width: 0,
+                height: surface_h
+            }
+        );
     }
 }

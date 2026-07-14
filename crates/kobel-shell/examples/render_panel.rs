@@ -27,30 +27,27 @@
 //! source modules (kobel-shell is a bin crate with no lib target) so `crate::theme`
 //! / `crate::manager` references inside `ui/*` resolve unchanged.
 
-#[path = "../src/theme.rs"]
-mod theme;
-#[path = "../src/motion.rs"]
-mod motion;
 #[path = "../src/manager.rs"]
 mod manager;
+#[path = "../src/motion.rs"]
+mod motion;
+#[path = "../src/theme.rs"]
+mod theme;
 #[path = "../src/ui/mod.rs"]
 mod ui;
 
 use std::rc::Rc;
 
-use freya_core::{integration::*, prelude::*};
-use freya_engine::prelude::{
-    EncodedImageFormat, FontCollection, FontMgr, TypefaceFontProvider, raster_n32_premul,
-};
 use freya_components::cache::AssetCacher;
+use freya_core::{integration::*, prelude::*};
+use freya_engine::prelude::{EncodedImageFormat, FontCollection, FontMgr, TypefaceFontProvider, raster_n32_premul};
 use futures_channel::mpsc::unbounded;
 use torin::prelude::Size2D;
 
 use kobel_services::{
-    AccessPointInfo, AppEntry, AppsSnapshot, AudioSnapshot, AudioStream, BatterySnapshot,
-    BluetoothSnapshot, BtDevice, BrightnessSnapshot, CalendarEvent, CalendarSnapshot,
-    GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot, PowerProfile, PowerSnapshot,
-    SettingsSnapshot, TraySnapshot,
+    AccessPointInfo, AppEntry, AppsSnapshot, AudioSnapshot, AudioStream, BatterySnapshot, BluetoothSnapshot,
+    BrightnessSnapshot, BtDevice, CalendarEvent, CalendarSnapshot, GnoblinSnapshot, NetworkSnapshot, NotifdSnapshot,
+    PowerProfile, PowerSnapshot, SettingsSnapshot, TraySnapshot,
 };
 
 use crate::manager::ShellBus;
@@ -65,7 +62,10 @@ enum Panel {
 }
 
 fn fake_gnoblin() -> GnoblinSnapshot {
-    GnoblinSnapshot { connected: true, windows: Vec::new() }
+    GnoblinSnapshot {
+        connected: true,
+        windows: Vec::new(),
+    }
 }
 
 fn fake_audio() -> AudioSnapshot {
@@ -73,8 +73,18 @@ fn fake_audio() -> AudioSnapshot {
         volume: 0.7,
         muted: false,
         streams: vec![
-            AudioStream { id: 1, name: "Firefox".into(), volume: 0.5, muted: false },
-            AudioStream { id: 2, name: "Spotify".into(), volume: 0.8, muted: false },
+            AudioStream {
+                id: 1,
+                name: "Firefox".into(),
+                volume: 0.5,
+                muted: false,
+            },
+            AudioStream {
+                id: 2,
+                name: "Spotify".into(),
+                volume: 0.8,
+                muted: false,
+            },
         ],
     }
 }
@@ -97,9 +107,24 @@ fn fake_network() -> NetworkSnapshot {
         active_ssid: Some("HomeNet".into()),
         active_strength: 78,
         aps: vec![
-            AccessPointInfo { ssid: "HomeNet".into(), strength: 78, active: true, secured: true },
-            AccessPointInfo { ssid: "Cafe Wifi".into(), strength: 54, active: false, secured: false },
-            AccessPointInfo { ssid: "Neighbor 5G".into(), strength: 31, active: false, secured: true },
+            AccessPointInfo {
+                ssid: "HomeNet".into(),
+                strength: 78,
+                active: true,
+                secured: true,
+            },
+            AccessPointInfo {
+                ssid: "Cafe Wifi".into(),
+                strength: 54,
+                active: false,
+                secured: false,
+            },
+            AccessPointInfo {
+                ssid: "Neighbor 5G".into(),
+                strength: 31,
+                active: false,
+                secured: true,
+            },
         ],
     }
 }
@@ -126,15 +151,24 @@ fn fake_bluetooth() -> BluetoothSnapshot {
 }
 
 fn fake_brightness() -> BrightnessSnapshot {
-    BrightnessSnapshot { available: true, level: 0.6 }
+    BrightnessSnapshot {
+        available: true,
+        level: 0.6,
+    }
 }
 
 fn fake_power() -> PowerSnapshot {
-    PowerSnapshot { available: true, profile: PowerProfile::Balanced }
+    PowerSnapshot {
+        available: true,
+        profile: PowerProfile::Balanced,
+    }
 }
 
 fn fake_settings() -> SettingsSnapshot {
-    SettingsSnapshot { dark_style: true, night_light: false }
+    SettingsSnapshot {
+        dark_style: true,
+        night_light: false,
+    }
 }
 
 /// A fake calendar snapshot (the calendar service is a real-session async source
@@ -152,7 +186,11 @@ fn fake_calendar() -> CalendarSnapshot {
             .timestamp()
     };
     let midnight = |date: chrono::NaiveDate| {
-        Local.from_local_datetime(&date.and_time(NaiveTime::MIN)).single().unwrap().timestamp()
+        Local
+            .from_local_datetime(&date.and_time(NaiveTime::MIN))
+            .single()
+            .unwrap()
+            .timestamp()
     };
     CalendarSnapshot {
         has_calendars: true,
@@ -308,8 +346,7 @@ fn main() {
     }
 
     // --- Render into a CPU raster surface and encode a PNG. ---
-    let mut surface = raster_n32_premul((w as i32, h as i32))
-        .expect("failed to create raster surface");
+    let mut surface = raster_n32_premul((w as i32, h as i32)).expect("failed to create raster surface");
     RenderPipeline {
         font_collection: &mut font_collection,
         font_manager: &dynamic_font_manager,

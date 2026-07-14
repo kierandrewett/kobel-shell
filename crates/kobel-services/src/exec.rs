@@ -91,10 +91,7 @@ mod tests {
     // gnome-session-quit) from a test.
     #[test]
     fn verb_argv_maps_every_verb() {
-        assert_eq!(
-            verb_argv(SessionVerb::Lock),
-            &["loginctl", "lock-session"]
-        );
+        assert_eq!(verb_argv(SessionVerb::Lock), &["loginctl", "lock-session"]);
         assert_eq!(
             verb_argv(SessionVerb::Logout),
             &["gnome-session-quit", "--logout", "--no-prompt"]

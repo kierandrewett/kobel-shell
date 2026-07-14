@@ -127,7 +127,10 @@ fn month_grid(year: i32, month: u32) -> [WeekRow; 6] {
                 weekend: c >= 5,
             }
         });
-        WeekRow { iso_week: row_monday.iso_week().week(), days }
+        WeekRow {
+            iso_week: row_monday.iso_week().week(),
+            days,
+        }
     })
 }
 
@@ -196,9 +199,11 @@ fn events_by_day(events: &[CalendarEvent]) -> HashMap<String, Vec<Ev>> {
             start.format("%H:%M").to_string()
         };
         let icon = pick_event_icon(&event.summary);
-        out.entry(ymd_key(start.date_naive()))
-            .or_default()
-            .push(Ev { time, name: event.summary.clone(), icon });
+        out.entry(ymd_key(start.date_naive())).or_default().push(Ev {
+            time,
+            name: event.summary.clone(),
+            icon,
+        });
     }
     out
 }
@@ -210,8 +215,12 @@ fn month_range(year: i32, month: u32) -> Option<(i64, i64)> {
     let first = NaiveDate::from_ymd_opt(year, month, 1)?;
     let (ny, nm) = step_month(year, month, true);
     let next_first = NaiveDate::from_ymd_opt(ny, nm, 1)?;
-    let since = Local.from_local_datetime(&first.and_time(chrono::NaiveTime::MIN)).single()?;
-    let until = Local.from_local_datetime(&next_first.and_time(chrono::NaiveTime::MIN)).single()?;
+    let since = Local
+        .from_local_datetime(&first.and_time(chrono::NaiveTime::MIN))
+        .single()?;
+    let until = Local
+        .from_local_datetime(&next_first.and_time(chrono::NaiveTime::MIN))
+        .single()?;
     Some((since.timestamp(), until.timestamp()))
 }
 
@@ -325,13 +334,28 @@ fn nav_row(
         .horizontal()
         .content(Content::Flex)
         .cross_align(Alignment::Center)
-        .child(NavButton { icon: ICON_CHEVRON_LEFT, forward: false, view })
+        .child(NavButton {
+            icon: ICON_CHEVRON_LEFT,
+            forward: false,
+            view,
+        })
         .child(
-            rect().width(Size::flex(1.0)).main_align(Alignment::Center).horizontal().child(
-                MonthButton { label: label_text, view, selected, today },
-            ),
+            rect()
+                .width(Size::flex(1.0))
+                .main_align(Alignment::Center)
+                .horizontal()
+                .child(MonthButton {
+                    label: label_text,
+                    view,
+                    selected,
+                    today,
+                }),
         )
-        .child(NavButton { icon: ICON_CHEVRON_RIGHT, forward: true, view })
+        .child(NavButton {
+            icon: ICON_CHEVRON_RIGHT,
+            forward: true,
+            view,
+        })
 }
 
 /// A chevron month-nav button. Own component so its hover state is isolated and
@@ -426,11 +450,12 @@ fn grid(
 
     // Header: empty spacer over the week-number column, then seven flex columns of
     // two-letter DOW labels.
-    let header = rect()
-        .horizontal()
-        .child(rect().width(Size::px(WEEK_COL_W)))
-        .child(
-            rect().horizontal().content(Content::Flex).width(Size::fill()).children((0..7).map(|c| {
+    let header = rect().horizontal().child(rect().width(Size::px(WEEK_COL_W))).child(
+        rect()
+            .horizontal()
+            .content(Content::Flex)
+            .width(Size::fill())
+            .children((0..7).map(|c| {
                 cell_column(
                     label()
                         .text(DOW[c])
@@ -439,35 +464,43 @@ fn grid(
                         .font_weight(theme::FONT_WEIGHT_SEMIBOLD as i32),
                 )
             })),
-        );
+    );
 
     let mut children: Vec<Element> = Vec::with_capacity(7);
     children.push(header.into_element());
     for wr in rows.iter() {
-        let week_no = rect().width(Size::px(WEEK_COL_W)).main_align(Alignment::Center).horizontal().child(
-            label()
-                .text(wr.iso_week.to_string())
-                .color(theme::DIM.rgb())
-                .font_size(9.0)
-                .font_weight(theme::FONT_WEIGHT_SEMIBOLD as i32)
-                .font_family(theme::FONT_FAMILY_DATA),
-        );
-        let day_cols = rect().horizontal().content(Content::Flex).width(Size::fill()).children(wr.days.iter().map(|cell| {
-            let inner: Element = if cell.in_month {
-                DayButton {
-                    date: cell.date,
-                    is_today: cell.date == today,
-                    is_selected: cell.date == sel,
-                    is_weekend: cell.weekend,
-                    has_event: events.contains_key(&ymd_key(cell.date)),
-                    selected,
-                }
-                .into_element()
-            } else {
-                out_cell(cell.date).into_element()
-            };
-            cell_column(inner)
-        }));
+        let week_no = rect()
+            .width(Size::px(WEEK_COL_W))
+            .main_align(Alignment::Center)
+            .horizontal()
+            .child(
+                label()
+                    .text(wr.iso_week.to_string())
+                    .color(theme::DIM.rgb())
+                    .font_size(9.0)
+                    .font_weight(theme::FONT_WEIGHT_SEMIBOLD as i32)
+                    .font_family(theme::FONT_FAMILY_DATA),
+            );
+        let day_cols = rect()
+            .horizontal()
+            .content(Content::Flex)
+            .width(Size::fill())
+            .children(wr.days.iter().map(|cell| {
+                let inner: Element = if cell.in_month {
+                    DayButton {
+                        date: cell.date,
+                        is_today: cell.date == today,
+                        is_selected: cell.date == sel,
+                        is_weekend: cell.weekend,
+                        has_event: events.contains_key(&ymd_key(cell.date)),
+                        selected,
+                    }
+                    .into_element()
+                } else {
+                    out_cell(cell.date).into_element()
+                };
+                cell_column(inner)
+            }));
         children.push(
             rect()
                 .horizontal()
@@ -571,11 +604,7 @@ impl Component for DayButton {
                     .height(Size::px(DOT))
                     .corner_radius(theme::RADIUS_PILL)
                     .background(dot_color.rgb())
-                    .position(
-                        Position::new_absolute()
-                            .bottom(DOT_BOTTOM)
-                            .left((DAY_CELL - DOT) / 2.0),
-                    ),
+                    .position(Position::new_absolute().bottom(DOT_BOTTOM).left((DAY_CELL - DOT) / 2.0)),
             )
         } else {
             cell
@@ -617,12 +646,16 @@ fn events_card(sel: NaiveDate, events: &HashMap<String, Vec<Ev>>) -> impl IntoEl
                 .font_weight(theme::FONT_WEIGHT_BOLD as i32),
         )
         .child(
-            rect().width(Size::flex(1.0)).horizontal().main_align(Alignment::End).child(
-                label()
-                    .text(sel.format("%A, %-d %B").to_string())
-                    .color(theme::MUT.rgb())
-                    .font_size(11.5),
-            ),
+            rect()
+                .width(Size::flex(1.0))
+                .horizontal()
+                .main_align(Alignment::End)
+                .child(
+                    label()
+                        .text(sel.format("%A, %-d %B").to_string())
+                        .color(theme::MUT.rgb())
+                        .font_size(11.5),
+                ),
         );
 
     let card = rect()
@@ -694,7 +727,11 @@ fn event_row(e: &Ev, last: bool) -> impl IntoElement {
         // scss `.evrow { padding: 8px 10px }`.
         .padding((8.0, 10.0))
         // scss `.evrow { margin-bottom: 4px } .evrow.last { margin-bottom: 0 }`.
-        .margin(if last { (0.0, 0.0, 0.0, 0.0) } else { (0.0, 0.0, 4.0, 0.0) })
+        .margin(if last {
+            (0.0, 0.0, 0.0, 0.0)
+        } else {
+            (0.0, 0.0, 4.0, 0.0)
+        })
         .corner_radius(theme::RADIUS_ROW)
         .background(theme::PANEL.rgb())
         .child(chip)
@@ -787,7 +824,11 @@ mod tests {
         // in_month.
         for row in &g[1..=4] {
             for cell in &row.days {
-                assert!(cell.in_month, "{:?} should be in-month for January 2027 view", cell.date);
+                assert!(
+                    cell.in_month,
+                    "{:?} should be in-month for January 2027 view",
+                    cell.date
+                );
             }
         }
     }
