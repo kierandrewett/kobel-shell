@@ -73,6 +73,21 @@ pub fn serve(bus: ShellBus) -> std::io::Result<PathBuf> {
 /// socket first, then returns the bound path. Split from [`serve`] so the socket +
 /// protocol can be exercised end-to-end against a temp path with no compositor.
 pub fn serve_at(path: PathBuf, bus: ShellBus) -> std::io::Result<PathBuf> {
+    serve_at_with_timeout(path, bus, REQUEST_TIMEOUT)
+}
+
+/// The per-request read/write deadline (see [`handle_conn`]'s doc comment for why
+/// it exists). `serve_at` uses this in production; tests use a much shorter one
+/// via [`serve_at_with_timeout`] so proving the fix stays fast.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// [`serve_at`]'s implementation, with the per-request timeout as a parameter so
+/// tests can use a short one instead of waiting out the production default.
+fn serve_at_with_timeout(
+    path: PathBuf,
+    bus: ShellBus,
+    timeout: std::time::Duration,
+) -> std::io::Result<PathBuf> {
     // Unlink a stale socket from a previous run; bind fails with EADDRINUSE otherwise.
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
@@ -88,7 +103,7 @@ pub fn serve_at(path: PathBuf, bus: ShellBus) -> std::io::Result<PathBuf> {
     thread::Builder::new().name("kobel-ipc".to_string()).spawn(move || {
         for stream in listener.incoming() {
             match stream {
-                Ok(stream) => handle_conn(stream, &bus),
+                Ok(stream) => handle_conn(stream, &bus, timeout),
                 Err(e) => tracing::warn!("[ipc] accept failed: {e}"),
             }
         }
@@ -98,7 +113,20 @@ pub fn serve_at(path: PathBuf, bus: ShellBus) -> std::io::Result<PathBuf> {
 }
 
 /// Serve one request on an accepted connection: read a line, reply ok/err.
-fn handle_conn(stream: UnixStream, bus: &ShellBus) {
+///
+/// The listener processes connections sequentially on one thread (no per-
+/// connection spawn), so a connected peer that never sends a terminating
+/// newline would otherwise block `read_line` forever and wedge every future
+/// `kobelctl` command -- including `quit` -- until the shell is killed
+/// externally. A bounded read/write deadline turns that into "this one
+/// request times out", not "the control channel is dead for the session".
+fn handle_conn(stream: UnixStream, bus: &ShellBus, timeout: std::time::Duration) {
+    if let Err(e) = stream.set_read_timeout(Some(timeout)) {
+        tracing::warn!("[ipc] cannot set read timeout: {e}");
+    }
+    if let Err(e) = stream.set_write_timeout(Some(timeout)) {
+        tracing::warn!("[ipc] cannot set write timeout: {e}");
+    }
     let read_half = match stream.try_clone() {
         Ok(s) => s,
         Err(e) => {
@@ -218,6 +246,44 @@ mod tests {
         let mode = std::fs::metadata(&path).expect("stat socket").permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "control socket must not be group/other accessible");
 
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_silent_connection_never_wedges_the_listener() {
+        use std::os::unix::net::UnixStream;
+        use std::time::{Duration, Instant};
+
+        let (bus, _rx) = ShellBus::new();
+        let path = std::env::temp_dir()
+            .join(format!("kobel-shell-ipc-silent-test-{}.sock", std::process::id()));
+        // A short deadline keeps this test fast; production uses REQUEST_TIMEOUT (5s).
+        serve_at_with_timeout(path.clone(), bus, Duration::from_millis(200))
+            .expect("bind test control socket");
+
+        // Connect but never send a byte, let alone a newline -- and hold the
+        // connection open past the timeout so the fix's read (not just the
+        // accept) actually has to time out.
+        let silent = UnixStream::connect(&path).expect("connect silently");
+
+        // A second connection, sent only after the first's read has had time to
+        // block, must still be served promptly -- proving the listener thread
+        // recovered rather than staying wedged on the silent peer forever.
+        let started = Instant::now();
+        let mut second = UnixStream::connect(&path).expect("connect for ping");
+        writeln!(second, "ping").expect("write ping");
+        let mut reply = String::new();
+        BufReader::new(&second).read_line(&mut reply).expect("read ping reply");
+        assert_eq!(reply.trim(), "ok");
+        // Bounded well under a wedged-forever listener, and consistent with one
+        // ~200ms timeout elapsing before the second connection could be served.
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "ping took {:?}, the listener looks wedged on the silent connection",
+            started.elapsed()
+        );
+
+        drop(silent);
         let _ = std::fs::remove_file(&path);
     }
 }
