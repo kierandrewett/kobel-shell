@@ -2294,8 +2294,6 @@ dependencies = [
  "kobel-services",
  "kobel-shell",
  "kobel-wayland",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

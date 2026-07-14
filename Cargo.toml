@@ -34,9 +34,9 @@ smithay-client-toolkit = { version = "0.20", features = ["calloop"] }
 wayland-client = "0.31"
 wayland-backend = "0.3"
 wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"] }
-# wlr-* protocol extensions not carried by wayland-protocols itself (e.g.
-# zwlr_foreign_toplevel_manager_v1 -- window list/activate/minimize/close for the
-# dock, sctk 0.20 has no delegate for it, only the newer listing-only ext-*).
+# wlr-* protocol extensions not carried by wayland-protocols itself. The host
+# uses zwlr_foreign_toplevel_manager_v1 for window discovery and control; sctk
+# 0.20 has no delegate for it, only the newer listing-only ext-* protocol.
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 wayland-egl = "0.32"
 khronos-egl = { version = "6", features = ["dynamic"] }
@@ -59,12 +59,6 @@ anyhow = "1"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# Graceful shutdown on SIGTERM/SIGINT (systemd stop, logout, Ctrl+C in a
-# terminal launch): translated into the same ShellMsg::Quit the IPC `quit`
-# command already uses, so notifd's SetFeature hand-back to gnoblin and the
-# debounced-write flush both still run instead of being skipped by an abrupt
-# kill. See crates/kobel-shell/src/main.rs.
-signal-hook = "0.4"
 # Atomic single-instance lock for the control socket (ipc.rs): flock() closes a
 # TOCTOU race a plain connect()-based "is anyone listening?" check cannot -- two
 # instances racing to start at nearly the same instant could otherwise both pass
