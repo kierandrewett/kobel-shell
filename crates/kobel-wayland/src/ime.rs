@@ -29,8 +29,20 @@ pub struct Preedit {
 /// application order (text-input-unstable-v3.xml) has 7 steps; the ones this
 /// struct's fields carry, in order, are:
 ///   1. Remove any PREVIOUSLY shown preedit text (implicit -- there is no
-///      field for it; a caller replacing its editor's composing-text region
-///      with nothing accomplishes this).
+///      field for it, and this step runs UNCONDITIONALLY on every `done`,
+///      regardless of whether this payload's own `preedit` is `Some` or
+///      `None`). Per `preedit_string`'s own double-buffering rule, an
+///      absent `preedit_string` event in this batch means the pending value
+///      resets to its initial empty string, not "carries the last one
+///      forward" -- so `preedit: None` here does NOT mean "nothing to do
+///      about the preedit"; it means "there is no NEW preedit to show after
+///      clearing the old one". A caller with a preedit currently on screen
+///      MUST clear it even when this whole payload is otherwise a default
+///      `ImeCommit` (see [`ImeEvent::Commit`]'s doc -- there is no
+///      shortcut based on this struct's own shape; only the caller's own
+///      prior display state determines whether step 1 is a visible no-op
+///      or a real mutation, and that state lives entirely outside this
+///      struct).
 ///   2. Delete `delete_before`/`delete_after` bytes around the cursor.
 ///      Per the protocol, if a preedit was showing, these counts are
 ///      relative to ITS start/end, not the raw committed-text cursor -- which
@@ -52,19 +64,6 @@ pub struct ImeCommit {
     pub delete_after: u32,
     pub commit: Option<String>,
     pub preedit: Option<Preedit>,
-}
-
-impl ImeCommit {
-    /// True when this payload has no content mutations to apply (nothing to
-    /// delete, commit, or set as preedit). This does NOT mean the enclosing
-    /// `done`/[`ImeEvent::Commit`] is safe to drop -- every `done` is
-    /// dispatched regardless of `is_empty()`, since an empty done can still
-    /// be the `in_sync` release signal a deferring caller is waiting for
-    /// (see [`ImeEvent`]'s doc). This is purely a content-changed check for
-    /// callers that only care about text mutations.
-    pub fn is_empty(&self) -> bool {
-        self.delete_before == 0 && self.delete_after == 0 && self.commit.is_none() && self.preedit.is_none()
-    }
 }
 
 /// Decode a `preedit_string` cursor arg pair: both -1 means "hidden" (`None`);
@@ -109,12 +108,16 @@ pub enum ImeEvent {
     /// serial match -- but any PENDING state request the caller wants to
     /// (re)send (surrounding text, cursor rectangle) should wait for a
     /// SUBSEQUENT `in_sync` done rather than racing ahead of a commit
-    /// already in flight. `payload` is frequently empty when `in_sync` is
-    /// true too (a bare acknowledgement, or the specific "you may now
-    /// resend" transition after a run of out-of-sync dones) -- callers that
-    /// only care about content changes must check `payload.is_empty()`
-    /// themselves; the host does not filter on their behalf (see this
-    /// enum's own doc for why).
+    /// already in flight.
+    ///
+    /// Every dispatched `Commit`, regardless of `payload`'s shape, MUST run
+    /// the full apply sequence documented on [`ImeCommit`] -- there is no
+    /// "nothing changed, skip this one" shortcut. A caller with a preedit
+    /// currently displayed must clear it even for an all-default `payload`;
+    /// that clearing is real state this crate cannot observe (it lives in
+    /// the caller's own editor, not in `ImeCommit`), so no field on
+    /// `ImeCommit` or check on `payload` can ever safely stand in for
+    /// running the sequence.
     Commit {
         payload: ImeCommit,
         serial: u32,
@@ -140,42 +143,6 @@ mod tests {
     fn decode_cursor_defensive_on_lone_negative() {
         assert_eq!(decode_cursor(-1, 3), (None, None));
         assert_eq!(decode_cursor(3, -1), (None, None));
-    }
-
-    #[test]
-    fn empty_commit_is_empty() {
-        assert!(ImeCommit::default().is_empty());
-    }
-
-    #[test]
-    fn commit_with_text_is_not_empty() {
-        let c = ImeCommit {
-            commit: Some("a".to_string()),
-            ..Default::default()
-        };
-        assert!(!c.is_empty());
-    }
-
-    #[test]
-    fn commit_with_only_delete_is_not_empty() {
-        let c = ImeCommit {
-            delete_before: 1,
-            ..Default::default()
-        };
-        assert!(!c.is_empty());
-    }
-
-    #[test]
-    fn commit_with_only_preedit_is_not_empty() {
-        let c = ImeCommit {
-            preedit: Some(Preedit {
-                text: "x".to_string(),
-                cursor_begin: None,
-                cursor_end: None,
-            }),
-            ..Default::default()
-        };
-        assert!(!c.is_empty());
     }
 
     #[test]

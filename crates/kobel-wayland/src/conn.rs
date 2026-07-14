@@ -371,7 +371,7 @@ impl Control<'_> {
     /// (whole surface) at runtime, committing the change. The reveal manager uses
     /// this so a closed on-demand surface stays mapped but click-through, and the
     /// dismiss layer only catches clicks while a surface is open
-    /// (docs/FREYA-PLAN.md 2.4). Empty delegates to [`set_input_region_rects`] with
+    /// (docs/FREYA-PLAN.md 2.4). Empty delegates to [`Control::set_input_region_rects`] with
     /// no rectangles; full restores the default whole-surface region (`None`).
     pub fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
         if empty {
