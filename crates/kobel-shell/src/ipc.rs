@@ -3,15 +3,25 @@
 //! the same ShellBus the UI uses, so IPC and UI drive the manager identically.
 //!
 //! The listener runs on a plain std thread and only ever sends over the bus (which
-//! wakes the loop). Socket lifecycle: a LIVE peer at the path (another running
-//! instance) is detected and refused (`AddrInUse`), never stolen; a genuinely
-//! stale socket (file present, nothing listening) is unlinked on start; ours is
-//! removed on exit (main.rs, after the loop returns).
+//! wakes the loop). Socket lifecycle: an exclusive, non-blocking `flock()` on a
+//! companion `<path>.lock` file is the sole arbiter of "is another instance already
+//! running" -- atomic at the kernel level, so two instances racing to start at
+//! nearly the same instant can never both pass the check (unlike a plain
+//! `connect()`-based probe, which has a real window between the check and the
+//! bind). The lock is held for this process's entire lifetime by leaking the file
+//! descriptor; the OS releases it automatically when every FD referencing it
+//! closes -- on a clean exit OR a crash/SIGKILL -- so a lock FILE left on disk by
+//! a dead previous instance never blocks a fresh one from re-acquiring it. Once
+//! the lock is held, this process owns exclusive rights to unlink+rebind the
+//! actual control socket; ours is removed on exit (main.rs, after the loop
+//! returns).
 
+use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::thread;
 
@@ -83,26 +93,45 @@ pub fn serve_at(path: PathBuf, bus: ShellBus) -> std::io::Result<PathBuf> {
 /// via [`serve_at_with_timeout`] so proving the fix stays fast.
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Acquire an exclusive, non-blocking lock on `<socket_path>.lock`, atomically
+/// deciding "is another kobel-shell instance already running" with no TOCTOU
+/// window. Held for the caller's entire process lifetime (the returned `File`
+/// must be leaked/kept alive, never dropped early -- dropping it closes the FD
+/// and releases the lock immediately, which would defeat the whole point).
+fn acquire_instance_lock(socket_path: &Path) -> std::io::Result<File> {
+    let lock_path = socket_path.with_extension("lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)?;
+    // SAFETY: `file` is a valid, open file descriptor for the duration of this
+    // call (borrowed via as_raw_fd, not consumed); LOCK_EX | LOCK_NB never
+    // blocks, and its only failure mode (EWOULDBLOCK, another holder) is
+    // handled explicitly via the return value below -- no unchecked errno use.
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc != 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("another kobel-shell instance already holds {}", lock_path.display()),
+        ));
+    }
+    Ok(file)
+}
+
 /// [`serve_at`]'s implementation, with the per-request timeout as a parameter so
 /// tests can use a short one instead of waiting out the production default.
 fn serve_at_with_timeout(path: PathBuf, bus: ShellBus, timeout: std::time::Duration) -> std::io::Result<PathBuf> {
-    // Refuse to steal a LIVE instance's socket: if something is actually
-    // listening at `path`, a plain connect() succeeds. Only a genuinely stale
-    // socket (crashed/killed previous instance, file left behind with no
-    // listener) gets unlinked below -- distinguishing the two matters because
-    // silently rebinding out from under a running instance would leave it
-    // permanently unreachable via `kobelctl` while both instances keep
-    // rendering, an easy source of silent double-shell confusion.
-    if UnixStream::connect(&path).is_ok() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AddrInUse,
-            format!(
-                "another kobel-shell instance is already listening at {}",
-                path.display()
-            ),
-        ));
-    }
-    // Unlink a stale socket from a previous run; bind fails with EADDRINUSE otherwise.
+    // Atomically refuse to start a second instance -- see acquire_instance_lock's
+    // doc and this module's doc comment for why flock (not a connect() probe)
+    // is the right primitive here. Leaked deliberately: the lock must outlive
+    // this function, for as long as this process runs.
+    std::mem::forget(acquire_instance_lock(&path)?);
+
+    // The lock guarantees no other process can be racing this same section, so
+    // unlinking a stale socket file (if any) and rebinding is now safe: nothing
+    // else could have created a live listener at `path` without first winning
+    // the lock above, and only one process can ever hold it.
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
     // Owner-only: UnixListener::bind creates the socket at the umask-masked
@@ -259,42 +288,68 @@ mod tests {
     #[test]
     fn refuses_to_steal_a_live_instances_socket() {
         let path = std::env::temp_dir().join(format!("kobel-shell-ipc-live-test-{}.sock", std::process::id()));
-        // A real, still-listening socket -- simulates another kobel-shell instance
-        // already running at the default path.
-        let live = UnixListener::bind(&path).expect("bind the 'other instance' socket");
+        // Hold the instance lock directly -- simulates another kobel-shell
+        // instance already running (holding it for this process's lifetime,
+        // exactly like serve_at itself does via std::mem::forget).
+        let held = acquire_instance_lock(&path).expect("acquire the 'other instance' lock");
 
         let (bus, _rx) = ShellBus::new();
-        let err = serve_at(path.clone(), bus).expect_err("must refuse to bind over a live listener");
+        let err = serve_at(path.clone(), bus).expect_err("must refuse to bind while the lock is held elsewhere");
         assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
 
-        // The live listener's socket must be untouched -- not unlinked, still
-        // reachable at the same path. Accept in the background so connect() can
-        // complete (a bound-but-not-accepting listener still lets connect()
-        // succeed at the kernel backlog level, but drive it properly regardless).
-        let accepted = thread::spawn(move || live.accept());
-        assert!(
-            UnixStream::connect(&path).is_ok(),
-            "the original instance's socket must still be live"
-        );
-        let _ = accepted.join();
+        // The lock holder is unaffected: still holds it, could keep running as
+        // the one live instance. Drop it explicitly here only to clean up the
+        // test's own fixture, not because serve_at touched it.
+        drop(held);
         let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("lock"));
+    }
+
+    #[test]
+    fn flock_prevents_the_toctou_race() {
+        // The core atomicity guarantee: two lock attempts on the SAME path,
+        // with the first's lock still held, must never both succeed -- there
+        // is no window (unlike a plain connect()-based probe) where a second
+        // concurrent attempt could pass a "is anyone here" check before the
+        // first has finished claiming exclusivity.
+        let path = std::env::temp_dir().join(format!("kobel-shell-ipc-race-test-{}.sock", std::process::id()));
+        let first = acquire_instance_lock(&path).expect("first acquire must succeed");
+        let second = acquire_instance_lock(&path);
+        assert!(
+            matches!(&second, Err(e) if e.kind() == std::io::ErrorKind::AddrInUse),
+            "a second concurrent acquire must fail while the first is held, got {second:?}"
+        );
+        drop(first);
+        // Releasing the first frees the lock immediately (flock semantics: tied
+        // to the open file description, not any explicit unlock call) -- a
+        // subsequent attempt must now succeed.
+        acquire_instance_lock(&path).expect("acquire must succeed once the prior holder releases");
+        let _ = std::fs::remove_file(path.with_extension("lock"));
     }
 
     #[test]
     fn reclaims_a_genuinely_stale_socket() {
         let path = std::env::temp_dir().join(format!("kobel-shell-ipc-stale-test-{}.sock", std::process::id()));
-        // Bind then drop WITHOUT unlinking: a Unix socket's filesystem entry
-        // outlives the listener that created it, exactly like a crashed/killed
-        // previous kobel-shell leaves one behind. Nothing is listening anymore.
+        // Bind a socket AND acquire+drop a lock, both without unlinking: files
+        // left on disk by a crashed/killed previous instance. The lock itself
+        // was released the instant its file descriptor closed (flock is tied to
+        // the open file description, not any explicit unlock or the file's
+        // on-disk presence), so nothing is actually held anymore.
         {
-            let _dangling = UnixListener::bind(&path).expect("create a socket file to abandon");
+            let _dangling_socket = UnixListener::bind(&path).expect("create a socket file to abandon");
+            let _dangling_lock = acquire_instance_lock(&path).expect("create a lock file to abandon");
         }
         assert!(path.exists(), "the dangling socket file must still be on disk");
+        assert!(
+            path.with_extension("lock").exists(),
+            "the dangling lock file must still be on disk"
+        );
 
         let (bus, _rx) = ShellBus::new();
-        serve_at(path.clone(), bus).expect("a stale (unlistened) socket must be reclaimed, not refused");
+        serve_at(path.clone(), bus).expect("a stale (unheld) lock must be reclaimed, not refused");
 
         let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("lock"));
     }
 
     #[test]

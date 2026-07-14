@@ -63,6 +63,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # debounced-write flush both still run instead of being skipped by an abrupt
 # kill. See crates/kobel-shell/src/main.rs.
 signal-hook = "0.4"
+# Atomic single-instance lock for the control socket (ipc.rs): flock() closes a
+# TOCTOU race a plain connect()-based "is anyone listening?" check cannot -- two
+# instances racing to start at nearly the same instant could otherwise both pass
+# the check before either has bound, and the second unlink+bind would stomp the
+# first's socket out from under it.
+libc = "0.2"
 
 # Internal
 kobel-ipc = { path = "crates/kobel-ipc" }

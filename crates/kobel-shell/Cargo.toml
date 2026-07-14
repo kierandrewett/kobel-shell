@@ -24,6 +24,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 # Graceful shutdown on SIGTERM/SIGINT -- see the workspace Cargo.toml comment.
 signal-hook = { workspace = true }
+# Atomic single-instance lock -- see the workspace Cargo.toml comment.
+libc = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
