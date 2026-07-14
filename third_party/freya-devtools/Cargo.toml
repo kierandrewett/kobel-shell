@@ -1,0 +1,39 @@
+# Source copied from Freya rev 5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6.
+# The only behavioural change is the configurable IPv4-capable transport in server.rs.
+
+[package]
+name = "freya-devtools"
+version = "0.4.0-rc.24"
+description = "Freya devtools server with a configurable connection address"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[features]
+server = [
+    "dep:smol",
+    "dep:async-lock",
+    "dep:tungstenite",
+    "dep:futures-util",
+    "dep:async-tungstenite",
+    "dep:anyhow",
+    "dep:serde_json",
+]
+client = []
+
+[dependencies]
+freya-core = { workspace = true, features = ["serde"] }
+freya-winit = { workspace = true }
+freya-engine = { workspace = true }
+torin = { workspace = true, features = ["serde"] }
+
+tungstenite = { version = "0.27", features = ["handshake"], optional = true }
+futures-util = { version = "0.3", optional = true }
+smol = { version = "2.0.2", optional = true }
+async-lock = { version = "3.4.1", optional = true }
+async-tungstenite = { version = "0.31.0", optional = true }
+anyhow = { version = "1", optional = true }
+serde_json = { workspace = true, optional = true }
+
+serde = "1"
+accesskit = { workspace = true, features = ["serde"] }

@@ -10,29 +10,40 @@ fmt-check:
 
 check:
     cargo check --workspace --all-targets
-    cargo check -p kobel-ui --bin preview --features devtools
+    cargo check -p kobel-bar --bin kobel-bar-preview --features devtools
+    cargo check -p kobel-dock --bin kobel-dock-preview --features devtools
 
 test:
     cargo test --workspace --all-targets
+    cargo test -p kobel-bar --bin kobel-bar-preview --features devtools
+    cargo test -p kobel-dock --bin kobel-dock-preview --features devtools
 
-ui-check:
-    cargo check -p kobel-ui --all-targets
+bar:
+    cargo run -p kobel-bar
 
-ui-check-devtools:
-    cargo check -p kobel-ui --bin preview --features devtools
+bar-preview:
+    FREYA_DEVTOOLS_ADDR="${FREYA_DEVTOOLS_ADDR:-127.0.0.1:7354}" cargo run -p kobel-bar --bin kobel-bar-preview --features devtools
 
+bar-inspector:
+    FREYA_DEVTOOLS_ADDR="${FREYA_DEVTOOLS_ADDR:-127.0.0.1:7354}" cargo run -p freya-devtools-app
 
-ui-test:
-    cargo test -p kobel-ui
+bar-test:
+    cargo test -p kobel-bar --all-targets --features devtools
 
-ui-preview:
-    cargo run -p kobel-ui --bin preview --features devtools
+dock:
+    cargo run -p kobel-dock
 
-install-freya-devtools:
-    cargo install --git https://github.com/marc2332/freya --rev 5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6 --locked freya-devtools-app
+dock-preview:
+    FREYA_DEVTOOLS_ADDR="${FREYA_DEVTOOLS_ADDR:-127.0.0.1:7355}" cargo run -p kobel-dock --bin kobel-dock-preview --features devtools
 
-freya-devtools:
-    freya-devtools-app
+dock-inspector:
+    FREYA_DEVTOOLS_ADDR="${FREYA_DEVTOOLS_ADDR:-127.0.0.1:7355}" cargo run -p freya-devtools-app
+
+dock-test:
+    cargo test -p kobel-dock --all-targets --features devtools
+
+host-bar-dock:
+    ./scripts/run-bar-dock-in-gnoblin.sh
 
 host-spike:
     ./scripts/run-spike-in-gnoblin.sh

@@ -10,7 +10,8 @@ members = [
     "crates/kobel-shell",
     "crates/kobel-bar",
     "crates/kobel-dock",
-    "crates/kobel-ui",
+    "third_party/freya-devtools",
+    "tools/freya-devtools-app",
 ]
 
 [workspace.package]
@@ -20,16 +21,20 @@ license = "MIT"
 
 [workspace.dependencies]
 # Production uses direct crates and remains winit-free. The optional `freya` facade
-# exists only for kobel-ui's devtools preview binary.
+# exists only for the bar/dock devtools preview binaries and the inspector.
 freya = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6", default-features = false }
 freya-core = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+freya-winit = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-engine = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-components = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-animation = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-clipboard = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 torin = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+freya-router = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+freya-radio = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 # Dev-only headless component runner for UI tests.
 freya-testing = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+accesskit = "0.24"
 
 # Wayland host
 smithay-client-toolkit = { version = "0.20", features = ["calloop"] }
@@ -73,6 +78,9 @@ kobel-ipc = { path = "crates/kobel-ipc" }
 kobel-wayland = { path = "crates/kobel-wayland" }
 kobel-services = { path = "crates/kobel-services" }
 kobel-shell = { path = "crates/kobel-shell" }
+
+[patch."https://github.com/marc2332/freya"]
+freya-devtools = { path = "third_party/freya-devtools" }
 
 [profile.release]
 # Thin LTO: meaningful runtime win for a per-frame Skia/EGL renderer at a much

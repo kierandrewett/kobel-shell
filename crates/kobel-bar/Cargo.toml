@@ -21,6 +21,6 @@ freya = { workspace = true, optional = true }
 freya-testing = { workspace = true }
 
 [[bin]]
-name = "preview"
+name = "kobel-bar-preview"
 path = "src/bin/preview.rs"
 required-features = ["devtools"]

@@ -1,0 +1,26 @@
+# Source copied from Freya rev 5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6.
+# The only behavioural change is the configurable IPv4-capable transport in src/main.rs.
+
+[package]
+name = "freya-devtools-app"
+version = "0.4.0-rc.24"
+description = "Freya inspector with a configurable connection address"
+default-run = "freya-devtools-app"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+freya = { workspace = true, features = ["radio", "router", "winit"] }
+freya-core = { workspace = true, features = ["debug-integrity"] }
+freya-router = { workspace = true }
+freya-radio = { workspace = true }
+freya-devtools = { path = "../../third_party/freya-devtools" }
+torin = { workspace = true }
+accesskit = { workspace = true }
+serde_json = { workspace = true }
+async-tungstenite = "0.31"
+futures-util = "0.3"
+smol = "2.0.2"
+tungstenite = { version = "0.27", features = ["handshake"] }
+async-lock = "3.4.1"
