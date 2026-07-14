@@ -447,23 +447,18 @@ so every merge keeps a usable shell.
   no practical exposure here. Nothing to act on from this side; would only
   clear on an upstream Freya dependency change.
 - **`cargo audit` also flags `ttf-parser` 0.25.1 as unmaintained (RUSTSEC-2026-0192,
-  an advisory-status warning, not a vulnerability) as of `kobel-ui`'s addition.**
-  Dependency path: `freya -> freya-winit -> winit -> sctk-adwaita -> ab_glyph ->
-  owned_ttf_parser -> ttf-parser`, and `freya` is only pulled in by `kobel-ui`'s
-  optional `devtools` feature (`devtools = ["dep:freya", "freya/devtools",
-  "freya/winit"]`). Verified two ways: `cargo tree -i ttf-parser` finds no path
-  with default features (only `--all-features` resolves it), and
-  `cargo tree -p kobel-ui -i ttf-parser --no-default-features -e normal,build,dev`
-  (production + the unconditional `freya-testing` dev-dependency together) also
-  finds no path -- so this is absent from a normal production build AND a normal
-  `cargo test` run, present only when someone explicitly builds/runs `kobel-ui`
-  with `--features devtools` (the interactive Freya devtools/`preview` bin).
-  RUSTSEC-2026-0192 is only a maintenance advisory, not a known exploit, but a
-  font parser (TrueType/OpenType tables; shaping is `rustybuzz`/HarfBuzz's job,
-  a separate crate) processes font-file input in a way the compile-time-only
-  quick-xml/paste findings above do not, so it is worth re-checking on any
-  future Freya revision bump, even though nothing urgent applies while it is
-  absent from the production binary and default test suite.
+  an advisory-status warning, not a vulnerability) through the local Freya
+  inspector.** The dependency path is `freya-devtools-app -> freya -> freya-winit
+  -> winit -> sctk-adwaita -> ab_glyph -> owned_ttf_parser -> ttf-parser`.
+  `freya-devtools-app` is a workspace member, so workspace-wide checks and tests
+  compile this developer-only path. The production `kobel-bar` and `kobel-dock`
+  binaries still use direct Freya crates through `kobel-wayland` and remain
+  winit-free; their optional `devtools` previews also pull in this path when
+  explicitly enabled. RUSTSEC-2026-0192 is only a maintenance advisory, not a
+  known exploit, but a font parser (TrueType/OpenType tables; shaping is
+  `rustybuzz`/HarfBuzz's job, a separate crate) processes font-file input in a
+  way the compile-time-only quick-xml/paste findings above do not. Re-check it
+  on every pinned Freya revision bump.
 - **`theme::FONT_FAMILY_UI` (Inter, ported verbatim from AGS's `main.scss:22`) is
   defined but has zero call sites.** Every actual `.font_family(...)` call in the
   UI applies `FONT_FAMILY_DATA` (`ui-monospace`, for tabular numerals); plain
