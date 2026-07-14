@@ -255,12 +255,15 @@ fn bar_config(t: &theme::Tokens) -> SurfaceConfig {
 /// display-only (empty input region -> click-through). A transient volume/brightness
 /// pill.
 fn osd_config() -> SurfaceConfig {
-    SurfaceConfig::new("kobel-osd", SurfaceSize::Exact { width: 230, height: 44 })
-        .layer(Layer::Top)
-        .anchor(Anchor::BOTTOM)
-        .margins(Margins { top: 0, right: 0, bottom: 72, left: 0 })
-        .keyboard_interactivity(KeyboardInteractivity::None)
-        .input_region_empty(true)
+    SurfaceConfig::new(
+        "kobel-osd",
+        SurfaceSize::Exact { width: ui::osd::OSD_SURFACE_W, height: ui::osd::OSD_SURFACE_H },
+    )
+    .layer(Layer::Top)
+    .anchor(Anchor::BOTTOM)
+    .margins(Margins { top: 0, right: 0, bottom: 72, left: 0 })
+    .keyboard_interactivity(KeyboardInteractivity::None)
+    .input_region_empty(true)
 }
 
 /// Dock layer config: per-output, bottom-anchored, `gap` up. Width is computed from

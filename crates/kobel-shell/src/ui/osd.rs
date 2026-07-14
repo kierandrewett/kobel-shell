@@ -22,6 +22,10 @@ use super::{ICON_SPEAKER_MUTE, ICON_SPEAKER_WAVE, icon};
 use crate::motion::{self, use_spring};
 use crate::theme;
 
+/// Surface size (the pill's own width below must match `OSD_SURFACE_W`).
+pub const OSD_SURFACE_W: u32 = 230;
+pub const OSD_SURFACE_H: u32 = 44;
+
 /// The OSD volume pill. Returns a full-surface, click-through overlay that centers
 /// the translucent pill; the pill's opacity springs to 1 on a volume/mute change.
 pub fn osd() -> impl IntoElement {
@@ -92,7 +96,7 @@ pub fn osd() -> impl IntoElement {
 
     let pill = rect()
         .horizontal()
-        .width(Size::px(230.0))
+        .width(Size::px(OSD_SURFACE_W as f32))
         .cross_align(Alignment::Center)
         .spacing(11.0)
         .padding((10.0, 15.0))
