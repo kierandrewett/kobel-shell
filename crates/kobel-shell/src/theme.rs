@@ -227,3 +227,28 @@ pub const FONT_FAMILY_DATA: &str = "ui-monospace";
 /// OpenType feature tag enabling tabular figures for `FONT_FAMILY_DATA`
 /// text. `main.scss:27` `font-feature-settings: "tnum";`.
 pub const FONT_FEATURE_TABULAR: &str = "tnum";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Locks `ctl()`/`panel_top()` against their AGS-ported values (config.ts:42-43)
+    /// for both presets -- this file's own doc says "change a value here and the
+    /// whole shell reflows", so a silent edit to either formula (not just the raw
+    /// constants) should fail a test, not just look different live.
+    #[test]
+    fn floating_preset_derived_values_match_ags_config_ts() {
+        // config.ts: ctl() = barH - 11 = 42 - 11 = 31.
+        assert_eq!(FLOATING.ctl(), 31.0);
+        // config.ts: panelTop() = gap + barH + 6 = 10 + 42 + 6 = 58.
+        assert_eq!(FLOATING.panel_top(), 58.0);
+    }
+
+    #[test]
+    fn gapless_preset_derived_values_match_ags_config_ts() {
+        // config.ts: ctl() = barH - 11 = 38 - 11 = 27.
+        assert_eq!(GAPLESS.ctl(), 27.0);
+        // config.ts: panelTop() = gap + barH + 6 = 0 + 38 + 6 = 44.
+        assert_eq!(GAPLESS.panel_top(), 44.0);
+    }
+}
