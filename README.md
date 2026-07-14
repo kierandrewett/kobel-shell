@@ -62,7 +62,7 @@ compositor needed):
 ```sh
 ./scripts/run-spike-in-gnoblin.sh            # host render gate
 INPUT_TEST=1 ./scripts/run-spike-in-gnoblin.sh   # host input gate (injected HID)
-./scripts/run-shell-in-gnoblin.sh            # full shell gate: 26 assertions incl.
+./scripts/run-shell-in-gnoblin.sh            # full shell gate: 29 assertions incl.
                                              # notify-send round-trip, injected
                                              # keyboard/click paths, screenshots
 VIRTUAL_MONITORS="1280x800 1024x768" ./scripts/run-shell-in-gnoblin.sh  # multi-monitor
