@@ -27,6 +27,7 @@ mod surface;
 mod toplevel;
 
 pub use conn::{Control, OutputControl, Shell};
+pub use freya_core::prelude::PreferredTheme;
 pub use ime::{ImeCommit, ImeEvent, Preedit};
 pub use surface::SurfaceContexts;
 pub use toplevel::ToplevelInfo;
@@ -187,20 +188,21 @@ pub struct SurfaceConfig {
     pub keyboard_interactivity: KeyboardInteractivity,
     /// Size behaviour.
     pub size: SurfaceSize,
-    /// When true, the surface is given an empty wl input region at creation, making
-    /// it click-through (display-only). Used by the OSD (docs/FREYA-PLAN.md 2.4).
+    /// When true, the surface starts with an empty wl input region and is
+    /// click-through until the caller changes it.
     pub input_region_empty: bool,
-    /// When true, this surface's `ClipboardProvider` root context is a real
-    /// Wayland clipboard (smithay-clipboard via `freya_clipboard::copypasta`,
-    /// constructed from the host's own `wl_display`) instead of the default
-    /// `None` stub. Opt-in per surface (`false` by default) since only surfaces
-    /// with an actual text field need one -- the launcher's is the only one today.
+    /// Initial colour-scheme preference exposed through Freya's `Platform` context.
+    pub preferred_theme: PreferredTheme,
+    /// When true, this surface's `ClipboardProvider` root context is backed by the
+    /// real Wayland clipboard instead of the default `None` provider. Opt in only
+    /// for surfaces that expose clipboard actions.
     pub clipboard: bool,
 }
 
 impl SurfaceConfig {
-    /// A sensible default: top layer, no anchor, on-demand keyboard, exact size.
-    pub fn new(namespace: impl Into<String>, size: SurfaceSize) -> Self {
+    /// Minimal geometry and input defaults. The caller must select the initial
+    /// Freya colour scheme because that choice belongs to the rendered UI.
+    pub fn new(namespace: impl Into<String>, size: SurfaceSize, preferred_theme: PreferredTheme) -> Self {
         Self {
             namespace: namespace.into(),
             layer: Layer::Top,
@@ -210,6 +212,7 @@ impl SurfaceConfig {
             keyboard_interactivity: KeyboardInteractivity::None,
             size,
             input_region_empty: false,
+            preferred_theme,
             clipboard: false,
         }
     }
@@ -244,6 +247,11 @@ impl SurfaceConfig {
         self
     }
 
+    pub fn preferred_theme(mut self, theme: PreferredTheme) -> Self {
+        self.preferred_theme = theme;
+        self
+    }
+
     pub fn clipboard(mut self, enabled: bool) -> Self {
         self.clipboard = enabled;
         self
@@ -251,10 +259,8 @@ impl SurfaceConfig {
 }
 
 /// Where a popup attaches on its parent's anchor rectangle, and which way it grows.
-/// A menu below a bar/dock button is the common case: anchor the popup's edge to the
-/// BOTTOM of the anchor rect and grow with BOTTOM gravity (downward). The host maps
-/// these to `xdg_positioner` anchor/gravity; the compositor keeps the popup on-screen
-/// via slide+flip constraint adjustment.
+/// For example, a popup below its anchor uses the anchor's bottom edge with bottom
+/// gravity. The compositor may slide or flip it to keep it on-screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PopupAnchor {
     Top,
@@ -282,14 +288,13 @@ pub enum PopupGravity {
     BottomRight,
 }
 
-/// Configuration for one xdg popup surface (a tray/context menu, tooltip, ...).
+/// Configuration for one xdg popup surface.
 ///
-/// A popup is parented to another surface (a layer surface, or another popup for a
-/// submenu) and positioned by an `xdg_positioner`: the `anchor_rect` is a rectangle
-/// in the PARENT's surface-local logical coordinates (e.g. the button that opened the
-/// menu), and `anchor`/`gravity` say how the popup hangs off it. The compositor is
-/// free to slide/flip the popup to keep it on-screen. Its own size is chosen exactly
-/// like a layer surface (`SurfaceSize::Exact` or `ContentSized`).
+/// A popup is parented to another surface and positioned by an `xdg_positioner`.
+/// `anchor_rect` uses the parent's local logical coordinates; `anchor` and `gravity`
+/// determine how the popup hangs from it. The compositor may slide or flip the popup
+/// to keep it on-screen. Size uses the same exact or content-sized behaviour as a
+/// layer surface.
 #[derive(Clone, Debug)]
 pub struct PopupConfig {
     /// A diagnostic namespace (`kobel-*`), mirrored into tracing logs.
@@ -302,19 +307,29 @@ pub struct PopupConfig {
     pub anchor: PopupAnchor,
     /// Which direction the popup grows from that point.
     pub gravity: PopupGravity,
+    /// Initial colour-scheme preference exposed through Freya's `Platform` context.
+    pub preferred_theme: PreferredTheme,
+    /// Whether this popup receives a real Wayland clipboard provider.
+    pub clipboard: bool,
 }
 
 impl PopupConfig {
-    /// A menu-below-a-button default: anchored to the bottom edge of `anchor_rect`,
-    /// growing downward (bottom gravity). Override with [`PopupConfig::anchor`] /
-    /// [`PopupConfig::gravity`].
-    pub fn new(namespace: impl Into<String>, anchor_rect: (i32, i32, i32, i32), size: SurfaceSize) -> Self {
+    /// A popup below its anchor by default. The caller must select the initial
+    /// Freya colour scheme because that choice belongs to the rendered UI.
+    pub fn new(
+        namespace: impl Into<String>,
+        anchor_rect: (i32, i32, i32, i32),
+        size: SurfaceSize,
+        preferred_theme: PreferredTheme,
+    ) -> Self {
         Self {
             namespace: namespace.into(),
             anchor_rect,
             size,
             anchor: PopupAnchor::Bottom,
             gravity: PopupGravity::Bottom,
+            preferred_theme,
+            clipboard: false,
         }
     }
 
@@ -325,6 +340,15 @@ impl PopupConfig {
 
     pub fn gravity(mut self, gravity: PopupGravity) -> Self {
         self.gravity = gravity;
+        self
+    }
+    pub fn preferred_theme(mut self, theme: PreferredTheme) -> Self {
+        self.preferred_theme = theme;
+        self
+    }
+
+    pub fn clipboard(mut self, enabled: bool) -> Self {
+        self.clipboard = enabled;
         self
     }
 }
@@ -361,5 +385,34 @@ impl KeyPress {
     /// Lets shells act on Escape without depending on `keyboard-types` directly.
     pub fn is_escape(&self) -> bool {
         self.key == keyboard_types::Key::Named(keyboard_types::NamedKey::Escape)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use freya_core::prelude::PreferredTheme;
+
+    use super::{PopupConfig, SurfaceConfig, SurfaceSize};
+
+    #[test]
+    fn surface_themes_are_owned_by_callers() {
+        let size = SurfaceSize::Exact {
+            width: 100,
+            height: 100,
+        };
+
+        let surface = SurfaceConfig::new("surface", size, PreferredTheme::Light);
+        assert_eq!(surface.preferred_theme, PreferredTheme::Light);
+        assert_eq!(
+            surface.preferred_theme(PreferredTheme::Dark).preferred_theme,
+            PreferredTheme::Dark,
+        );
+
+        let popup = PopupConfig::new("popup", (0, 0, 10, 10), size, PreferredTheme::Dark);
+        assert_eq!(popup.preferred_theme, PreferredTheme::Dark);
+        assert!(!popup.clipboard);
+        let configured_popup = popup.preferred_theme(PreferredTheme::Light).clipboard(true);
+        assert_eq!(configured_popup.preferred_theme, PreferredTheme::Light);
+        assert!(configured_popup.clipboard);
     }
 }

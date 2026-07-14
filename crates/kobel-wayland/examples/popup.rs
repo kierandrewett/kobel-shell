@@ -1,19 +1,12 @@
-// popup.rs -- end-to-end proof of the xdg-popup-on-layer-surface primitive
-// (the shape tray menus and the dock context menu are built on).
+// End-to-end proof of an xdg popup parented to a layer surface.
 //
-// One wlr-layer-shell surface anchored TOP+LEFT+RIGHT (a mock bar). Pressing it asks
-// the host tick to open an xdg popup -- an `xdg_surface`/`xdg_popup` parented to the
-// bar via `zwlr_layer_surface_v1.get_popup`, with a pointer/keyboard grab so the
-// compositor dismisses it on an outside click (`popup_done`). The popup renders its
-// own embedded-Freya instance (a label) exactly like a layer surface. Esc while the
-// popup is open dismisses it programmatically via `Control::close_popup`; Esc with no
-// popup exits.
+// Pressing the parent asks the host tick to open an xdg_surface/xdg_popup positioned
+// against the pressed rectangle. A pointer and keyboard grab lets the compositor
+// dismiss it on an outside click (`popup_done`). The popup owns an independent
+// embedded Freya runtime, just like a layer surface. Escape closes the popup first,
+// then exits when no popup remains.
 //
-// The parent surface's press target is the whole strip (like the spike), so a
-// headless injector can click anywhere on the bar to open the popup without aiming at
-// a moving widget. Log tags: [popup-demo] for app events, [host] for protocol events.
-//
-// Cannot run here (no compositor); run it in the gnoblin devkit like the spike.
+// Run this under the gnoblin devkit because it requires a compositor.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -97,17 +90,21 @@ fn main() -> anyhow::Result<()> {
     let mut shell = Shell::new()?;
 
     // The mock bar (parent for the popup).
-    let config = SurfaceConfig::new("kobel-popup-demo", SurfaceSize::Exact { width: 0, height: 120 })
-        .layer(Layer::Top)
-        .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
-        .margins(Margins {
-            top: 10,
-            right: 12,
-            bottom: 0,
-            left: 12,
-        })
-        .exclusive_zone(0)
-        .keyboard_interactivity(KeyboardInteractivity::OnDemand);
+    let config = SurfaceConfig::new(
+        "kobel-popup-demo",
+        SurfaceSize::Exact { width: 0, height: 120 },
+        PreferredTheme::Dark,
+    )
+    .layer(Layer::Top)
+    .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
+    .margins(Margins {
+        top: 10,
+        right: 12,
+        bottom: 0,
+        left: 12,
+    })
+    .exclusive_zone(0)
+    .keyboard_interactivity(KeyboardInteractivity::OnDemand);
     let parent_id = {
         let shared = shared.clone();
         shell.create_surface(config, move || parent_ui(shared.clone()).into_element())?
@@ -136,6 +133,7 @@ fn main() -> anyhow::Result<()> {
                 "kobel-popup",
                 (40, 96, 140, 24),
                 SurfaceSize::Exact { width: 220, height: 96 },
+                PreferredTheme::Dark,
             );
             match control.open_popup(parent, cfg, |_| (), || popup_ui().into_element()) {
                 Ok((pid, ())) => {

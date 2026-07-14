@@ -215,6 +215,7 @@ impl FreyaLayerSurface {
         app: impl Fn() -> Element + 'static,
         setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
         content: Option<(u32, u32)>,
+        preferred_theme: PreferredTheme,
         clipboard: Option<Box<dyn ClipboardProvider>>,
     ) -> (Self, C) {
         let wl_surface = role.wl_surface().clone();
@@ -269,8 +270,7 @@ impl FreyaLayerSurface {
                 root_size: State::create(Size2D::new(pw, ph)),
                 scale_factor: State::create(scale_num as f64 / SCALE_DENOM as f64),
                 navigation_mode: State::create(NavigationMode::NotKeyboard),
-                // kobel is a dark-first shell.
-                preferred_theme: State::create(PreferredTheme::Dark),
+                preferred_theme: State::create(preferred_theme),
                 is_app_focused: State::create(true),
                 accent_color: State::create(AccentColor::default()),
                 // Any UserEvent (RequestRedraw from hooks/animations, and best-effort
@@ -283,10 +283,8 @@ impl FreyaLayerSurface {
             }
         });
 
-        // Clipboard context: a real Wayland clipboard when the caller opted this
-        // surface in (SurfaceConfig::clipboard -- the launcher's text field is the
-        // only consumer today, via freya_clipboard::Clipboard::get/set), else the
-        // `None` stub every other surface keeps (no text field, no clipboard need).
+        // Provide the real Wayland clipboard only for surfaces that opt in;
+        // every other surface receives Freya's inert `None` provider.
         runner.provide_root_context(move || State::create(clipboard));
 
         let frame_stats = runner.provide_root_context(|| State::create(FrameStats::default()));
@@ -656,7 +654,7 @@ impl FreyaLayerSurface {
             tree: &self.tree,
             canvas,
             scale_factor,
-            // Transparent so the compositor blends the surface (translucent panels).
+            // Transparent so the compositor can blend the surface.
             background: Color::TRANSPARENT,
         }
         .render();

@@ -94,17 +94,21 @@ fn main() -> anyhow::Result<()> {
 
     let mut shell = Shell::new()?;
 
-    let config = SurfaceConfig::new("kobel-spike", SurfaceSize::Exact { width: 0, height: 120 })
-        .layer(Layer::Top)
-        .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
-        .margins(Margins {
-            top: 10,
-            right: 12,
-            bottom: 0,
-            left: 12,
-        })
-        .exclusive_zone(0)
-        .keyboard_interactivity(KeyboardInteractivity::OnDemand);
+    let config = SurfaceConfig::new(
+        "kobel-spike",
+        SurfaceSize::Exact { width: 0, height: 120 },
+        PreferredTheme::Dark,
+    )
+    .layer(Layer::Top)
+    .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
+    .margins(Margins {
+        top: 10,
+        right: 12,
+        bottom: 0,
+        left: 12,
+    })
+    .exclusive_zone(0)
+    .keyboard_interactivity(KeyboardInteractivity::OnDemand);
 
     shell.create_surface(config, || spike_ui().into_element())?;
 

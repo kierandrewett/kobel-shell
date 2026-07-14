@@ -127,8 +127,8 @@ impl Egl {
     }
 
     /// Choose an RGBA8 + stencil + window config for the given GLES renderable bit and
-    /// create a matching context. Alpha lets translucent panels composite; the stencil
-    /// buffer is required by Skia's path/clip rendering.
+    /// create a matching context. Alpha permits compositor blending; Skia requires
+    /// stencil support for path and clip rendering.
     fn choose_config_and_context(
         instance: &EglInstance,
         display: egl::Display,

@@ -28,9 +28,9 @@ wayland-client = { workspace = true }
 # Staging wp_fractional_scale_v1 + stable wp_viewporter. sctk 0.20 exposes neither
 # natively, so Host implements raw Dispatch for both (see conn.rs / surface.rs).
 wayland-protocols = { workspace = true }
-# zwlr_foreign_toplevel_manager_v1 -- window list/activate/minimize/close for the
-# dock. sctk 0.20 has no delegate for it (only listing-only ext-foreign-toplevel-
-# list), so Host implements raw Dispatch here too (see toplevel.rs).
+# zwlr_foreign_toplevel_manager_v1 provides window discovery and control. sctk
+# 0.20 has no delegate for it (only listing-only ext-foreign-toplevel-list), so
+# Host implements raw Dispatch here too (see toplevel.rs).
 wayland-protocols-wlr = { workspace = true }
 # client_system selects the libwayland backend so wl_surface ObjectIds expose the
 # C wl_proxy pointer that wayland-egl (WlEglSurface) requires.

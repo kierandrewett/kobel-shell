@@ -1,12 +1,8 @@
-// toplevel.rs -- pure data/logic for zwlr_foreign_toplevel_manager_v1 (the window
-// list + activate/minimize/close requests a concrete UI can build a dock/taskbar
-// from). The Wayland glue (global bind, Dispatch impls, Host fields) lives in
-// conn.rs alongside every other raw-Dispatch protocol (fractional-scale,
-// viewporter, xdg shell) -- Host is private to that module, so there is nowhere
-// else for the glue to live. This file holds only what can be tested without a
-// live Wayland connection: the public snapshot type, the `state` event's wire
-// decode, and the stage-then-publish batching state machine the Dispatch impl
-// drives on Title/AppId/State/Done.
+// toplevel.rs -- pure data and batching logic for
+// zwlr_foreign_toplevel_manager_v1 window discovery and control. The Wayland glue
+// lives in conn.rs with the other raw Dispatch implementations. This module keeps
+// the public snapshot, wire-state decoder and stage-then-publish state machine
+// independently testable without a live Wayland connection.
 //
 // Protocol: /home/kieran/dev/gnoblin/src/protocols/foreign-toplevel-management/
 // wlr-foreign-toplevel-management-unstable-v1.xml (v3, gnoblin's mutter implements
@@ -16,12 +12,9 @@
 // crates/kobel-services/src/gnoblin.rs and README.md).
 
 /// One compositor window, sourced from `zwlr_foreign_toplevel_handle_v1`. `id` is a
-/// host-minted stable string (a monotonic counter, not a Wayland object id -- object
-/// ids are an implementation detail and not guaranteed stable-shaped across
-/// wayland-client versions), matching the shape `kobel_services::GnoblinWindow` used
-/// to carry over D-Bus historically (see `archive/freya-ui-v1` for the last shell
-/// implementation that consumed this -- the current UI-neutral core exposes it via
-/// `Control::toplevels` for whichever concrete UI wires it up next).
+/// host-minted stable string rather than a Wayland object id, whose representation is
+/// an implementation detail. This type is the single source of truth for window
+/// state and is exposed through `Control::toplevels`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ToplevelInfo {
     pub id: String,
@@ -34,10 +27,9 @@ pub struct ToplevelInfo {
 /// Decode the `state` event's wire array: a sequence of native-endian u32 enum
 /// values (the standard wayland-scanner array-of-enum convention -- see e.g. sctk's
 /// own xdg_toplevel configure-states decoding). Values per the protocol's `state`
-/// enum: `maximized=0, minimized=1, activated=2, fullscreen=3`. Returns
-/// `(focused, minimized)`; maximized/fullscreen are not surfaced (the dock only
-/// needs focus + minimized). A malformed (non-multiple-of-4) trailing remainder is
-/// ignored rather than panicking -- the compositor is trusted but not blindly.
+/// enum: `maximized=0, minimized=1, activated=2, fullscreen=3`. Returns the
+/// `(focused, minimized)` fields exposed by [`ToplevelInfo`]. A malformed trailing
+/// remainder is ignored rather than panicking.
 pub(crate) fn decode_state_array(bytes: &[u8]) -> (bool, bool) {
     const STATE_MINIMIZED: u32 = 1;
     const STATE_ACTIVATED: u32 = 2;

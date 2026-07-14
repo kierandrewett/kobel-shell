@@ -1,9 +1,7 @@
-// ime.rs -- pure data for zwp_text_input_v3 (IME preedit/commit, e.g. CJK input in
-// the launcher's text field). The Wayland glue (global bind, per-seat text-input
-// object, Dispatch impls) lives in conn.rs alongside every other raw-Dispatch
-// protocol -- Host is private to that module. This file holds only what can be
-// tested without a live Wayland connection: the accumulated-state shape and the
-// app-facing event enum.
+// ime.rs -- pure data for zwp_text_input_v3 preedit and commit events. The
+// Wayland glue (global bind, per-seat text-input object and Dispatch impls) lives
+// in conn.rs. This file holds the accumulated-state shape and app-facing event
+// enum that can be tested without a live Wayland connection.
 //
 // Protocol: text-input-unstable-v3 (mutter implements it natively as a core input
 // method surface, not gated like the wlr-* extensions -- see

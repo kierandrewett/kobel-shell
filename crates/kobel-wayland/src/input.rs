@@ -50,16 +50,11 @@ pub fn mouse_move(cursor: CursorPoint) -> PlatformEvent {
 /// target genuinely has no content (a negative coordinate, since real content
 /// only ever occupies non-negative surface-local space).
 ///
-/// Without this, a pointer that leaves a surface WITHOUT first crossing onto
-/// a different element inside it (e.g. straight off the dock's bottom edge
-/// onto the desktop, rather than sliding across to a sibling tile) leaves
-/// whatever it was last hovering PERMANENTLY stuck in its hovered visual
-/// state -- confirmed live: a dock tile's hover highlight/tooltip that never
-/// clears after the cursor moves off the dock. Real hardware, not a
-/// synthetic-input artifact: `PointerEventKind::Leave` was previously a
-/// documented no-op ("hover state clears on the next enter"), which is only
-/// true if the next enter lands on the SAME surface -- it is not, once the
-/// pointer has actually left.
+/// Without this, leaving directly from the currently hovered element to the desktop
+/// leaves that element stuck in its hovered state. A later enter on another surface
+/// cannot clear it. Real hardware reproduced this; treating
+/// `PointerEventKind::Leave` as a no-op is only safe when the next enter targets the
+/// same surface.
 pub fn mouse_leave() -> PlatformEvent {
     mouse_move(CursorPoint::new(-1.0, -1.0))
 }
