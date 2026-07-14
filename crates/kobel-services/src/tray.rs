@@ -4,11 +4,12 @@
 //! `org.kde.StatusNotifierWatcher` and registers us as a host -- on the
 //! services runtime, then translate its item events into `TraySnapshot`.
 //!
-//! Phase-6 scope: items + activate + DBusMenu tree/actions. The `system-tray`
-//! crate already tracks each item's `com.canonical.dbusmenu` layout in its item
-//! map (the `data` feature) and re-emits it on menu-update events; we translate
-//! that tree into a plain `TrayMenu` snapshot and route about-to-show / clicked
-//! calls back. Menu UI (popup surface) is a later wave.
+//! Items + activate + DBusMenu tree/actions. The `system-tray` crate already
+//! tracks each item's `com.canonical.dbusmenu` layout in its item map (the
+//! `data` feature) and re-emits it on menu-update events; we translate that
+//! tree into a plain `TrayMenu` snapshot and route about-to-show / clicked
+//! calls back. Menu UI is a shared popup component (`kobel-shell`'s
+//! `ui/menu.rs`), wired from the bar's tray row on right-click.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
