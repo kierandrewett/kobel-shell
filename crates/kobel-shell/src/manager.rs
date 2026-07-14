@@ -10,7 +10,7 @@ use std::sync::{Arc, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
 use kobel_services::{Command, ServicesHandle};
-use kobel_wayland::{Control, KeyboardInteractivity, SurfaceId};
+use kobel_wayland::{Control, KeyboardInteractivity, OutputControl, SurfaceId};
 
 use crate::motion::{SETTLE_EPS, SpringSim, SpringSpec};
 
@@ -76,9 +76,7 @@ pub enum ShellMsg {
     ActivateWindow(String),
     /// Minimize a window by id (same protocol path as `ActivateWindow`).
     MinimizeWindow(String),
-    /// Close a window by id -- the real Quit verb (`zwlr_foreign_toplevel_handle_
-    /// v1.close`), replacing the old dishonest "Quit minimizes every window"
-    /// dock behaviour.
+    /// Close a window by id via `zwlr_foreign_toplevel_handle_v1.close`.
     CloseWindow(String),
     /// A text input surface's live editing state, resent to the IME after each
     /// change so a composing input method has current surrounding text. Ignored
@@ -116,8 +114,8 @@ impl ShellBus {
         }
     }
 
-    /// Install the loop-wake callback. Called once by main.rs after the host loop is
-    /// up; shared across every clone, so a send on any handle wakes the loop.
+    /// Install the loop-wake callback. The production entry point calls this after
+    /// the host loop is ready; every clone shares it, so any send wakes the loop.
     /// Idempotent -- later calls are ignored.
     pub fn install_waker(&self, wake: impl Fn() + Send + Sync + 'static) {
         let _ = self.waker.set(Box::new(wake));
@@ -136,27 +134,27 @@ impl CommandSink for ServicesHandle {
     }
 }
 
-/// Host-side reveal side effects the manager drives per surface: keyboard focus
-/// mode and wl input region. Abstracted like [`CommandSink`] so the reveal state
-/// machine is unit-testable without a live compositor; the production impl is for
-/// the host's [`Control`] handle, available in the on-tick callback.
-pub trait RevealHost {
+/// Surface lifecycle side effects shared by normal ticks and output hotplug
+/// callbacks. Both [`Control`] and [`OutputControl`] implement this contract.
+pub trait SurfaceHost {
     fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity);
     fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool);
+}
+
+/// Full manager side effects available during the normal shell tick.
+pub trait RevealHost: SurfaceHost {
     /// Activate (raise + focus) a window by its `ToplevelInfo` id.
     fn activate_window(&mut self, id: &str);
     /// Minimize a window by id.
     fn minimize_window(&mut self, id: &str);
-    /// Close a window by id (the real Quit verb).
+    /// Close a window by id.
     fn close_window(&mut self, id: &str);
-    /// Report the launcher's live surrounding text to the IME and commit it
-    /// immediately. No-op if text input is not currently enabled on any surface
-    /// (the host's `Control::ime_set_surrounding_text` is itself a no-op when
-    /// `text_input` is `None`; this just always calls through).
+    /// Report a text-input surface's live surrounding text to the IME and commit it
+    /// immediately. No-op if no surface currently has text input enabled.
     fn ime_sync_surrounding_text(&mut self, text: &str, cursor: i32, anchor: i32);
 }
 
-impl RevealHost for Control<'_> {
+impl SurfaceHost for Control<'_> {
     fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
         Control::set_keyboard_interactivity(self, id, mode);
     }
@@ -164,7 +162,19 @@ impl RevealHost for Control<'_> {
     fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
         Control::set_input_region_empty(self, id, empty);
     }
+}
 
+impl SurfaceHost for OutputControl<'_> {
+    fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
+        OutputControl::set_keyboard_interactivity(self, id, mode);
+    }
+
+    fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
+        OutputControl::set_input_region_empty(self, id, empty);
+    }
+}
+
+impl RevealHost for Control<'_> {
     fn activate_window(&mut self, id: &str) {
         Control::activate_toplevel(self, id);
     }
@@ -210,11 +220,10 @@ impl Default for RevealMotion {
 /// next step and the spring would stall at rest.
 const FRAME_DT: Duration = Duration::from_micros(16_667);
 
-// Profiling trace (KOBEL_PROFILE_ANIM). Ports ags/lib/surface.ts beginTrace/
-// recordTrace: the manager integrates the reveal springs, so it sees every sample.
-// The accumulator is pure (no freya, no clock) -- fed absolute monotonic timestamps
-// in ms, tracking the sample count and the max inter-sample gap, so the math is
-// unit-testable and a real stall shows up as a large max_gap_ms.
+// Profiling trace (KOBEL_PROFILE_ANIM). The manager integrates the reveal springs,
+// so it sees every sample. The accumulator is pure (no Freya, no clock): callers
+// feed it absolute monotonic timestamps in milliseconds, making stalls visible as
+// a large max_gap_ms while keeping the calculations unit-testable.
 
 /// Direction of a reveal transition, for the profiling trace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -238,8 +247,8 @@ struct RevealTrace {
     /// Per-surface transition sequence number (1-based).
     seq: u64,
     direction: TraceDir,
-    /// Whether this open reused an already-warm surface (open_count > 1). Always
-    /// false for a close, matching the AGS reference.
+    /// Whether this open reused an already-warm surface (open_count > 1).
+    /// Always false for a close.
     warm: bool,
     /// Transition start (open_start / close_start) timestamp, in ms.
     start_ms: f64,
@@ -284,7 +293,7 @@ impl RevealTrace {
     }
 
     /// Elapsed ms since the transition began, clamped to >= 1 so the sample-rate
-    /// division is always well-defined (matches the AGS reference).
+    /// division is always well-defined.
     fn elapsed_ms(&self, now_ms: f64) -> f64 {
         (now_ms - self.start_ms).max(1.0)
     }
@@ -295,14 +304,13 @@ impl RevealTrace {
     }
 }
 
-/// One on-demand surface's reveal state. The surface is created once and stays
-/// mapped forever (the AGS warm-open trick): closed = opacity 0, empty input
-/// region, keyboard None; open = opacity springs to 1, full input region, its
-/// keyboard mode. The spring integrates manager-side (see [`Manager::tick`]).
+/// One registered surface's reveal state. The surface is created once and remains
+/// mapped: closed = opacity 0, empty input region, keyboard None; open = opacity
+/// springs to 1, full input region, its configured keyboard mode. The spring
+/// integrates manager-side (see [`Manager::tick`]).
 struct Reveal {
     id: SurfaceId,
-    /// Keyboard mode applied while open (Exclusive for launcher/session, OnDemand
-    /// for the rest).
+    /// Keyboard mode applied while this surface is open.
     kb_open: KeyboardInteractivity,
     /// Opacity spring (0 = hidden, 1 = revealed). Retargeting keeps x and v, so
     /// interrupting a fade (reopen mid-close) continues from the current value.
@@ -311,8 +319,7 @@ struct Reveal {
     target_open: bool,
     /// True while the spring is still moving and must be integrated each frame.
     active: bool,
-    /// Writes the animated value into this surface's `OpenProgress` State<f32> root
-    /// context, which the surface UI multiplies into its root opacity.
+    /// Writes animated progress into state owned by the registered surface.
     write_progress: Box<dyn FnMut(f32)>,
     /// Profiling transition counter, bumped per transition when profiling is on.
     trace_seq: u64,
@@ -323,11 +330,10 @@ struct Reveal {
     trace: Option<RevealTrace>,
 }
 
-/// The shell manager loop, living on the UI thread -- the makeReveal successor. The
-/// host tick calls [`Manager::tick`] each sweep to drain pending [`ShellMsg`]s and
-/// advance the reveal springs: a one-open-at-a-time registry of warm-mapped surfaces
-/// whose opacity springs open/closed while keyboard focus and input regions flip on
-/// the fly (docs/FREYA-PLAN.md 2.4).
+/// Optional reveal coordinator intended to run on the host event-loop thread.
+/// [`Manager::tick`] drains pending [`ShellMsg`]s and advances a one-open-at-a-time
+/// registry of mapped surfaces, coordinating opacity, keyboard focus and input
+/// regions without prescribing any surface names or presentation.
 pub struct Manager {
     rx: mpsc::Receiver<ShellMsg>,
     services: Box<dyn CommandSink>,
@@ -349,10 +355,9 @@ pub struct Manager {
     /// Monotonic epoch for the trace's absolute-ms timestamps. Independent of the
     /// clamped spring dt, so a real stall surfaces as a large max_gap_ms.
     trace_epoch: Instant,
-    /// Additive: closes every open popup (tray/context menus). Popups are host-owned
-    /// (main.rs drives `Control::open_popup`/`close_popup`), so the manager cannot
-    /// touch them directly; this hook lets a `CloseAll` dismiss any open popup
-    /// alongside the panels. `None` in tests and until main.rs installs it.
+    /// Additive popup closer. Popups are host-owned, so the manager cannot close
+    /// them directly; the production entry point may install this hook so
+    /// [`ShellMsg::CloseAll`] also dismisses every open popup.
     close_popups: Option<Box<dyn Fn()>>,
     quit: bool,
 }
@@ -383,13 +388,21 @@ impl Manager {
 
     /// Register one warm-mapped reveal surface with its UI-owned name, host id,
     /// open keyboard mode and animated progress writer.
+    ///
+    /// Returns `false` and leaves the existing registration untouched when `key`
+    /// is already live. Retire old surfaces with [`Manager::unregister_reveal`]
+    /// before reusing their key during compositor close or output hotplug.
     pub fn register_reveal(
         &mut self,
         key: SurfaceKey,
         id: SurfaceId,
         kb_open: KeyboardInteractivity,
         write_progress: Box<dyn FnMut(f32)>,
-    ) {
+    ) -> bool {
+        if self.reveals.contains_key(&key) {
+            tracing::warn!("[manager] register {}: key already live", key.as_str());
+            return false;
+        }
         self.reveals.insert(
             key,
             Reveal {
@@ -404,11 +417,50 @@ impl Manager {
                 trace: None,
             },
         );
+        true
     }
 
-    /// Register the full-screen dismiss layer surface.
-    pub fn set_dismiss(&mut self, id: SurfaceId) {
-        self.dismiss = Some(id);
+    /// Forget a reveal surface and restore safe host state before dropping it.
+    /// If it was open, also restore the dismiss layer to click-through and dismiss
+    /// any host-owned popup. Host calls are harmless no-ops if the compositor has
+    /// already retired the surface.
+    ///
+    /// Returns whether a registration existed.
+    pub fn unregister_reveal(&mut self, key: &SurfaceKey, host: &mut impl SurfaceHost) -> bool {
+        let Some(reveal) = self.reveals.remove(key) else {
+            return false;
+        };
+        host.set_keyboard_interactivity(reveal.id, KeyboardInteractivity::None);
+        host.set_input_region_empty(reveal.id, true);
+        if self.open.as_ref() == Some(key) {
+            self.open = None;
+            self.dismiss_popups();
+            self.sync_dismiss(host);
+        }
+        true
+    }
+
+    /// Register or replace the full-screen dismiss layer and immediately apply the
+    /// manager's current open/closed state. A replaced live layer is made
+    /// click-through before it is forgotten.
+    pub fn set_dismiss(&mut self, id: SurfaceId, host: &mut impl SurfaceHost) {
+        if let Some(previous) = self.dismiss.replace(id)
+            && previous != id
+        {
+            host.set_input_region_empty(previous, true);
+        }
+        self.sync_dismiss(host);
+    }
+
+    /// Forget a dismiss layer after making it click-through. Returns whether the
+    /// matching registration was cleared.
+    pub fn clear_dismiss(&mut self, id: SurfaceId, host: &mut impl SurfaceHost) -> bool {
+        if self.dismiss != Some(id) {
+            return false;
+        }
+        host.set_input_region_empty(id, true);
+        self.dismiss = None;
+        true
     }
 
     /// Replace the reveal springs. Call this before opening a registered surface.
@@ -451,10 +503,8 @@ impl Manager {
         );
     }
 
-    /// The machine-readable settle summary, emitted as a raw stdout line beginning
-    /// exactly with `KOBEL_MOTION ` so ags/scripts/profile-surfaces.sh's
-    /// `startswith("KOBEL_MOTION ")` parser (and a plain grep of kobel.log) both pick
-    /// it up. Ports the KOBEL_MOTION line from ags/lib/surface.ts recordTrace.
+    /// Emit a stable machine-readable settle summary as a raw stdout line beginning
+    /// with `KOBEL_MOTION `.
     fn emit_motion(key: &SurfaceKey, t: &RevealTrace, now_ms: f64) {
         let target = match t.direction {
             TraceDir::Open => 1,
@@ -516,9 +566,21 @@ impl Manager {
 
     fn toggle(&mut self, key: SurfaceKey, host: &mut impl RevealHost) {
         if self.open.as_ref() == Some(&key) {
+            self.dismiss_popups();
             self.close(&key, host);
         } else {
             self.open_key(key, host);
+        }
+    }
+
+    /// Whether `key` is the currently open on-demand surface.
+    pub fn is_open(&self, key: &SurfaceKey) -> bool {
+        self.open.as_ref() == Some(key)
+    }
+
+    fn dismiss_popups(&self) {
+        if let Some(close_popups) = &self.close_popups {
+            close_popups();
         }
     }
 
@@ -530,9 +592,7 @@ impl Manager {
         // Popups are host-owned and can outlive the surface that opened them. Close
         // them before revealing a different surface so two independent focus grabs
         // never remain interactive at once.
-        if let Some(close_popups) = &self.close_popups {
-            close_popups();
-        }
+        self.dismiss_popups();
         // One-open-at-a-time: close whatever else is open first.
         if let Some(current) = self.open.clone()
             && current != key
@@ -619,10 +679,8 @@ impl Manager {
     }
 
     fn close_all(&mut self, host: &mut impl RevealHost) {
-        // Dismiss any open popup (tray/context menu) alongside the panels.
-        if let Some(close_popups) = &self.close_popups {
-            close_popups();
-        }
+        // Dismiss host-owned popups alongside the registered reveal surface.
+        self.dismiss_popups();
         if let Some(current) = self.open.clone() {
             self.close(&current, host);
         } else {
@@ -631,7 +689,7 @@ impl Manager {
     }
 
     /// The dismiss layer catches clicks only while a surface is open.
-    fn sync_dismiss(&mut self, host: &mut impl RevealHost) {
+    fn sync_dismiss(&mut self, host: &mut impl SurfaceHost) {
         if let Some(id) = self.dismiss {
             host.set_input_region_empty(id, self.open.is_none());
         }
@@ -711,13 +769,15 @@ mod tests {
         window_calls: Vec<(&'static str, String)>,
         ime_calls: Vec<(String, i32, i32)>,
     }
-    impl RevealHost for FakeHost {
+    impl SurfaceHost for FakeHost {
         fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
             self.kb.push((id, mode));
         }
         fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
             self.region.push((id, empty));
         }
+    }
+    impl RevealHost for FakeHost {
         fn activate_window(&mut self, id: &str) {
             self.window_calls.push(("activate", id.to_string()));
         }
@@ -746,8 +806,8 @@ mod tests {
         let surface = key("quick-settings_2");
         assert_eq!(SurfaceKey::from_str(surface.as_str()), Ok(surface));
         assert!(SurfaceKey::from_str("").is_err());
-        assert!(SurfaceKey::from_str("QuickSettings").is_err());
-        assert!(SurfaceKey::from_str("quick settings").is_err());
+        assert!(SurfaceKey::from_str("UpperCase").is_err());
+        assert!(SurfaceKey::from_str("contains spaces").is_err());
     }
 
     #[test]
@@ -758,7 +818,7 @@ mod tests {
         let mut host = FakeHost::default();
 
         // No reveal registered for this UI-owned name, so the toggle is ignored.
-        bus.send(ShellMsg::Toggle(key("launcher")));
+        bus.send(ShellMsg::Toggle(key("unregistered-surface")));
         bus.send(ShellMsg::Service(Command::SetMuted(true)));
         bus.send(ShellMsg::CloseAll);
 
@@ -783,55 +843,56 @@ mod tests {
     fn open_reveals_and_enforces_one_open() {
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
-        let launcher = SurfaceId::new(1);
-        let qs = SurfaceId::new(2);
+        let exclusive_surface = SurfaceId::new(1);
+        let on_demand_surface = SurfaceId::new(2);
         let dismiss = SurfaceId::new(9);
         let lp = Rc::new(RefCell::new(Vec::new()));
-        let qp = Rc::new(RefCell::new(Vec::new()));
+        let on_demand_progress = Rc::new(RefCell::new(Vec::new()));
         manager.register_reveal(
-            key("launcher"),
-            launcher,
+            key("exclusive-surface"),
+            exclusive_surface,
             KeyboardInteractivity::Exclusive,
             recording(&lp),
         );
         manager.register_reveal(
-            key("quicksettings"),
-            qs,
+            key("on-demand-surface"),
+            on_demand_surface,
             KeyboardInteractivity::OnDemand,
-            recording(&qp),
+            recording(&on_demand_progress),
         );
-        manager.set_dismiss(dismiss);
         let mut host = FakeHost::default();
+        manager.set_dismiss(dismiss, &mut host);
 
-        bus.send(ShellMsg::Toggle(key("launcher")));
+        bus.send(ShellMsg::Toggle(key("exclusive-surface")));
         manager.tick(&mut host);
         assert!(
-            host.region.contains(&(launcher, false)),
-            "launcher gets a full input region"
+            host.region.contains(&(exclusive_surface, false)),
+            "exclusive surface gets a full input region"
         );
-        assert!(host.kb.contains(&(launcher, KeyboardInteractivity::Exclusive)));
+        assert!(host.kb.contains(&(exclusive_surface, KeyboardInteractivity::Exclusive)));
         assert!(
             host.region.contains(&(dismiss, false)),
             "dismiss catches clicks while open"
         );
         assert!(
             lp.borrow().last().is_some_and(|&v| v > 0.0),
-            "launcher opacity springs off zero"
+            "exclusive surface opacity springs off zero"
         );
 
-        // Opening QS closes the launcher (one-open rule) and settles it click-through.
+        // Opening the on-demand surface displaces the exclusive surface and
+        // eventually makes it click-through.
         host.kb.clear();
         host.region.clear();
-        bus.send(ShellMsg::Toggle(key("quicksettings")));
+        bus.send(ShellMsg::Toggle(key("on-demand-surface")));
         manager.tick(&mut host);
-        assert!(host.region.contains(&(qs, false)));
-        assert!(host.kb.contains(&(qs, KeyboardInteractivity::OnDemand)));
+        assert!(host.region.contains(&(on_demand_surface, false)));
+        assert!(host.kb.contains(&(on_demand_surface, KeyboardInteractivity::OnDemand)));
         manager.advance(1.0, &mut host);
         assert!(
-            host.region.contains(&(launcher, true)),
-            "displaced launcher becomes click-through on settle"
+            host.region.contains(&(exclusive_surface, true)),
+            "displaced exclusive surface becomes click-through on settle"
         );
-        assert!(host.kb.contains(&(launcher, KeyboardInteractivity::None)));
+        assert!(host.kb.contains(&(exclusive_surface, KeyboardInteractivity::None)));
     }
 
     #[test]
@@ -839,11 +900,11 @@ mod tests {
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
         let id = SurfaceId::new(7);
-        manager.register_reveal(key("drawer"), id, KeyboardInteractivity::OnDemand, Box::new(|_| {}));
-        manager.set_dismiss(SurfaceId::new(0));
+        manager.register_reveal(key("surface"), id, KeyboardInteractivity::OnDemand, Box::new(|_| {}));
         let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
 
-        bus.send(ShellMsg::Toggle(key("drawer")));
+        bus.send(ShellMsg::Toggle(key("surface")));
         manager.tick(&mut host);
         manager.advance(1.0, &mut host); // settle open
         host.kb.clear();
@@ -861,23 +922,79 @@ mod tests {
     }
 
     #[test]
+    fn surface_lifecycle_can_unregister_reveals_and_dismiss_layers() {
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        let reveal_key = key("surface");
+        let reveal_id = SurfaceId::new(7);
+        let dismiss_id = SurfaceId::new(8);
+        assert!(manager.register_reveal(
+            reveal_key.clone(),
+            reveal_id,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        ));
+        assert!(!manager.register_reveal(
+            reveal_key.clone(),
+            SurfaceId::new(99),
+            KeyboardInteractivity::Exclusive,
+            Box::new(|_| {}),
+        ));
+        let mut host = FakeHost::default();
+        manager.set_dismiss(dismiss_id, &mut host);
+
+        bus.send(ShellMsg::Toggle(reveal_key.clone()));
+        manager.tick(&mut host);
+        host.region.clear();
+        host.kb.clear();
+
+        let replacement_dismiss = SurfaceId::new(9);
+        manager.set_dismiss(replacement_dismiss, &mut host);
+        assert!(host.region.contains(&(dismiss_id, true)));
+        assert!(host.region.contains(&(replacement_dismiss, false)));
+        host.region.clear();
+
+        assert!(manager.unregister_reveal(&reveal_key, &mut host));
+        assert!(!manager.is_open(&reveal_key));
+        assert!(host.kb.contains(&(reveal_id, KeyboardInteractivity::None)));
+        assert!(host.region.contains(&(reveal_id, true)));
+        assert!(host.region.contains(&(replacement_dismiss, true)));
+        assert!(!manager.clear_dismiss(SurfaceId::new(99), &mut host));
+        assert!(manager.clear_dismiss(replacement_dismiss, &mut host));
+        assert!(!manager.clear_dismiss(replacement_dismiss, &mut host));
+
+        host.region.clear();
+        bus.send(ShellMsg::Toggle(reveal_key));
+        manager.tick(&mut host);
+        assert!(
+            host.region.is_empty(),
+            "an unregistered key cannot reopen a retired surface"
+        );
+    }
+
+    #[test]
     fn reopen_mid_close_keeps_surface_open() {
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
         let id = SurfaceId::new(5);
-        manager.register_reveal(key("calendar"), id, KeyboardInteractivity::OnDemand, Box::new(|_| {}));
-        manager.set_dismiss(SurfaceId::new(0));
+        manager.register_reveal(
+            key("reopened-surface"),
+            id,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
         let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
 
-        bus.send(ShellMsg::Toggle(key("calendar")));
+        bus.send(ShellMsg::Toggle(key("reopened-surface")));
         manager.tick(&mut host);
         manager.advance(1.0, &mut host); // settle open
-        bus.send(ShellMsg::Toggle(key("calendar")));
+        bus.send(ShellMsg::Toggle(key("reopened-surface")));
         manager.tick(&mut host);
         manager.advance(0.01, &mut host); // begin close, still fading
         host.kb.clear();
         host.region.clear();
-        bus.send(ShellMsg::Toggle(key("calendar")));
+        bus.send(ShellMsg::Toggle(key("reopened-surface")));
         manager.tick(&mut host);
         manager.advance(1.0, &mut host); // settle -> should settle OPEN, not tear down
         assert!(
@@ -916,11 +1033,16 @@ mod tests {
         manager.set_reduced_motion(true);
         let id = SurfaceId::new(3);
         let p = Rc::new(RefCell::new(Vec::new()));
-        manager.register_reveal(key("quicksettings"), id, KeyboardInteractivity::OnDemand, recording(&p));
-        manager.set_dismiss(SurfaceId::new(0));
+        manager.register_reveal(
+            key("on-demand-surface"),
+            id,
+            KeyboardInteractivity::OnDemand,
+            recording(&p),
+        );
         let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
 
-        bus.send(ShellMsg::Toggle(key("quicksettings")));
+        bus.send(ShellMsg::Toggle(key("on-demand-surface")));
         manager.tick(&mut host);
         assert_eq!(
             p.borrow().last().copied(),
@@ -933,7 +1055,7 @@ mod tests {
 
         host.kb.clear();
         host.region.clear();
-        bus.send(ShellMsg::Toggle(key("quicksettings")));
+        bus.send(ShellMsg::Toggle(key("on-demand-surface")));
         manager.tick(&mut host);
         assert_eq!(
             p.borrow().last().copied(),
@@ -983,31 +1105,31 @@ mod tests {
         // by contrast, is only restored on settle so the fade stays visible.
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
-        let launcher = SurfaceId::new(1);
+        let exclusive_surface = SurfaceId::new(1);
         manager.register_reveal(
-            key("launcher"),
-            launcher,
+            key("exclusive-surface"),
+            exclusive_surface,
             KeyboardInteractivity::Exclusive,
             Box::new(|_| {}),
         );
-        manager.set_dismiss(SurfaceId::new(0));
         let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
 
-        bus.send(ShellMsg::Toggle(key("launcher")));
+        bus.send(ShellMsg::Toggle(key("exclusive-surface")));
         manager.tick(&mut host);
         manager.advance(1.0, &mut host); // settle open
         host.kb.clear();
         host.region.clear();
 
         // Begin closing. The kb drop must land during this tick, not on settle.
-        bus.send(ShellMsg::Toggle(key("launcher")));
+        bus.send(ShellMsg::Toggle(key("exclusive-surface")));
         manager.tick(&mut host);
         assert!(
-            host.kb.contains(&(launcher, KeyboardInteractivity::None)),
+            host.kb.contains(&(exclusive_surface, KeyboardInteractivity::None)),
             "keyboard drops to None immediately in close(), not deferred to settle"
         );
         assert!(
-            !host.region.contains(&(launcher, true)),
+            !host.region.contains(&(exclusive_surface, true)),
             "input region is NOT restored yet -- it holds through the fade"
         );
         // The interruptible spring is still running (fade has not settled).
@@ -1017,103 +1139,130 @@ mod tests {
 
     #[test]
     fn displaced_surface_drops_keyboard_before_new_surface_grabs_it() {
-        // Rapid switch: opening QuickSettings while the launcher is open must drop
-        // the launcher's keyboard to None BEFORE QuickSettings takes its own mode,
-        // so the first presses never misroute to the outgoing Exclusive surface.
+        // Rapid switch: the outgoing exclusive surface must drop its keyboard mode
+        // before the incoming on-demand surface takes focus, so no key press routes
+        // to the wrong surface.
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
-        let launcher = SurfaceId::new(1);
-        let qs = SurfaceId::new(2);
+        let exclusive_surface = SurfaceId::new(1);
+        let on_demand_surface = SurfaceId::new(2);
         manager.register_reveal(
-            key("launcher"),
-            launcher,
+            key("exclusive-surface"),
+            exclusive_surface,
             KeyboardInteractivity::Exclusive,
             Box::new(|_| {}),
         );
         manager.register_reveal(
-            key("quicksettings"),
-            qs,
+            key("on-demand-surface"),
+            on_demand_surface,
             KeyboardInteractivity::OnDemand,
             Box::new(|_| {}),
         );
-        manager.set_dismiss(SurfaceId::new(0));
         let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
 
-        bus.send(ShellMsg::Toggle(key("launcher")));
+        bus.send(ShellMsg::Toggle(key("exclusive-surface")));
         manager.tick(&mut host);
         manager.advance(1.0, &mut host); // settle open
         host.kb.clear();
 
-        bus.send(ShellMsg::Toggle(key("quicksettings")));
+        bus.send(ShellMsg::Toggle(key("on-demand-surface")));
         manager.tick(&mut host);
 
-        let launcher_none = host
+        let exclusive_none = host
             .kb
             .iter()
-            .position(|&(i, m)| i == launcher && m == KeyboardInteractivity::None);
-        let qs_mode = host
+            .position(|&(i, m)| i == exclusive_surface && m == KeyboardInteractivity::None);
+        let on_demand_mode = host
             .kb
             .iter()
-            .position(|&(i, m)| i == qs && m == KeyboardInteractivity::OnDemand);
-        assert!(launcher_none.is_some(), "displaced launcher drops to kb None");
-        assert!(qs_mode.is_some(), "QuickSettings takes its OnDemand keyboard mode");
+            .position(|&(i, m)| i == on_demand_surface && m == KeyboardInteractivity::OnDemand);
+        assert!(exclusive_none.is_some(), "displaced surface drops to keyboard None");
         assert!(
-            launcher_none < qs_mode,
-            "launcher kb None must be applied BEFORE QuickSettings grabs the keyboard"
+            on_demand_mode.is_some(),
+            "incoming surface takes its OnDemand keyboard mode"
+        );
+        assert!(
+            exclusive_none < on_demand_mode,
+            "keyboard None must be applied before the incoming surface takes focus"
         );
     }
 
     #[test]
-    fn opening_a_new_surface_dismisses_a_stray_popup() {
-        // The bug this guards: a tray/dock-tile context-menu popup is tracked
-        // entirely outside `self.open` (main.rs's popup_stack), so nothing closed
-        // it when a DIFFERENT on-demand surface opened straight past it -- e.g.
-        // right-click a dock tile, then toggle Quick Settings via a keybind
-        // (never touching Escape/CloseAll). Left open, that popup's still-active
-        // grab would fight the newly-revealed surface for focus.
+    fn opening_a_surface_dismisses_a_stray_popup() {
+        // Popups are host-owned and tracked outside `self.open`. Opening a reveal
+        // must close any existing popup before its grab can compete for focus.
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
-        let qs = SurfaceId::new(2);
+        let surface_id = SurfaceId::new(2);
+        let surface = key("surface");
         manager.register_reveal(
-            key("quicksettings"),
-            qs,
+            surface.clone(),
+            surface_id,
             KeyboardInteractivity::OnDemand,
             Box::new(|_| {}),
         );
-        manager.set_dismiss(SurfaceId::new(0));
+        let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
         let popup_closes = Rc::new(RefCell::new(0u32));
         let counter = popup_closes.clone();
         manager.set_close_popups(Box::new(move || {
             *counter.borrow_mut() += 1;
         }));
-        let mut host = FakeHost::default();
 
-        // Nothing is open yet, so this is the "opened past a stray popup with
-        // nothing else to displace" path, not the "one-open-at-a-time" path.
-        bus.send(ShellMsg::Toggle(key("quicksettings")));
+        bus.send(ShellMsg::Toggle(surface));
         manager.tick(&mut host);
         assert_eq!(
             *popup_closes.borrow(),
             1,
-            "opening a surface must dismiss any stray popup, even with nothing else open"
+            "opening a surface must dismiss a stray popup",
         );
-        assert!(host.region.contains(&(qs, false)), "QuickSettings still opens normally");
+        assert!(
+            host.region.contains(&(surface_id, false)),
+            "surface still opens normally"
+        );
     }
 
     #[test]
-    fn close_all_dismisses_popups_alongside_the_panels() {
-        // The existing close_all contract (previously asserted only by inspection,
-        // never a test): CloseAll must dismiss a stray popup, whether or not a
-        // panel is currently open.
+    fn toggling_the_open_surface_closed_dismisses_popups() {
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
-        manager.set_dismiss(SurfaceId::new(0));
+        let surface = key("surface");
+        manager.register_reveal(
+            surface.clone(),
+            SurfaceId::new(1),
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
+        let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
         let popup_closes = Rc::new(RefCell::new(0u32));
         let counter = popup_closes.clone();
         manager.set_close_popups(Box::new(move || {
             *counter.borrow_mut() += 1;
         }));
+
+        bus.send(ShellMsg::Toggle(surface.clone()));
+        manager.tick(&mut host);
+        assert_eq!(*popup_closes.borrow(), 1, "opening dismisses popups");
+
+        bus.send(ShellMsg::Toggle(surface));
+        manager.tick(&mut host);
+        assert_eq!(*popup_closes.borrow(), 2, "closing by toggle also dismisses popups");
+    }
+
+    #[test]
+    fn close_all_dismisses_popups() {
+        // CloseAll dismisses a stray popup even when no reveal surface is open.
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
         let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
+        let popup_closes = Rc::new(RefCell::new(0u32));
+        let counter = popup_closes.clone();
+        manager.set_close_popups(Box::new(move || {
+            *counter.borrow_mut() += 1;
+        }));
 
         bus.send(ShellMsg::CloseAll);
         manager.tick(&mut host);
@@ -1126,23 +1275,65 @@ mod tests {
 
     #[test]
     fn no_close_popups_hook_installed_is_a_harmless_no_op() {
-        // main.rs installs the hook once at startup; before that (and in every
-        // other test in this module), it is None. Neither open nor CloseAll may
-        // panic on the missing hook.
+        // A UI without popups leaves the optional hook unset. Opening and closing
+        // surfaces must remain harmless in that configuration.
         let (bus, rx) = ShellBus::new();
         let mut manager = Manager::new(rx, RecordingSink::default());
-        let qs = SurfaceId::new(2);
+        let on_demand_surface = SurfaceId::new(2);
         manager.register_reveal(
-            key("quicksettings"),
-            qs,
+            key("on-demand-surface"),
+            on_demand_surface,
             KeyboardInteractivity::OnDemand,
             Box::new(|_| {}),
         );
-        manager.set_dismiss(SurfaceId::new(0));
         let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
 
-        bus.send(ShellMsg::Toggle(key("quicksettings")));
+        bus.send(ShellMsg::Toggle(key("on-demand-surface")));
         bus.send(ShellMsg::CloseAll);
         manager.tick(&mut host); // must not panic
+    }
+
+    #[test]
+    fn is_open_reflects_live_manager_state() {
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        let primary_surface = SurfaceId::new(1);
+        let primary_key = key("primary");
+        let secondary_surface = SurfaceId::new(2);
+        let secondary_key = key("secondary");
+        manager.register_reveal(
+            primary_key.clone(),
+            primary_surface,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
+        manager.register_reveal(
+            secondary_key.clone(),
+            secondary_surface,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
+        let mut host = FakeHost::default();
+        manager.set_dismiss(SurfaceId::new(0), &mut host);
+
+        assert!(!manager.is_open(&primary_key), "nothing open at startup");
+
+        bus.send(ShellMsg::Toggle(primary_key.clone()));
+        manager.tick(&mut host);
+        assert!(manager.is_open(&primary_key), "primary surface now open");
+        assert!(
+            !manager.is_open(&secondary_key),
+            "a different key must never read as open",
+        );
+
+        bus.send(ShellMsg::Toggle(secondary_key.clone()));
+        manager.tick(&mut host);
+        assert!(!manager.is_open(&primary_key), "displaced by another surface");
+        assert!(manager.is_open(&secondary_key));
+
+        bus.send(ShellMsg::CloseAll);
+        manager.tick(&mut host);
+        assert!(!manager.is_open(&secondary_key), "closed by CloseAll");
     }
 }

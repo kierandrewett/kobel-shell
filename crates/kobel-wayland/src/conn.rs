@@ -154,12 +154,11 @@ impl Shell {
             }
         );
 
-        // Window list/activate/minimize/close for the dock: zwlr_foreign_toplevel_
-        // manager_v1 (v3). sctk 0.20 has no delegate for it (only the newer listing-
-        // only ext-foreign-toplevel-list), so Host implements its Dispatch directly,
-        // same as fractional-scale above. Absent -> dock never sees any windows
-        // (GnoblinSnapshot.windows stays empty; connected/amber state is unaffected,
-        // that's still Ping-based liveness over org.gnoblin.Shell).
+        // Window discovery and control via zwlr_foreign_toplevel_manager_v1 (v3).
+        // sctk 0.20 has no delegate for it, only the newer listing-only
+        // ext-foreign-toplevel-list, so Host implements Dispatch directly. When
+        // unavailable, `Control::toplevels` returns an empty snapshot and window
+        // commands are no-ops.
         let toplevel_manager = globals
             .bind::<ZwlrForeignToplevelManagerV1, Host, _>(&qh, 1..=3, ())
             .ok();
@@ -253,11 +252,9 @@ impl Shell {
 
     /// Create a singleton (non-per-output) surface bound to the primary output.
     ///
-    /// wlr-layer-shell lets the compositor place an output-less surface, but a
-    /// singleton (launcher, quicksettings, ...) must land on the user's active
-    /// screen, so we bind it to the primary (first-advertised) output. Falls back
-    /// to compositor placement when no outputs are advertised (multi-output
-    /// follow-focus is a TODO). See docs/FREYA-PLAN.md sections 2.1, 6.
+    /// wlr-layer-shell permits an output-less surface, but a singleton normally
+    /// needs deterministic placement. This binds it to the first advertised output
+    /// and falls back to compositor placement when no output is available.
     pub fn create_singleton_surface<C>(
         &mut self,
         config: SurfaceConfig,
@@ -290,19 +287,17 @@ impl Shell {
 
     /// Install the app-level IME handler: fires for text-input `enter`/`leave`
     /// (mirrors keyboard focus) and `Commit` (one atomic `done` payload -- see
-    /// [`ImeEvent`]). The caller decides which surface(s) want IME enabled (e.g.
-    /// the launcher's text field) by calling [`Control::ime_enable`]/
-    /// [`Control::ime_disable`] in response to `Enter`/`Leave`.
+    /// [`ImeEvent`]). The caller opts each text-input surface in through
+    /// [`Control::ime_enable`] and [`Control::ime_disable`].
     pub fn on_ime(&mut self, handler: impl FnMut(ImeEvent, &mut Control<'_>) + 'static) {
         self.host.ime_handler = Some(Box::new(handler));
     }
 
     /// Install the per-output mount handler and immediately drive it for every output
-    /// already present, then keep driving it as outputs are hotplugged/removed at
-    /// runtime. This is the single mount path for output-bound chrome (bar/dock/osd/
-    /// toasts) and singletons: [`OutputEvent::Added`] fires once per output (startup
-    /// AND hotplug), [`OutputEvent::Removed`] once an output goes away (after the host
-    /// has already torn its surfaces down). See docs/FREYA-PLAN.md sections 2.1, 6.
+    /// already present, then continue as outputs are added or removed. Use this as
+    /// the single mount path for output-bound and singleton surfaces:
+    /// [`OutputEvent::Added`] fires at startup and on hotplug; [`OutputEvent::Removed`]
+    /// fires after the host has torn down that output's surfaces.
     ///
     /// Register it BEFORE [`Shell::run`]; the eager pass here mounts the startup
     /// outputs synchronously so the caller can wire the manager against them.
@@ -525,6 +520,19 @@ impl OutputControl<'_> {
         self.host.create_surface_impl(config, Some(&wl), setup, app)
     }
 
+    /// Change keyboard interactivity while handling output lifecycle events.
+    /// This is the [`OutputControl`] counterpart to
+    /// [`Control::set_keyboard_interactivity`].
+    pub fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
+        Control { host: &mut *self.host }.set_keyboard_interactivity(id, mode);
+    }
+
+    /// Change click-through state while handling output lifecycle events. This is
+    /// the [`OutputControl`] counterpart to [`Control::set_input_region_empty`].
+    pub fn set_input_region_empty(&mut self, id: SurfaceId, empty: bool) {
+        Control { host: &mut *self.host }.set_input_region_empty(id, empty);
+    }
+
     /// The outputs currently present, EXCLUDING the one being removed (if this is a
     /// Removed event). Use the first entry as the rebind target for singletons whose
     /// host output died (the simple primary-death policy, docs/FREYA-PLAN.md 2.1).
@@ -563,17 +571,16 @@ struct Host {
     /// (layer) parents. `None` when the compositor does not advertise xdg_wm_base ->
     /// popups are unavailable (layer surfaces still work). See [`Host::create_popup`].
     xdg_shell: Option<XdgShell>,
-    /// zwlr_foreign_toplevel_manager_v1 global (window list/activate/minimize/
-    /// close for the dock). `None` => not advertised -> the dock sees no windows.
+    /// zwlr_foreign_toplevel_manager_v1 global for window discovery and control.
+    /// `None` when the compositor does not advertise the protocol.
     toplevel_manager: Option<ZwlrForeignToplevelManagerV1>,
     /// Live tracked toplevels, kept in the order the compositor announced them.
     /// Populated/updated by the manager's `toplevel` event and the handle's
     /// `title`/`app_id`/`state` events; removed on `closed` (see toplevel.rs for
     /// the pure `ToplevelInfo` shape and `state` array decode).
     toplevels: Vec<TrackedToplevel>,
-    /// Monotonic counter minting each `ToplevelInfo::id` -- a host-owned stable
-    /// string handed to the UI, not a Wayland object id (implementation detail,
-    /// not a stable string shape across wayland-client versions).
+    /// Monotonic counter minting each `ToplevelInfo::id`: a host-owned stable
+    /// string returned to callers rather than a Wayland object id.
     next_toplevel_id: u32,
     /// zwp_text_input_manager_v3 global (IME text input). `None` => not
     /// advertised -> IME never available (mutter always advertises this in
@@ -677,6 +684,17 @@ impl Host {
         }
     }
 
+    fn create_clipboard(&self, enabled: bool) -> Option<Box<dyn ClipboardProvider>> {
+        enabled.then(|| {
+            let display_ptr = self._conn.backend().display_ptr() as *mut c_void;
+            // SAFETY: `display_ptr` is the live libwayland display owned by this
+            // connection and remains valid for the host's lifetime.
+            let (_primary, clipboard) =
+                unsafe { freya_clipboard::copypasta::wayland_clipboard::create_clipboards_from_external(display_ptr) };
+            Box::new(clipboard) as Box<dyn ClipboardProvider>
+        })
+    }
+
     fn create_surface_impl<C>(
         &mut self,
         config: SurfaceConfig,
@@ -731,20 +749,9 @@ impl Host {
         // height before the initial (buffer-less) commit that triggers the first
         // configure. The EGL buffer is created later, on that configure.
         //
-        // Clipboard: constructed from the SAME wl_display Egl::new used (SurfaceConfig
-        // ::clipboard, opt-in per surface -- see SurfaceConfig's doc). smithay-clipboard
-        // runs its own dedicated thread + wl event queue wrapping this raw pointer, so
-        // it never competes with this host's own calloop-driven queue.
-        let clipboard: Option<Box<dyn ClipboardProvider>> = config.clipboard.then(|| {
-            let display_ptr = self._conn.backend().display_ptr() as *mut c_void;
-            // SAFETY: display_ptr is the live libwayland wl_display for this
-            // connection (client_system backend), valid for the process lifetime --
-            // the same pointer and the same safety argument as the Egl::new call
-            // above.
-            let (_primary, clipboard) =
-                unsafe { freya_clipboard::copypasta::wayland_clipboard::create_clipboards_from_external(display_ptr) };
-            Box::new(clipboard) as Box<dyn ClipboardProvider>
-        });
+        // The opt-in clipboard owns a dedicated Wayland event queue, so it does not
+        // compete with the host's calloop-driven queue.
+        let clipboard = self.create_clipboard(config.clipboard);
         let (mut surface, extra) = FreyaLayerSurface::new(
             id,
             SurfaceRole::Layer(layer),
@@ -753,6 +760,7 @@ impl Host {
             app,
             setup,
             content,
+            config.preferred_theme,
             clipboard,
         );
         // Record the bound output so output_destroyed can find every surface to tear
@@ -812,19 +820,13 @@ impl Host {
             return Err(anyhow!("create_popup: parent {parent:?} not found"));
         }
 
-        // At most one live child popup per parent: a menu shows one active submenu
-        // flyout at a time (standard menu UX), and a chrome surface (bar/dock) shows
-        // one active context menu at a time. Nothing else enforces this -- a pure
-        // hover-driven submenu swap (SubmenuItem's delayed open) never triggers the
-        // sibling's outside-click grab-dismiss, since the pointer stays inside the
-        // shared parent popup the whole time; a right-click on a second dock tile
-        // or tray icon is a fresh popup request with the same fixed per-surface
-        // parent id, same gap. Without this, either scenario stacks two live popups
-        // instead of replacing one. retire_popup also tears down each retired
-        // popup's own descendants (a nested sub-submenu), so swapping a whole
-        // chain is one call. Computed and applied BEFORE the parent_idx lookup
-        // below: retiring a sibling mutates `self.surfaces` (Vec::remove shifts
-        // later indices), so any index taken beforehand would be stale.
+        // Keep at most one live child popup per parent. This makes a new child
+        // replace its sibling rather than stack over it, covering both submenu
+        // switches and repeated context-popup requests. `retire_popup` also removes
+        // every descendant of the retired child, so replacing a nested chain takes
+        // one call. Compute and apply this before the parent_idx lookup below:
+        // retiring a sibling mutates `self.surfaces`, and Vec::remove shifts every
+        // later index.
         let links: Vec<(SurfaceId, Option<SurfaceId>)> = self
             .surfaces
             .iter()
@@ -916,7 +918,7 @@ impl Host {
             pending: (init_w, init_h),
         });
 
-        // Popups are menus/context menus -- never a text field, so no clipboard.
+        let clipboard = self.create_clipboard(config.clipboard);
         let (mut surface, extra) = FreyaLayerSurface::new(
             id,
             role,
@@ -925,7 +927,8 @@ impl Host {
             app,
             setup,
             content,
-            None,
+            config.preferred_theme,
+            clipboard,
         );
 
         // Fractional scaling + viewport, exactly like a layer surface.
@@ -1875,8 +1878,8 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for Host {
             // pattern as `ime_pending` below. The first `done` also makes the
             // toplevel visible at all (see [`ToplevelState::published`]), so a
             // brand-new toplevel with no confirmed data never appears in a
-            // snapshot. output_enter/leave and parent are not surfaced to the
-            // dock/bar.
+            // snapshot. output_enter/leave and parent are not exposed through the
+            // public toplevel snapshot.
             Event::Done => {
                 if let Some(t) = host.toplevels.iter_mut().find(|t| t.handle.id() == handle.id()) {
                     t.state.publish();

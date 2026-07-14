@@ -13,5 +13,5 @@ pub mod ipc;
 pub mod manager;
 pub mod motion;
 
-pub use manager::{CommandSink, Manager, RevealHost, RevealMotion, ShellBus, ShellMsg, SurfaceKey};
+pub use manager::{CommandSink, Manager, RevealHost, RevealMotion, ShellBus, ShellMsg, SurfaceHost, SurfaceKey};
 pub use motion::{SpringSim, SpringSpec, UseSpring, reduced_motion, set_reduced_motion, use_spring};
