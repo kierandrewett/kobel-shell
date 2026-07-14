@@ -3,8 +3,10 @@
 //! the same ShellBus the UI uses, so IPC and UI drive the manager identically.
 //!
 //! The listener runs on a plain std thread and only ever sends over the bus (which
-//! wakes the loop). Socket lifecycle: unlink any stale socket on start, remove ours
-//! on exit (main.rs, after the loop returns).
+//! wakes the loop). Socket lifecycle: a LIVE peer at the path (another running
+//! instance) is detected and refused (`AddrInUse`), never stolen; a genuinely
+//! stale socket (file present, nothing listening) is unlinked on start; ours is
+//! removed on exit (main.rs, after the loop returns).
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -84,6 +86,22 @@ const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// [`serve_at`]'s implementation, with the per-request timeout as a parameter so
 /// tests can use a short one instead of waiting out the production default.
 fn serve_at_with_timeout(path: PathBuf, bus: ShellBus, timeout: std::time::Duration) -> std::io::Result<PathBuf> {
+    // Refuse to steal a LIVE instance's socket: if something is actually
+    // listening at `path`, a plain connect() succeeds. Only a genuinely stale
+    // socket (crashed/killed previous instance, file left behind with no
+    // listener) gets unlinked below -- distinguishing the two matters because
+    // silently rebinding out from under a running instance would leave it
+    // permanently unreachable via `kobelctl` while both instances keep
+    // rendering, an easy source of silent double-shell confusion.
+    if UnixStream::connect(&path).is_ok() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!(
+                "another kobel-shell instance is already listening at {}",
+                path.display()
+            ),
+        ));
+    }
     // Unlink a stale socket from a previous run; bind fails with EADDRINUSE otherwise.
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
@@ -235,6 +253,47 @@ mod tests {
         }
         assert!(got.iter().any(|m| matches!(m, ShellMsg::Toggle(SurfaceKey::Launcher))));
         assert!(got.iter().any(|m| matches!(m, ShellMsg::CloseAll)));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn refuses_to_steal_a_live_instances_socket() {
+        let path = std::env::temp_dir().join(format!("kobel-shell-ipc-live-test-{}.sock", std::process::id()));
+        // A real, still-listening socket -- simulates another kobel-shell instance
+        // already running at the default path.
+        let live = UnixListener::bind(&path).expect("bind the 'other instance' socket");
+
+        let (bus, _rx) = ShellBus::new();
+        let err = serve_at(path.clone(), bus).expect_err("must refuse to bind over a live listener");
+        assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
+
+        // The live listener's socket must be untouched -- not unlinked, still
+        // reachable at the same path. Accept in the background so connect() can
+        // complete (a bound-but-not-accepting listener still lets connect()
+        // succeed at the kernel backlog level, but drive it properly regardless).
+        let accepted = thread::spawn(move || live.accept());
+        assert!(
+            UnixStream::connect(&path).is_ok(),
+            "the original instance's socket must still be live"
+        );
+        let _ = accepted.join();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn reclaims_a_genuinely_stale_socket() {
+        let path = std::env::temp_dir().join(format!("kobel-shell-ipc-stale-test-{}.sock", std::process::id()));
+        // Bind then drop WITHOUT unlinking: a Unix socket's filesystem entry
+        // outlives the listener that created it, exactly like a crashed/killed
+        // previous kobel-shell leaves one behind. Nothing is listening anymore.
+        {
+            let _dangling = UnixListener::bind(&path).expect("create a socket file to abandon");
+        }
+        assert!(path.exists(), "the dangling socket file must still be on disk");
+
+        let (bus, _rx) = ShellBus::new();
+        serve_at(path.clone(), bus).expect("a stale (unlistened) socket must be reclaimed, not refused");
+
         let _ = std::fs::remove_file(&path);
     }
 

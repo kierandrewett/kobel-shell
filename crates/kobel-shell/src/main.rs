@@ -1280,9 +1280,18 @@ fn main() -> anyhow::Result<()> {
     });
 
     // IPC control socket. Runs on its own thread; only sends over the bus (which wakes
-    // us). Failure to bind is non-fatal -- the shell still runs, just without kobelctl.
+    // us). `AddrInUse` means another kobel-shell instance is already live (serve_at
+    // detects and refuses to steal its socket, never rebinds out from under it) --
+    // that is fatal: two instances would each try to mount the same kobel-*
+    // namespaced surfaces, and this exits before Shell::run() ever creates one.
+    // Any OTHER bind failure (e.g. a permissions issue) stays non-fatal -- the
+    // shell still runs, just without kobelctl.
     let socket = match ipc::serve(bus.clone()) {
         Ok(path) => Some(path),
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            tracing::error!("[ipc] {e}; refusing to start a second instance");
+            std::process::exit(1);
+        }
         Err(e) => {
             tracing::warn!("[ipc] control socket unavailable: {e}");
             None
