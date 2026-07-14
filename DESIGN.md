@@ -42,8 +42,12 @@ to sit with the sakura art. Rose is semantic-destructive only.
 
 ## Shape & elevation
 
-- Radii: panels 16px · tiles/rows 12px · buttons 10px · pills/knobs/badges 999.
-  Nothing above 16px.
+- Radii: sheets (bar/panels/OSD/toasts/launcher) 24px · cards (notification cards,
+  toasts, empty states) 20px · tiles (dock/launcher/media art) 12px · rows
+  (notification/calendar rows) 10px · buttons 9px · pills/knobs/badges 999.
+  (`crates/kobel-shell/src/theme.rs`'s `RADIUS_*` constants are the source of
+  truth; this table trails an earlier iteration -- see the v3 addenda below for
+  what actually shipped.)
 - Floating panels: shadow only (`0 18px 40px` deep + `0 2px 8px` contact), **no border**.
 - Inner tiles: surface-step only (panel2 on panel), **no border, no shadow**.
 - Focus: 2px leaf `:focus-visible` outline, 2px offset — the only outline in the system.
@@ -92,7 +96,7 @@ user wallpaper; the shell's neutrals assume warm/violet art but don't require it
 
 ## Anti-patterns enforced
 
-No glassmorphism, no border+shadow ghost cards, no >16px radii, no gradient
+No glassmorphism, no border+shadow ghost cards, no gradient
 monogram icons, no dashed borders, no gradient text, no eyebrow labels, accent
 never decorative. If a new surface needs one of these, redesign the surface.
 
