@@ -5,6 +5,13 @@ Rewrite the entire shell (every layer-shell surface, every service) in Rust, usi
 own Wayland layer-shell host instead of winit. The AGS/TypeScript implementation in
 `ags/` stays untouched as the behavioural reference until parity, then gets archived.
 
+> **Status: all 7 phases below shipped; `ags/` archived (see `README.md` for the
+> current architecture and layout).** This document is kept as the historical
+> record of the original plan -- most of it still describes the real
+> architecture accurately, but a few specific claims below (IME, the gnoblin
+> service table, calendar) were proven wrong or completed during the build and
+> are corrected inline rather than left to mislead a future reader.
+
 The behavioural spec is `ags/` + `docs/prototype.html` + DESIGN.md. Pixel-exact parity
 is not the goal of this plan; behavioural parity and the design rules in
 `ags/README.md` ("Design rules that MUST survive the port") are. Visual tidy-up happens
@@ -78,7 +85,7 @@ What Freya does NOT give us (we build it):
 | Springs (interruptible, velocity-preserving) | `kobel motion` module |
 | Every system service (Astal replacements) | `kobel-services` crate |
 | SNI tray host (Freya's `tray` feature is "app's own tray icon", not a host) | `system-tray` crate |
-| IME (`zwp_text_input_v3`) | deferred (see risks) |
+| IME (`zwp_text_input_v3`) | shipped in `kobel-wayland` (`ime.rs` + `conn.rs`), launcher-only |
 | AccessKit bridge | deferred (see risks) |
 
 ---
@@ -247,7 +254,7 @@ freezes ambient motion (EQ bars).
 
 | Today (AGS) | Rust replacement | Risk |
 |---|---|---|
-| `services/gnoblin.ts` (Gio DBus proxy) | zbus proxy `org.gnoblin.Shell`: `Reload`, `SetFeature`, `ActivateWindow`, `MinimizeWindow`, `ListWindows`, `WindowsChanged`, name-owner watch -> `connected` | low - same bus API |
+| `services/gnoblin.ts` (Gio DBus proxy) | zbus proxy `org.gnoblin.Shell`: `Reload`, `SetFeature`, name-owner watch -> `connected`. **Corrected during the build**: `ActivateWindow`/`MinimizeWindow`/`ListWindows`/`WindowsChanged` planned here never existed on that interface (confirmed live: `UnknownMethod`) -- window list/activate/minimize/close is the real `zwlr_foreign_toplevel_manager_v1` Wayland protocol, owned by `kobel-wayland` (`toplevel.rs`), not this proxy. See `crates/kobel-services/src/gnoblin.rs`'s module doc. | low - same bus API for what's left |
 | AstalNotifd (owns o.fd.Notifications) | zbus **server** implementing `org.freedesktop.Notifications` (Notify, CloseNotification, GetCapabilities, GetServerInformation; emits NotificationClosed/ActionInvoked). Persist last ~50 to disk. `SetFeature("notifications", false)` on start, hand back on exit | medium - most code, well-specified protocol |
 | AstalWp (WirePlumber) | `libpulse-binding` against pipewire-pulse: default sink volume/mute, sink-inputs for the per-app mixer, subscribe events | medium - pragmatic phase-1 bridge; pulse API reflects WirePlumber's default-node choice but is one step removed. If default-device tracking or stream metadata disappoints, upgrade to the native `pipewire` crate later; the service API doesn't change |
 | AstalNetwork | zbus proxies for NetworkManager (Device.Wireless, AccessPoint, ActiveConnection) | low - verbose but mechanical |
@@ -290,8 +297,11 @@ Freya's `svg()` element with `fill` recoloring.
 
 Launcher text field is custom (keydown accumulation on the focused surface), not
 `freya-components::Input` - the AGS one is already a custom overlay construction,
-keyboard-exclusive mode delivers us every key, and it dodges the IME/clipboard/
-focus-context requirements of stock Input for phase one.
+and keyboard-exclusive mode delivers us every key. IME and clipboard were
+deferred out of stock `Input`'s bundled requirements for phase one, then both
+shipped later wired directly into the custom field instead (`ImeFeed` context +
+`Editor::apply_ime_commit`; a real Wayland clipboard opted in via
+`SurfaceConfig::clipboard`) -- see sections 1 and 8.
 
 ---
 
@@ -380,8 +390,12 @@ so every merge keeps a usable shell.
   interactivity switching while mapped, exclusive keyboard on `top` layer,
   fractional-scale on layer surfaces, empty input regions. That's why Phase 0
   exists and runs against gnoblin, not sway.
-- **No IME initially.** Keyboard events cover Latin input for the launcher.
-  `zwp_text_input_v3` is additive later; flagged, not forgotten.
+- **IME shipped** (`zwp_text_input_v3`, launcher-only). Was originally deferred
+  ("keyboard events cover Latin input for the launcher"); the additive
+  enable/disable-per-focus design worked out as planned -- see `kobel-wayland/
+  src/ime.rs` and `README.md`'s gnoblin integration section for the one
+  honestly-unverified piece (an actual composing ibus round-trip, blocked by
+  this devkit's missing `gsettings-desktop-schemas`, not the implementation).
 - **No AccessKit initially.** Layer-shell a11y is uncharted anyway; kobel's
   keyboard nav is app-managed selection state (as in AGS today). Freya's
   focus-follows-accessibility features stay unused until then; the custom text
@@ -407,4 +421,7 @@ so every merge keeps a usable shell.
 
 - Workspace indicators need a gnoblin protocol addition (`ListWorkspaces` +
   signal) - same as the old QML plan; not blocked on the rewrite.
-- Calendar events remain hardcoded until an EDS/ICS decision is made.
+- ~~Calendar events remain hardcoded until an EDS/ICS decision is made.~~
+  Resolved: `kobel-services::calendar` is a real async service subscribing to
+  `org.gnome.Shell.CalendarServer` (backed by Evolution Data Server, the same
+  source GNOME Shell's own clock dropdown uses) -- no hardcoded sample data.
