@@ -198,7 +198,16 @@ fn first_backlight() -> Option<PathBuf> {
     entries.into_iter().next()
 }
 
+/// `max` is expected non-zero (the sole caller, `run_brightness`, guards this
+/// before ever calling `read_level`), but this stays safe by construction
+/// rather than by caller discipline: `0.0 / 0.0` is NaN, which `.clamp()`
+/// passes through unchanged (NaN compares false to everything), so an
+/// undefended divide here would silently leak a NaN percentage into the UI
+/// if a future refactor ever called this before that guard.
 fn read_level(device: &Path, max: u64) -> f32 {
+    if max == 0 {
+        return 0.0;
+    }
     let cur = read_u64(&device.join("brightness")).unwrap_or(0);
     (cur as f32 / max as f32).clamp(0.0, 1.0)
 }
@@ -530,5 +539,71 @@ mod tests {
         assert!(parse_bool("  'True'  "));
         assert!(!parse_bool("'false'"));
         assert!(!parse_bool("nonsense"));
+    }
+
+    /// Isolated scratch dir mimicking a `/sys/class/backlight/<device>` layout,
+    /// so read_u64/read_level are tested against real file I/O like the
+    /// production sysfs reads, not just string parsing.
+    fn scratch_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("kobel-sysctl-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }
+
+    fn cleanup(dir: &Path) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn read_u64_parses_trimmed_content() {
+        let dir = scratch_dir("read-u64");
+        let path = dir.join("value");
+        std::fs::write(&path, "  42\n").unwrap();
+        assert_eq!(read_u64(&path), Some(42));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn read_u64_none_for_missing_or_malformed() {
+        let dir = scratch_dir("read-u64-bad");
+        assert_eq!(read_u64(&dir.join("no-such-file")), None);
+        let path = dir.join("garbage");
+        std::fs::write(&path, "not-a-number").unwrap();
+        assert_eq!(read_u64(&path), None);
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn read_level_divides_and_clamps() {
+        let dir = scratch_dir("read-level");
+        std::fs::write(dir.join("brightness"), "50").unwrap();
+        assert_eq!(read_level(&dir, 100), 0.5);
+        // A stale/racy sysfs read above max clamps to 1.0 rather than exceeding it.
+        std::fs::write(dir.join("brightness"), "150").unwrap();
+        assert_eq!(read_level(&dir, 100), 1.0);
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn read_level_missing_brightness_file_reads_as_zero() {
+        let dir = scratch_dir("read-level-missing");
+        // No brightness file written: read_u64 -> None -> unwrap_or(0).
+        assert_eq!(read_level(&dir, 100), 0.0);
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn read_level_never_divides_by_zero() {
+        // max=0 must never happen in production (run_brightness guards it before
+        // ever calling read_level), but the function stays safe by construction:
+        // an undefended 0.0/0.0 would be NaN, which .clamp() passes through
+        // unchanged rather than catching.
+        let dir = scratch_dir("read-level-zero-max");
+        std::fs::write(dir.join("brightness"), "5").unwrap();
+        let level = read_level(&dir, 0);
+        assert_eq!(level, 0.0);
+        assert!(!level.is_nan(), "must never leak NaN into a brightness percentage");
+        cleanup(&dir);
     }
 }
