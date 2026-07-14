@@ -776,6 +776,16 @@ fn hint_bool(hints: &HashMap<String, OwnedValue>, key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use zbus::zvariant::Value;
+
+    fn owned(v: impl Into<Value<'static>>) -> OwnedValue {
+        OwnedValue::try_from(v.into()).expect("value converts")
+    }
+
+    fn hints_with(pairs: &[(&str, OwnedValue)]) -> HashMap<String, OwnedValue> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    }
+
     use super::*;
 
     fn temp_path(tag: &str) -> PathBuf {
@@ -1029,5 +1039,51 @@ mod tests {
                 ("reply".to_owned(), "Reply".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn hint_u8_reads_matching_type_and_rejects_mismatch_or_missing() {
+        let hints = hints_with(&[("urgency", owned(2u8)), ("wrong-type", owned("not a number"))]);
+        assert_eq!(hint_u8(&hints, "urgency"), Some(2));
+        assert_eq!(hint_u8(&hints, "wrong-type"), None, "type mismatch must not panic");
+        assert_eq!(hint_u8(&hints, "absent"), None);
+    }
+
+    #[test]
+    fn hint_bool_defaults_false_for_mismatch_or_missing() {
+        let hints = hints_with(&[("resident", owned(true)), ("wrong-type", owned(42u8))]);
+        assert!(hint_bool(&hints, "resident"));
+        assert!(!hint_bool(&hints, "wrong-type"), "type mismatch defaults false, never panics");
+        assert!(!hint_bool(&hints, "absent"), "missing key defaults false");
+    }
+
+    #[test]
+    fn hint_str_treats_empty_string_as_none() {
+        let hints = hints_with(&[
+            ("image-path", owned("/tmp/icon.png")),
+            ("blank", owned("")),
+            ("wrong-type", owned(7u8)),
+        ]);
+        assert_eq!(hint_str(&hints, "image-path"), Some("/tmp/icon.png".to_string()));
+        assert_eq!(hint_str(&hints, "blank"), None, "an empty string hint is treated as absent");
+        assert_eq!(hint_str(&hints, "wrong-type"), None, "type mismatch must not panic");
+        assert_eq!(hint_str(&hints, "absent"), None);
+    }
+
+    #[test]
+    fn pick_icon_prefers_app_icon_then_spec_hint_then_legacy_hint() {
+        let both_hints = hints_with(&[
+            ("image-path", owned("/spec.png")),
+            ("image_path", owned("/legacy.png")),
+        ]);
+        // Non-empty app_icon always wins, hints ignored.
+        assert_eq!(pick_icon("/app.png", &both_hints), Some("/app.png".to_string()));
+        // Empty app_icon: the spec 1.2 hyphenated hint wins over the legacy one.
+        assert_eq!(pick_icon("", &both_hints), Some("/spec.png".to_string()));
+        // Only the legacy hint present.
+        let legacy_only = hints_with(&[("image_path", owned("/legacy.png"))]);
+        assert_eq!(pick_icon("", &legacy_only), Some("/legacy.png".to_string()));
+        // Neither app_icon nor any hint present.
+        assert_eq!(pick_icon("", &HashMap::new()), None);
     }
 }
