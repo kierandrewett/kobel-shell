@@ -273,23 +273,45 @@ impl Component for Dot {
     }
 }
 
+/// Pure sliding-viewport math for the 4-dot overlay: which window index the
+/// viewport starts at, and how many dots to render (`total.min(4)`). Ports
+/// ags/widget/Dock.tsx `Dots`'s window math -- factored out of [`dots_overlay`]
+/// (which returns an [`Element`] and so cannot be unit-tested directly) so this
+/// index arithmetic gets the same direct test coverage as calendar.rs's
+/// `month_grid`/`step_month` (a past real bug lived in exactly this shape of
+/// untested slide/clamp arithmetic -- see that module's history).
+fn dot_window(total: usize, focused: Option<usize>) -> (usize, usize) {
+    let n = total.min(4);
+    if total <= 4 {
+        return (0, n);
+    }
+    // Slide the 4-window viewport so the focused window stays in view: centre
+    // it one step back from `cur` (so `cur` isn't pinned to the trailing edge),
+    // clamped so the viewport never runs past the last 4 windows.
+    let cur = focused.unwrap_or(0) as i64;
+    let start = ((cur - 1).max(0) as usize).min(total - 4);
+    (start, n)
+}
+
+/// Whether the dot at viewport position `i` (of `n` visible, `total` real
+/// windows, viewport starting at `start`) is the smaller "there are more
+/// windows this way" edge indicator rather than a full rest/pill dot: the
+/// first dot when the viewport has scrolled past window 0, or the last dot
+/// when it hasn't reached the final window yet.
+fn dot_is_mini(i: usize, n: usize, start: usize, total: usize) -> bool {
+    total > 4 && ((i == 0 && start > 0) || (i == n - 1 && start + 4 < total))
+}
+
 /// The dots overlay for a tile: absolute, zero layout footprint, pinned to the
 /// tile's bottom-center. Ports the sliding 4-dot viewport (ags/widget/Dock.tsx
 /// `Dots`): up to four dots, the focused one a pill, edge minis past four.
 fn dots_overlay(total: usize, focused: Option<usize>, tokens: Tokens) -> Element {
-    let n = total.min(4);
-    // Slide the 4-window viewport so the focused window stays in view.
-    let start = if total > 4 {
-        let cur = focused.unwrap_or(0) as i64;
-        ((cur - 1).max(0) as usize).min(total - 4)
-    } else {
-        0
-    };
+    let (start, n) = dot_window(total, focused);
     let dots: Vec<Element> = (0..n)
         .map(|i| {
             let idx = start + i;
             let on = focused == Some(idx);
-            let mini = total > 4 && ((i == 0 && start > 0) || (i == n - 1 && start + 4 < total));
+            let mini = dot_is_mini(i, n, start, total);
             Dot { on, mini }.into_element()
         })
         .collect();
@@ -835,5 +857,88 @@ mod tests {
         assert!(wheel_command(&["only".to_string()], Some(0), true).is_none());
         // No windows -> nothing.
         assert!(wheel_command(&[], None, true).is_none());
+    }
+
+    #[test]
+    fn dot_window_shows_everything_at_or_under_four_windows() {
+        // total <= 4 never slides: the viewport always starts at 0 and shows
+        // every window, regardless of which one is focused.
+        assert_eq!(dot_window(0, None), (0, 0));
+        assert_eq!(dot_window(1, Some(0)), (0, 1));
+        assert_eq!(dot_window(4, None), (0, 4));
+        assert_eq!(dot_window(4, Some(3)), (0, 4));
+    }
+
+    #[test]
+    fn dot_window_slides_to_keep_the_focused_window_in_view() {
+        // 6 windows (indices 0..6): the viewport is 4 wide, starting one step
+        // behind the focused window so it's never pinned to the trailing edge,
+        // but never sliding past showing the final 4 (start caps at total-4).
+        assert_eq!(dot_window(6, None), (0, 4), "unfocused defaults to the start");
+        assert_eq!(dot_window(6, Some(0)), (0, 4));
+        assert_eq!(dot_window(6, Some(1)), (0, 4), "cur-1 clamps at 0, not negative");
+        assert_eq!(dot_window(6, Some(2)), (1, 4));
+        assert_eq!(dot_window(6, Some(3)), (2, 4), "start caps at total-4 = 2");
+        assert_eq!(dot_window(6, Some(4)), (2, 4), "still capped: showing the last 4");
+        assert_eq!(dot_window(6, Some(5)), (2, 4), "last window: viewport shows [2,3,4,5]");
+    }
+
+    #[test]
+    fn dot_window_five_windows_boundary() {
+        // The smallest total that actually slides (total-4 = 1, so there is
+        // exactly one possible slid position beyond the rest position).
+        assert_eq!(dot_window(5, Some(0)), (0, 4));
+        assert_eq!(dot_window(5, Some(4)), (1, 4), "start caps at total-4 = 1");
+    }
+
+    #[test]
+    fn dot_is_mini_marks_only_the_scrolled_edge() {
+        // total <= 4: no edge is ever mini, there's nothing hidden to hint at.
+        assert!(!dot_is_mini(0, 4, 0, 4));
+        assert!(!dot_is_mini(3, 4, 0, 4));
+
+        // total > 4, viewport at the rest position (start = 0): only the LAST
+        // dot is mini (there are more windows after, none before).
+        assert!(!dot_is_mini(0, 4, 0, 6), "first dot: nothing scrolled off before it");
+        assert!(!dot_is_mini(1, 4, 0, 6), "middle dots are never mini");
+        assert!(!dot_is_mini(2, 4, 0, 6));
+        assert!(
+            dot_is_mini(3, 4, 0, 6),
+            "last dot: 2 more windows exist past the viewport"
+        );
+
+        // Viewport fully slid to the end (start = total-4): only the FIRST dot
+        // is mini now (windows exist before; none hidden after).
+        assert!(dot_is_mini(0, 4, 2, 6));
+        assert!(
+            !dot_is_mini(3, 4, 2, 6),
+            "start+4 == total: nothing hidden past the last dot"
+        );
+
+        // Viewport in the middle: BOTH edges are mini simultaneously.
+        assert!(dot_is_mini(0, 4, 1, 6));
+        assert!(dot_is_mini(3, 4, 1, 6));
+    }
+
+    #[test]
+    fn dot_window_and_mini_agree_on_a_real_slide_sequence() {
+        // End-to-end sanity: walk focus across 7 windows and confirm the mini
+        // flags on the viewport dot_window actually returns are self-consistent
+        // (exactly the windows genuinely off-screen get flagged).
+        for focused in 0..7 {
+            let (start, n) = dot_window(7, Some(focused));
+            assert_eq!(n, 4);
+            assert!(start <= 3, "start must never exceed total-4=3, got {start}");
+            let hidden_before = start > 0;
+            let hidden_after = start + 4 < 7;
+            assert_eq!(dot_is_mini(0, n, start, 7), hidden_before);
+            assert_eq!(dot_is_mini(n - 1, n, start, 7), hidden_after);
+            // The focused window is always inside the visible viewport.
+            assert!(
+                (start..start + n).contains(&focused),
+                "focused window {focused} must stay visible, viewport was [{start},{})",
+                start + n
+            );
+        }
     }
 }
