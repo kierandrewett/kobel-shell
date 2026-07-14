@@ -639,7 +639,7 @@ impl Manager {
         let now = if profile { self.now_ms() } else { 0.0 };
         let mut started_trace = None;
         let mut close_id = None;
-        let did_close = match self.reveals.get_mut(&key) {
+        let did_close = match self.reveals.get_mut(key) {
             Some(r) if r.target_open || r.active => {
                 r.target_open = false;
                 r.active = true;
