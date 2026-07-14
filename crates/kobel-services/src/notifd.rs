@@ -15,6 +15,7 @@
 //! Every mutation pushes a fresh `ServiceEvent::Notifd` snapshot.
 
 use std::collections::HashMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -278,12 +279,23 @@ fn write_persisted(path: &Path, persisted: &Persisted) {
     }
     // Crash-safe: write a sibling temp file then rename over the target, so a
     // crash or full disk can never truncate the sole store (same pattern as the
-    // launcher frecency store).
+    // launcher frecency store). Owner-only permissions are set on the TEMP file
+    // before the rename, not the final path afterwards, so notification content
+    // (summaries/bodies can carry OTP codes, email/chat previews, etc.) is never
+    // briefly visible at the final path with the loose umask-masked default
+    // `std::fs::write` would otherwise leave it at.
     let tmp = path.with_extension("json.tmp");
     match serde_json::to_string_pretty(persisted) {
         Ok(json) => {
             if let Err(e) = std::fs::write(&tmp, json) {
                 tracing::warn!("[notifd] cannot write store temp {}: {e}", tmp.display());
+                return;
+            }
+            if let Err(e) =
+                std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
+            {
+                tracing::warn!("[notifd] cannot chmod store temp {}: {e}", tmp.display());
+                let _ = std::fs::remove_file(&tmp);
                 return;
             }
             if let Err(e) = std::fs::rename(&tmp, path) {
@@ -869,6 +881,18 @@ mod tests {
         // Ids continue after the max loaded id.
         let mut reloaded = reloaded;
         assert_eq!(reloaded.ingest(0, notif("three"), false), two + 1);
+        cleanup(&path);
+    }
+
+    #[tokio::test]
+    async fn persisted_store_is_owner_only() {
+        let path = temp_path("perm");
+        let store = Arc::new(Mutex::new(Store::load(path.clone())));
+        store.lock().ingest(0, notif("secret meeting details"), false);
+        flush_store(&store).await;
+
+        let mode = std::fs::metadata(&path).expect("stat store").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "notification store must not be group/other readable");
         cleanup(&path);
     }
 
