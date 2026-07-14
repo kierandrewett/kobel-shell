@@ -41,8 +41,11 @@ pub struct Preedit {
 ///      caller re-reports it via `ime_sync_surrounding_text`.)
 ///   5. Show `preedit` as the new composing text at the cursor.
 ///
-/// Steps 6 (cursor-inside-preedit placement) and 7 (action) are folded into
-/// `preedit`'s own cursor fields and are not separately modeled.
+/// Step 6 (cursor-inside-preedit placement) is `preedit`'s own cursor fields.
+/// Step 7 (`action`) is a separate `zwp_text_input_v3.action` event, `since="2"`
+/// -- this crate binds the manager at version 1 only (`conn.rs`'s
+/// `globals.bind::<ZwpTextInputManagerV3, _, _>(&qh, 1..=1, ())`), so a v2+
+/// event can never arrive here at all; it is not folded into anything.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ImeCommit {
     pub delete_before: u32,
@@ -72,19 +75,46 @@ pub(crate) fn decode_cursor(begin: i32, end: i32) -> (Option<usize>, Option<usiz
 
 /// Events the app-level `on_ime` handler (installed via `Shell::on_ime`) receives.
 /// Enter/Leave mirror keyboard focus (mutter drives them automatically); Commit
-/// carries one atomic `done` payload for whichever surface currently holds IME
-/// focus (tracked by the caller from the Enter/Leave pair, not carried here --
-/// the protocol's `done` event has no surface argument, only a serial).
+/// carries one `done` payload for whichever surface currently holds IME focus
+/// (tracked by the caller from the Enter/Leave pair, not carried here -- the
+/// protocol's `done` event has no surface argument, only a serial).
+///
+/// EVERY `done` is dispatched, even an in-sync one with an empty `payload`:
+/// the host has no visibility into whether the caller is currently deferring
+/// a pending state request (surrounding text, cursor rectangle) behind an
+/// earlier out-of-sync `done`, so it cannot safely decide any `done` is
+/// "boring" and drop it -- an empty in-sync done reached right after an
+/// out-of-sync one IS the release signal such a caller is waiting for, and
+/// suppressing it would leave that caller deferred forever.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImeEvent {
     /// Text-input focus entered this surface.
     Enter(SurfaceId),
     /// Text-input focus left this surface.
     Leave(SurfaceId),
-    /// An atomic `done` payload. Empty commits ([`ImeCommit::is_empty`]) are
-    /// filtered out by the host before dispatch -- every `Commit` here carries at
-    /// least one real change.
-    Commit(ImeCommit),
+    /// One `done` event. `serial` is the protocol's "as of this many
+    /// `zwp_text_input_v3.commit` requests" counter, as the compositor last
+    /// saw it; `in_sync` is true when it matches the number of
+    /// [`Control::ime_commit`](crate::Control::ime_commit) calls made so far.
+    ///
+    /// When `in_sync` is false, a LATER commit the caller already sent is
+    /// still in flight and this `done` reflects an OLDER one. `payload` is
+    /// still correct to apply as-is -- the protocol requires evaluating and
+    /// applying preedit/commit/delete changes unconditionally regardless of
+    /// serial match -- but any PENDING state request the caller wants to
+    /// (re)send (surrounding text, cursor rectangle) should wait for a
+    /// SUBSEQUENT `in_sync` done rather than racing ahead of a commit
+    /// already in flight. `payload` is frequently empty when `in_sync` is
+    /// true too (a bare acknowledgement, or the specific "you may now
+    /// resend" transition after a run of out-of-sync dones) -- callers that
+    /// only care about content changes must check `payload.is_empty()`
+    /// themselves; the host does not filter on their behalf (see this
+    /// enum's own doc for why).
+    Commit {
+        payload: ImeCommit,
+        serial: u32,
+        in_sync: bool,
+    },
 }
 
 #[cfg(test)]
@@ -141,5 +171,22 @@ mod tests {
             ..Default::default()
         };
         assert!(!c.is_empty());
+    }
+
+    #[test]
+    fn commit_event_carries_serial_and_sync_state_verbatim() {
+        let event = ImeEvent::Commit {
+            payload: ImeCommit::default(),
+            serial: 3,
+            in_sync: false,
+        };
+        assert_eq!(
+            event,
+            ImeEvent::Commit {
+                payload: ImeCommit::default(),
+                serial: 3,
+                in_sync: false,
+            }
+        );
     }
 }

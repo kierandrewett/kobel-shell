@@ -201,6 +201,7 @@ impl Shell {
             text_input_manager,
             text_input: None,
             ime_pending: ImeCommit::default(),
+            ime_commit_count: 0,
             ime_handler: None,
             egl,
             surfaces: Vec::new(),
@@ -487,6 +488,7 @@ impl Control<'_> {
     pub fn ime_commit(&mut self) {
         if let Some(ti) = self.host.text_input.as_ref() {
             ti.commit();
+            self.host.ime_commit_count += 1;
         }
     }
 }
@@ -594,6 +596,12 @@ struct Host {
     /// each `done` is dispatched. See ime.rs's module doc for the exact
     /// apply-order contract.
     ime_pending: ImeCommit,
+    /// Number of `zwp_text_input_v3.commit` requests sent so far (via
+    /// [`Control::ime_commit`]). Compared against `done`'s `serial` argument,
+    /// which the protocol defines as "the number of commit requests already
+    /// issued" as the compositor last saw them -- a mismatch means a LATER
+    /// commit is still in flight and this `done` reflects an older one.
+    ime_commit_count: u32,
     egl: Egl,
     surfaces: Vec<FreyaLayerSurface>,
     next_id: u32,
@@ -1985,10 +1993,13 @@ impl Dispatch<ZwpTextInputV3, ()> for Host {
             }
             Event::Done { serial } => {
                 let payload = std::mem::take(&mut host.ime_pending);
-                tracing::debug!("[host] ime done serial={serial} payload={payload:?}");
-                if !payload.is_empty() {
-                    host.dispatch_ime(ImeEvent::Commit(payload));
-                }
+                let in_sync = serial == host.ime_commit_count;
+                tracing::debug!("[host] ime done serial={serial} in_sync={in_sync} payload={payload:?}");
+                host.dispatch_ime(ImeEvent::Commit {
+                    payload,
+                    serial,
+                    in_sync,
+                });
             }
             // Non-exhaustive enum: a future protocol version may add variants.
             _ => {}
