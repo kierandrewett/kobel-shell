@@ -1056,6 +1056,7 @@ impl Component for OpenMusicButton {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
 
     #[test]
     fn badge_hidden_at_zero() {
@@ -1084,6 +1085,25 @@ mod tests {
         assert_eq!(baseline_step(true, true), (false, true));
         // Serving flapping back to false never un-seeds us.
         assert_eq!(baseline_step(true, false), (false, true));
+    }
+
+    #[test]
+    fn fmt_when_formats_local_hh_mm() {
+        // Round-trip through Local, same pattern as calendar.rs's event tests:
+        // build a known local wall-clock time, convert to its epoch, then assert
+        // fmt_when reproduces the same HH:MM -- timezone-independent either way.
+        let local = chrono::Local
+            .with_ymd_and_hms(2026, 7, 13, 9, 45, 0)
+            .single()
+            .expect("unambiguous local time");
+        assert_eq!(fmt_when(local.timestamp()), local.format("%H:%M").to_string());
+    }
+
+    #[test]
+    fn fmt_when_falls_back_to_empty_on_an_unrepresentable_timestamp() {
+        // i64::MIN is far outside chrono's representable range -- from_timestamp
+        // returns None, and fmt_when must degrade to an empty label, never panic.
+        assert_eq!(fmt_when(i64::MIN), "");
     }
 
     fn arrivals(pairs: &[(u32, u64)]) -> HashMap<u32, u64> {
