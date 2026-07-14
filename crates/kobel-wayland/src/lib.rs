@@ -185,6 +185,12 @@ pub struct SurfaceConfig {
     /// When true, the surface is given an empty wl input region at creation, making
     /// it click-through (display-only). Used by the OSD (docs/FREYA-PLAN.md 2.4).
     pub input_region_empty: bool,
+    /// When true, this surface's `ClipboardProvider` root context is a real
+    /// Wayland clipboard (smithay-clipboard via `freya_clipboard::copypasta`,
+    /// constructed from the host's own `wl_display`) instead of the default
+    /// `None` stub. Opt-in per surface (`false` by default) since only surfaces
+    /// with an actual text field need one -- the launcher's is the only one today.
+    pub clipboard: bool,
 }
 
 impl SurfaceConfig {
@@ -199,6 +205,7 @@ impl SurfaceConfig {
             keyboard_interactivity: KeyboardInteractivity::None,
             size,
             input_region_empty: false,
+            clipboard: false,
         }
     }
 
@@ -229,6 +236,11 @@ impl SurfaceConfig {
 
     pub fn input_region_empty(mut self, empty: bool) -> Self {
         self.input_region_empty = empty;
+        self
+    }
+
+    pub fn clipboard(mut self, enabled: bool) -> Self {
+        self.clipboard = enabled;
         self
     }
 }

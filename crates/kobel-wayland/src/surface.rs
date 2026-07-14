@@ -210,6 +210,7 @@ impl FreyaLayerSurface {
         app: impl Fn() -> Element + 'static,
         setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
         content: Option<(u32, u32)>,
+        clipboard: Option<Box<dyn ClipboardProvider>>,
     ) -> (Self, C) {
         let wl_surface = role.wl_surface().clone();
         // Start at scale 1.0 (num=120); the compositor updates it via
@@ -277,10 +278,11 @@ impl FreyaLayerSurface {
             }
         });
 
-        // Clipboard context. Phase 0/1 provides an empty clipboard (the launcher uses
-        // a custom text field, not stock Input); wiring copypasta's Wayland clipboard
-        // from the display pointer is a later addition. TODO real clipboard.
-        runner.provide_root_context(|| State::create(None::<Box<dyn ClipboardProvider>>));
+        // Clipboard context: a real Wayland clipboard when the caller opted this
+        // surface in (SurfaceConfig::clipboard -- the launcher's text field is the
+        // only consumer today, via freya_clipboard::Clipboard::get/set), else the
+        // `None` stub every other surface keeps (no text field, no clipboard need).
+        runner.provide_root_context(move || State::create(clipboard));
 
         let frame_stats = runner.provide_root_context(|| State::create(FrameStats::default()));
 

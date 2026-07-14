@@ -20,6 +20,7 @@ freya-core = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1
 freya-engine = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-components = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-animation = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+freya-clipboard = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 torin = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 
 # Wayland host

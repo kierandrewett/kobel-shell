@@ -19,6 +19,7 @@ use anyhow::{Context as _, anyhow};
 use calloop::EventLoop;
 use calloop::ping::{Ping, make_ping};
 use calloop_wayland_source::WaylandSource;
+use freya_clipboard::copypasta::ClipboardProvider;
 use freya_core::integration::{KeyboardEventName, PlatformEvent};
 use freya_core::prelude::Element;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
@@ -701,6 +702,24 @@ impl Host {
         // so a content-sized surface can measure its content and request the right
         // height before the initial (buffer-less) commit that triggers the first
         // configure. The EGL buffer is created later, on that configure.
+        //
+        // Clipboard: constructed from the SAME wl_display Egl::new used (SurfaceConfig
+        // ::clipboard, opt-in per surface -- see SurfaceConfig's doc). smithay-clipboard
+        // runs its own dedicated thread + wl event queue wrapping this raw pointer, so
+        // it never competes with this host's own calloop-driven queue.
+        let clipboard: Option<Box<dyn ClipboardProvider>> = config.clipboard.then(|| {
+            let display_ptr = self._conn.backend().display_ptr() as *mut c_void;
+            // SAFETY: display_ptr is the live libwayland wl_display for this
+            // connection (client_system backend), valid for the process lifetime --
+            // the same pointer and the same safety argument as the Egl::new call
+            // above.
+            let (_primary, clipboard) = unsafe {
+                freya_clipboard::copypasta::wayland_clipboard::create_clipboards_from_external(
+                    display_ptr,
+                )
+            };
+            Box::new(clipboard) as Box<dyn ClipboardProvider>
+        });
         let (mut surface, extra) = FreyaLayerSurface::new(
             id,
             SurfaceRole::Layer(layer),
@@ -709,6 +728,7 @@ impl Host {
             app,
             setup,
             content,
+            clipboard,
         );
         // Record the bound output so output_destroyed can find every surface to tear
         // down when this output goes away (None for a compositor-placed surface).
@@ -844,6 +864,7 @@ impl Host {
             pending: (init_w, init_h),
         });
 
+        // Popups are menus/context menus -- never a text field, so no clipboard.
         let (mut surface, extra) = FreyaLayerSurface::new(
             id,
             role,
@@ -852,6 +873,7 @@ impl Host {
             app,
             setup,
             content,
+            None,
         );
 
         // Fractional scaling + viewport, exactly like a layer surface.
