@@ -171,7 +171,7 @@ pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: Unbou
     let mut tray_rx = client.subscribe();
     let mut item_paths = match action_connection.as_ref() {
         Some(connection) => refresh_registered_item_paths(connection).await.unwrap_or_default(),
-        None => HashMap::new(),
+        None => RegisteredItemPaths::default(),
     };
     // The user's icon theme is read once (matches apps.rs). A live theme switch
     // is not tracked; icons re-resolve whenever an item next changes.
@@ -260,7 +260,7 @@ type IconKey = (String, Option<String>, Option<String>);
 async fn emit_snapshot(
     events: &UnboundedSender<ServiceEvent>,
     client: &Client,
-    item_paths: &HashMap<String, String>,
+    item_paths: &RegisteredItemPaths,
     theme: Option<&str>,
     icon_cache: &mut HashMap<IconKey, Option<PathBuf>>,
 ) {
@@ -276,7 +276,7 @@ async fn emit_snapshot(
     let mut items: Vec<TrayItem> = Vec::with_capacity(raw.len());
     for (address, protocol, menu) in raw {
         let resolved_icon = resolve_icon_cached(&protocol, theme, icon_cache).await;
-        let object_path = item_paths.get(&address).cloned();
+        let object_path = item_paths.path_for(&address).map(str::to_owned);
         items.push(TrayItem {
             address,
             object_path,
@@ -356,12 +356,12 @@ where
 async fn handle_command(
     client: &Client,
     action_connection: Option<&Connection>,
-    item_paths: &HashMap<String, String>,
+    item_paths: &RegisteredItemPaths,
     cmd: TrayCommand,
 ) {
     match cmd {
         TrayCommand::Activate { address, x, y } => {
-            let (Some(connection), Some(path)) = (action_connection, item_paths.get(&address)) else {
+            let (Some(connection), Some(path)) = (action_connection, item_paths.path_for(&address)) else {
                 tracing::warn!("[tray] activate ignored: no object path for {address}");
                 return;
             };
@@ -370,7 +370,7 @@ async fn handle_command(
             }
         }
         TrayCommand::SecondaryActivate { address, x, y } => {
-            let (Some(connection), Some(path)) = (action_connection, item_paths.get(&address)) else {
+            let (Some(connection), Some(path)) = (action_connection, item_paths.path_for(&address)) else {
                 tracing::warn!("[tray] secondary activate ignored: no object path for {address}");
                 return;
             };
@@ -383,7 +383,7 @@ async fn handle_command(
                 tracing::warn!("[tray] context menu ignored: no action connection");
                 return;
             };
-            let Some(path) = item_paths.get(&address) else {
+            let Some(path) = item_paths.path_for(&address) else {
                 tracing::warn!("[tray] context menu: no object path for {address}");
                 return;
             };
@@ -400,7 +400,7 @@ async fn handle_command(
                 tracing::warn!("[tray] scroll ignored: no action connection");
                 return;
             };
-            let Some(path) = item_paths.get(&address) else {
+            let Some(path) = item_paths.path_for(&address) else {
                 tracing::warn!("[tray] scroll: no object path for {address}");
                 return;
             };
@@ -409,6 +409,10 @@ async fn handle_command(
             }
         }
         TrayCommand::MenuAboutToShow { address, item_id } => {
+            if item_paths.is_ambiguous(&address) {
+                tracing::warn!("[tray] about-to-show ignored: {address} is an ambiguous multi-object address");
+                return;
+            }
             let Some(menu_path) = menu_path_for(client, &address) else {
                 tracing::warn!("[tray] about-to-show: no menu path for {address}");
                 return;
@@ -418,6 +422,10 @@ async fn handle_command(
             }
         }
         TrayCommand::MenuClicked { address, item_id } => {
+            if item_paths.is_ambiguous(&address) {
+                tracing::warn!("[tray] menu click ignored: {address} is an ambiguous multi-object address");
+                return;
+            }
             let Some(menu_path) = menu_path_for(client, &address) else {
                 tracing::warn!("[tray] menu click: no menu path for {address}");
                 return;
@@ -477,7 +485,7 @@ async fn scroll(
     proxy.scroll(delta, orientation.as_dbus_str()).await
 }
 
-async fn refresh_registered_item_paths(connection: &Connection) -> Option<HashMap<String, String>> {
+async fn refresh_registered_item_paths(connection: &Connection) -> Option<RegisteredItemPaths> {
     match tokio::time::timeout(crate::COMMAND_TIMEOUT, query_registered_item_paths(connection)).await {
         Ok(Ok(paths)) => Some(paths),
         Ok(Err(error)) => {
@@ -494,29 +502,68 @@ async fn refresh_registered_item_paths(connection: &Connection) -> Option<HashMa
     }
 }
 
-async fn query_registered_item_paths(connection: &Connection) -> zbus::Result<HashMap<String, String>> {
+async fn query_registered_item_paths(connection: &Connection) -> zbus::Result<RegisteredItemPaths> {
     let proxy = StatusNotifierWatcherQueryProxy::new(connection).await?;
     let items = proxy.registered_status_notifier_items().await?;
     Ok(collect_registered_item_paths(items))
 }
 
-fn collect_registered_item_paths(mut registered: Vec<String>) -> HashMap<String, String> {
+/// Registered SNI bus addresses mapped to their object path, for routing the
+/// item's own direct actions (activate/secondary-activate/context-menu/
+/// scroll) AND for gating DBusMenu commands. One bus address normally hosts
+/// one item, but the SNI protocol allows a single connection to register
+/// several items at different object paths -- and the underlying
+/// `system-tray` client's own item cache ([`TrayItemMap`]) is keyed by bus
+/// address only. Each registered object's `watch_item_properties` and
+/// `watch_menu` tasks independently mutate that SAME address-keyed slot
+/// (`system-tray-0.8.7/src/client.rs`), so for an ambiguous address the
+/// crate's cache can hold protocol fields from one object and a `TrayMenu`
+/// layout from a completely different one at the same time -- there is no
+/// crate-exposed way to recover which object any given field came from.
+/// [`ambiguous`](Self::ambiguous) tracks every such address so BOTH direct
+/// actions (via [`path_for`](Self::path_for) simply having no entry) and
+/// DBusMenu commands (checked explicitly in [`handle_command`]) refuse to
+/// guess rather than risk operating on the wrong SNI object. A transient
+/// watcher-query failure is a different, unambiguous case (an empty/default
+/// `RegisteredItemPaths`, `handle_command`'s existing "no path" branches
+/// already cover it) and must not be conflated with genuine ambiguity.
+#[derive(Debug, Clone, Default)]
+struct RegisteredItemPaths {
+    paths: HashMap<String, String>,
+    ambiguous: std::collections::HashSet<String>,
+}
+
+impl RegisteredItemPaths {
+    fn path_for(&self, address: &str) -> Option<&str> {
+        self.paths.get(address).map(String::as_str)
+    }
+
+    fn is_ambiguous(&self, address: &str) -> bool {
+        self.ambiguous.contains(address)
+    }
+}
+
+fn collect_registered_item_paths(mut registered: Vec<String>) -> RegisteredItemPaths {
     registered.sort();
-    let mut paths = HashMap::new();
+    let mut result = RegisteredItemPaths::default();
     for item in registered {
         let Some((address, path)) = registered_item_parts(&item) else {
             tracing::warn!("[tray] watcher returned an item without an object path: {item}");
             continue;
         };
-        if paths.contains_key(address) {
+        if result.paths.contains_key(address) || result.ambiguous.contains(address) {
             tracing::warn!(
-                "[tray] multiple SNI objects share {address}; system-tray exposes one item, using the first path"
+                "[tray] multiple SNI objects share {address}; the underlying client also collapses \
+                 these by bus address, so no object path or menu can be reliably paired with the \
+                 shown item -- disabling direct actions and DBusMenu commands for this address"
             );
+            result.paths.remove(address);
+            result.ambiguous.insert(address.to_owned());
             continue;
         }
-        paths.insert(address.to_owned(), path.to_owned());
+        result.paths.insert(address.to_owned(), path.to_owned());
     }
-    paths
+    result
 }
 
 fn registered_item_parts(registered: &str) -> Option<(&str, &str)> {
@@ -533,6 +580,9 @@ async fn activate(client: &Client, req: ActivateRequest) {
 
 /// Look up an item's DBusMenu object path (the `menu` property) by bus address.
 /// Read straight from the crate's item map; cheap and never held across await.
+/// Callers MUST first check [`RegisteredItemPaths::is_ambiguous`] for `address`
+/// and skip the call entirely when true -- see [`RegisteredItemPaths`]'s docs
+/// for why an ambiguous address's menu/path pairing cannot be trusted.
 fn menu_path_for(client: &Client, address: &str) -> Option<String> {
     let map = client.items();
     let guard = map.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -787,11 +837,45 @@ mod tests {
             ":1.58/StatusNotifierItem".to_string(),
             ":1.72/org/example/A".to_string(),
         ]);
-        assert_eq!(paths.get(":1.58").map(String::as_str), Some("/StatusNotifierItem"));
+        assert_eq!(paths.path_for(":1.58"), Some("/StatusNotifierItem"));
+        assert!(!paths.is_ambiguous(":1.58"));
         assert_eq!(
-            paths.get(":1.72").map(String::as_str),
-            Some("/org/example/A"),
-            "the first lexical path wins when the upstream map collapses duplicate bus names",
+            paths.path_for(":1.72"),
+            None,
+            "an address with two registered paths cannot be reliably paired with the item the \
+             underlying client's own (also address-keyed) cache happens to be holding, so direct \
+             actions are left out rather than guessing the lexically-first path",
+        );
+        assert!(
+            paths.is_ambiguous(":1.72"),
+            "the ambiguity must be tracked explicitly, not merely inferred from path absence, so \
+             DBusMenu commands can also refuse this address without conflating it with a transient \
+             watcher-query failure",
+        );
+    }
+
+    #[test]
+    fn registered_item_path_cache_disables_actions_for_every_address_with_three_or_more_objects() {
+        // A third object under the same already-ambiguous address must not
+        // resurrect an entry (e.g. via an off-by-one in the ambiguity set).
+        let paths = collect_registered_item_paths(vec![
+            ":1.72/org/example/A".to_string(),
+            ":1.72/org/example/B".to_string(),
+            ":1.72/org/example/C".to_string(),
+        ]);
+        assert_eq!(paths.path_for(":1.72"), None);
+        assert!(paths.is_ambiguous(":1.72"));
+        assert!(paths.paths.is_empty());
+    }
+
+    #[test]
+    fn registered_item_path_cache_unambiguous_address_is_not_flagged() {
+        let paths = collect_registered_item_paths(vec![":1.58/StatusNotifierItem".to_string()]);
+        assert!(!paths.is_ambiguous(":1.58"));
+        assert!(
+            !paths.is_ambiguous(":1.99"),
+            "an address that was never registered at all must not read as ambiguous either -- \
+             it is simply absent, the same as a transient watcher-query failure",
         );
     }
 
