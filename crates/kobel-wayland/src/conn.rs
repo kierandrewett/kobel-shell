@@ -535,6 +535,16 @@ impl OutputControl<'_> {
         Control { host: &mut *self.host }.set_input_region_empty(id, empty);
     }
 
+    /// Current compositor-logical dimensions for `output`.
+    ///
+    /// Returns `None` until xdg-output metadata is complete, after removal, or if
+    /// the compositor reports a non-positive axis. Presentation crates use this
+    /// to derive per-output geometry without baking in one monitor size.
+    pub fn logical_size(&self, output: OutputId) -> Option<(u32, u32)> {
+        let wl = self.host.wl_output_for(output)?;
+        positive_logical_size(self.host.output_state.info(&wl)?.logical_size?)
+    }
+
     /// The outputs currently present, EXCLUDING the one being removed (if this is a
     /// Removed event). Use the first entry as the rebind target for singletons whose
     /// host output died (the simple primary-death policy, docs/FREYA-PLAN.md 2.1).
@@ -2143,6 +2153,15 @@ fn output_id_of(output: &wl_output::WlOutput) -> OutputId {
     OutputId(output.id().protocol_id())
 }
 
+/// Convert compositor metadata into geometry safe for presentation calculations.
+/// A zero axis means xdg-output has not supplied a usable logical size yet.
+fn positive_logical_size((width, height): (i32, i32)) -> Option<(u32, u32)> {
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    Some((width as u32, height as u32))
+}
+
 /// Pure teardown plan for a destroyed output. Given each live surface's
 /// `(id, bound-output)` in surface order, the current keyboard-focus index, and the
 /// output going away, return the indices to remove (ascending) and the focus index
@@ -2222,7 +2241,9 @@ fn direct_popup_children(links: &[(SurfaceId, Option<SurfaceId>)], parent: Surfa
 
 #[cfg(test)]
 mod tests {
-    use super::{direct_popup_children, focus_after_single_close, popup_descendants, retire_plan};
+    use super::{
+        direct_popup_children, focus_after_single_close, popup_descendants, positive_logical_size, retire_plan,
+    };
     use crate::{OutputId, SurfaceId};
 
     fn sid(n: u32) -> SurfaceId {
@@ -2230,6 +2251,15 @@ mod tests {
     }
     fn oid(n: u32) -> OutputId {
         OutputId::new(n)
+    }
+
+    #[test]
+    fn accepts_only_positive_output_dimensions() {
+        assert_eq!(positive_logical_size((1280, 720)), Some((1280, 720)));
+        assert_eq!(positive_logical_size((0, 720)), None);
+        assert_eq!(positive_logical_size((1280, 0)), None);
+        assert_eq!(positive_logical_size((-1, 720)), None);
+        assert_eq!(positive_logical_size((1280, -1)), None);
     }
 
     #[test]
