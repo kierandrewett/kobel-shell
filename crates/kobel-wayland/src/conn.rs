@@ -61,8 +61,15 @@ use wayland_protocols::xdg::shell::client::xdg_positioner::{
 };
 use wayland_protocols::xdg::shell::client::xdg_surface::{self, XdgSurface};
 use wayland_protocols::xdg::shell::client::xdg_wm_base::{self, XdgWmBase};
+use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_handle_v1::{
+    self, ZwlrForeignToplevelHandleV1,
+};
+use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::{
+    self, ZwlrForeignToplevelManagerV1,
+};
 
 use crate::egl::Egl;
+use crate::toplevel::{ToplevelInfo, decode_state_array};
 use crate::frame::runner_waker;
 use crate::surface::{FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole};
 use crate::{
@@ -146,6 +153,19 @@ impl Shell {
             }
         );
 
+        // Window list/activate/minimize/close for the dock: zwlr_foreign_toplevel_
+        // manager_v1 (v3). sctk 0.20 has no delegate for it (only the newer listing-
+        // only ext-foreign-toplevel-list), so Host implements its Dispatch directly,
+        // same as fractional-scale above. Absent -> dock never sees any windows
+        // (GnoblinSnapshot.windows stays empty; connected/amber state is unaffected,
+        // that's still Ping-based liveness over org.gnoblin.Shell).
+        let toplevel_manager =
+            globals.bind::<ZwlrForeignToplevelManagerV1, Host, _>(&qh, 1..=3, ()).ok();
+        tracing::info!(
+            "[host] foreign-toplevel management {}",
+            if toplevel_manager.is_some() { "bound (window list/activate/minimize/close)" } else { "unavailable" }
+        );
+
         let host = Host {
             registry_state: RegistryState::new(&globals),
             seat_state: SeatState::new(&globals, &qh),
@@ -155,6 +175,9 @@ impl Shell {
             viewporter,
             fractional_manager,
             xdg_shell,
+            toplevel_manager,
+            toplevels: Vec::new(),
+            next_toplevel_id: 0,
             egl,
             surfaces: Vec::new(),
             next_id: 0,
@@ -362,6 +385,30 @@ impl Control<'_> {
         }
         s.commit();
     }
+
+    /// Current window snapshot from `zwlr_foreign_toplevel_manager_v1`, oldest-
+    /// announced first. Empty if the compositor never advertised the protocol.
+    pub fn toplevels(&self) -> Vec<ToplevelInfo> {
+        self.host.toplevels()
+    }
+
+    /// Request the toplevel be activated (raised + focused) on the bound seat.
+    /// No-op (logged) if `id` is unknown or no seat has been bound yet.
+    pub fn activate_toplevel(&mut self, id: &str) {
+        self.host.activate_toplevel(id);
+    }
+
+    /// Request the toplevel be minimized. No-op (logged) if `id` is unknown.
+    pub fn minimize_toplevel(&mut self, id: &str) {
+        self.host.minimize_toplevel(id);
+    }
+
+    /// Request the toplevel close itself (the real Quit -- no guarantee it
+    /// actually closes; a `closed` event removes it from [`Control::toplevels`]
+    /// if and when it does). No-op (logged) if `id` is unknown.
+    pub fn close_toplevel(&mut self, id: &str) {
+        self.host.close_toplevel(id);
+    }
 }
 
 /// Handle passed to the [`Shell::on_output`] handler for mounting per-output
@@ -422,6 +469,18 @@ struct Host {
     /// (layer) parents. `None` when the compositor does not advertise xdg_wm_base ->
     /// popups are unavailable (layer surfaces still work). See [`Host::create_popup`].
     xdg_shell: Option<XdgShell>,
+    /// zwlr_foreign_toplevel_manager_v1 global (window list/activate/minimize/
+    /// close for the dock). `None` => not advertised -> the dock sees no windows.
+    toplevel_manager: Option<ZwlrForeignToplevelManagerV1>,
+    /// Live tracked toplevels, kept in the order the compositor announced them.
+    /// Populated/updated by the manager's `toplevel` event and the handle's
+    /// `title`/`app_id`/`state` events; removed on `closed` (see toplevel.rs for
+    /// the pure `ToplevelInfo` shape and `state` array decode).
+    toplevels: Vec<TrackedToplevel>,
+    /// Monotonic counter minting each `ToplevelInfo::id` -- a host-owned stable
+    /// string handed to the UI, not a Wayland object id (implementation detail,
+    /// not a stable string shape across wayland-client versions).
+    next_toplevel_id: u32,
     egl: Egl,
     surfaces: Vec<FreyaLayerSurface>,
     next_id: u32,
@@ -455,7 +514,46 @@ struct Host {
     announced_outputs: HashSet<OutputId>,
 }
 
+/// One live `zwlr_foreign_toplevel_handle_v1` plus the decoded snapshot exposed to
+/// the UI. The handle is kept to send activate/set_minimized/close requests.
+struct TrackedToplevel {
+    handle: ZwlrForeignToplevelHandleV1,
+    info: ToplevelInfo,
+}
+
 impl Host {
+    /// Current toplevel snapshot, oldest-announced first. Cloned (not borrowed) so
+    /// `Control` can hand it to the app tick without holding a `Host` borrow open --
+    /// mirrors [`Shell::remaining`]'s `Vec<OutputId>` convention for the same reason.
+    fn toplevels(&self) -> Vec<ToplevelInfo> {
+        self.toplevels.iter().map(|t| t.info.clone()).collect()
+    }
+
+    fn activate_toplevel(&mut self, id: &str) {
+        let Some(seat) = self.seat.clone() else {
+            tracing::warn!("[host] activate_toplevel({id}): no seat bound yet");
+            return;
+        };
+        match self.toplevels.iter().find(|t| t.info.id == id) {
+            Some(t) => t.handle.activate(&seat),
+            None => tracing::debug!("[host] activate_toplevel({id}): unknown toplevel"),
+        }
+    }
+
+    fn minimize_toplevel(&mut self, id: &str) {
+        match self.toplevels.iter().find(|t| t.info.id == id) {
+            Some(t) => t.handle.set_minimized(),
+            None => tracing::debug!("[host] minimize_toplevel({id}): unknown toplevel"),
+        }
+    }
+
+    fn close_toplevel(&mut self, id: &str) {
+        match self.toplevels.iter().find(|t| t.info.id == id) {
+            Some(t) => t.handle.close(),
+            None => tracing::debug!("[host] close_toplevel({id}): unknown toplevel"),
+        }
+    }
+
     fn create_surface_impl<C>(
         &mut self,
         config: SurfaceConfig,
@@ -1504,6 +1602,110 @@ impl Dispatch<WpFractionalScaleV1, SurfaceId> for Host {
                 scale,
                 scale as f64 / 120.0,
             );
+        }
+    }
+}
+
+// --- Foreign-toplevel management raw Dispatch (sctk 0.20 has no delegate for the
+// control protocol, only the newer listing-only ext-foreign-toplevel-list) ---
+// The manager's `toplevel` event hands us a new_id-created handle; its user data is
+// () (event_created_child below), and we track it by inserting a TrackedToplevel
+// with a freshly-minted id. `title`/`app_id`/`state` update that entry in place;
+// `done` is an atomicity marker (already applied per-event, nothing to batch);
+// `closed` removes it and sends the required `destroy` request.
+
+impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Host {
+    fn event(
+        host: &mut Self,
+        _manager: &ZwlrForeignToplevelManagerV1,
+        event: zwlr_foreign_toplevel_manager_v1::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } => {
+                let id = host.next_toplevel_id;
+                host.next_toplevel_id += 1;
+                tracing::debug!("[host] toplevel {id} created ({:?})", toplevel.id());
+                host.toplevels.push(TrackedToplevel {
+                    handle: toplevel,
+                    info: ToplevelInfo { id: id.to_string(), ..Default::default() },
+                });
+            }
+            zwlr_foreign_toplevel_manager_v1::Event::Finished => {
+                tracing::warn!("[host] zwlr_foreign_toplevel_manager_v1 finished (compositor withdrew it); window list frozen");
+                host.toplevel_manager = None;
+            }
+            _ => {}
+        }
+    }
+
+    wayland_client::event_created_child!(Host, ZwlrForeignToplevelManagerV1, [
+        zwlr_foreign_toplevel_manager_v1::EVT_TOPLEVEL_OPCODE => (ZwlrForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for Host {
+    fn event(
+        host: &mut Self,
+        handle: &ZwlrForeignToplevelHandleV1,
+        event: zwlr_foreign_toplevel_handle_v1::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        use zwlr_foreign_toplevel_handle_v1::Event;
+        match event {
+            Event::Title { title } => {
+                if let Some(t) = host.toplevels.iter_mut().find(|t| t.handle.id() == handle.id()) {
+                    t.info.title = title;
+                }
+            }
+            Event::AppId { app_id } => {
+                if let Some(t) = host.toplevels.iter_mut().find(|t| t.handle.id() == handle.id()) {
+                    t.info.app_id = app_id;
+                }
+            }
+            Event::State { state } => {
+                let (focused, minimized) = decode_state_array(&state);
+                if let Some(t) = host.toplevels.iter_mut().find(|t| t.handle.id() == handle.id()) {
+                    t.info.focused = focused;
+                    t.info.minimized = minimized;
+                }
+            }
+            Event::Closed => {
+                if let Some(pos) = host.toplevels.iter().position(|t| t.handle.id() == handle.id()) {
+                    let closed = host.toplevels.remove(pos);
+                    closed.handle.destroy();
+                    tracing::debug!(
+                        "[host] toplevel {} closed ({}/{})",
+                        closed.info.id,
+                        closed.info.app_id,
+                        closed.info.title
+                    );
+                }
+            }
+            // `done` batches the above into one atomic update for the caller; we
+            // apply each event in place, so this is the moment the snapshot is
+            // known-consistent -- log it once here rather than on every partial
+            // field update. output_enter/leave and parent are not surfaced to the
+            // dock/bar.
+            Event::Done => {
+                if let Some(t) = host.toplevels.iter().find(|t| t.handle.id() == handle.id()) {
+                    tracing::info!(
+                        "[host] toplevel {} ready: app_id={:?} title={:?} focused={} minimized={}",
+                        t.info.id,
+                        t.info.app_id,
+                        t.info.title,
+                        t.info.focused,
+                        t.info.minimized,
+                    );
+                }
+            }
+            Event::OutputEnter { .. } | Event::OutputLeave { .. } | Event::Parent { .. } => {}
+            // Non-exhaustive enum: a future protocol version may add variants.
+            _ => {}
         }
     }
 }

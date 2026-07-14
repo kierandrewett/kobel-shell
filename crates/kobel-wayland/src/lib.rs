@@ -7,20 +7,25 @@
 // calloop-integrated runner waker so an idle shell burns zero CPU.
 //
 // Layout of the crate (see docs/FREYA-PLAN.md sections 2, 3, 7):
-//   conn.rs    -- Shell/host entry, sctk registry/compositor/output/seat/layer-shell
-//   egl.rs     -- shared EGL display/context + per-surface window surface + Skia GL
-//   surface.rs -- FreyaLayerSurface: the embedded Freya runtime + frame pipeline
-//   input.rs   -- sctk pointer/keyboard -> PlatformEvent (pure, unit-tested)
-//   frame.rs   -- runner waker (calloop ping) + frame-time clock
+//   conn.rs     -- Shell/host entry, sctk registry/compositor/output/seat/layer-shell
+//   egl.rs      -- shared EGL display/context + per-surface window surface + Skia GL
+//   surface.rs  -- FreyaLayerSurface: the embedded Freya runtime + frame pipeline
+//   input.rs    -- sctk pointer/keyboard -> PlatformEvent (pure, unit-tested)
+//   frame.rs    -- runner waker (calloop ping) + frame-time clock
+//   toplevel.rs -- zwlr_foreign_toplevel_manager_v1 snapshot type + state decode
+//                  (pure, unit-tested; the Dispatch glue lives in conn.rs with
+//                  every other raw protocol since Host is private to that module)
 
 mod conn;
 mod egl;
 mod frame;
 mod input;
 mod surface;
+mod toplevel;
 
 pub use conn::{Control, OutputControl, Shell};
 pub use surface::SurfaceContexts;
+pub use toplevel::ToplevelInfo;
 
 // Re-export the layer-shell config vocabulary so callers need not depend on sctk.
 pub use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
