@@ -2146,6 +2146,21 @@ mod tests {
         assert_eq!(format_number(-6.0), "-6");
     }
 
+    #[test]
+    fn url_encode_keeps_unreserved_escapes_rest() {
+        // RFC 3986 unreserved set passes through unescaped.
+        assert_eq!(url_encode("abcXYZ019-_.~"), "abcXYZ019-_.~");
+        // Space, and reserved/structural URL characters, are percent-encoded so
+        // a query can never inject extra query params or fragment/path syntax.
+        assert_eq!(url_encode("a b"), "a%20b");
+        assert_eq!(url_encode("a&b=c"), "a%26b%3Dc");
+        assert_eq!(url_encode("q?#"), "q%3F%23");
+        // Non-ASCII is percent-encoded byte-by-byte (valid UTF-8 in, valid
+        // percent-escaped UTF-8 out -- the decoder on the receiving end
+        // reassembles it), never passed through raw.
+        assert_eq!(url_encode("\u{2615}"), "%E2%98%95");
+    }
+
     // ----- ':' commands ----------------------------------------------------
 
     #[test]
