@@ -21,6 +21,9 @@
 
 use std::path::PathBuf;
 use std::sync::LazyLock;
+use std::time::Duration;
+
+use async_io::Timer;
 
 use freya_components::image_viewer::ImageViewer;
 use freya_core::prelude::*;
@@ -54,6 +57,19 @@ const DOTS_SPACING: f32 = 3.0;
 const DOT_REST: f32 = 4.0;
 const DOT_PILL: f32 = 12.0;
 const DOT_MINI: f32 = 3.0;
+
+/// Hover-open delay for a tile tooltip (ms) -- matches the submenu hover-open
+/// delay (menu.rs `SUBMENU_DELAY_MS`), a plausible "don't flash on every
+/// pass-through" tooltip UX.
+const TOOLTIP_DELAY_MS: u64 = 500;
+/// Gap between a tile's top edge and the tooltip's bottom edge (px).
+const TOOLTIP_GAP: f32 = 6.0;
+/// Extra dock SURFACE headroom above the visual tile row, reserved so a
+/// tooltip can render without being clipped to the surface bounds (see
+/// [`dock_surface_height`] and the tooltip wiring in [`DockTile`]). Purely a
+/// buffer/paint concern -- window tiling still reserves only the visual dock
+/// height ([`dock_height`]), not this headroom.
+pub const TOOLTIP_HEADROOM: u32 = 34;
 
 /// Default dock pins (ags/widget/Dock.tsx `PINNED`).
 pub const DEFAULT_PINS: [&str; 6] = [
@@ -164,6 +180,16 @@ pub fn dock_width(tokens: &Tokens, pin_count: usize) -> u32 {
 /// Exact dock height: one icon tile plus the dock padding top and bottom.
 pub fn dock_height(tokens: &Tokens) -> u32 {
     (tokens.icon + 2.0 * tokens.dock_pad).ceil() as u32
+}
+
+/// The dock SURFACE's total height: the visual dock height plus
+/// [`TOOLTIP_HEADROOM`] above it. The extra space is invisible (no
+/// background, no hit-testing) except when a tile's tooltip is showing --
+/// see the tooltip wiring in [`DockTile`] and [`dock`]'s bottom-aligned root.
+/// Window tiling reserves only [`dock_height`] (main.rs's `dock_config`
+/// exclusive zone), never this taller surface height.
+pub fn dock_surface_height(tokens: &Tokens) -> u32 {
+    dock_height(tokens) + TOOLTIP_HEADROOM
 }
 
 // ---------------------------------------------------------------------------
@@ -300,9 +326,34 @@ fn dots_overlay(total: usize, focused: Option<usize>, tokens: Tokens) -> Element
 // DockTile
 // ---------------------------------------------------------------------------
 
+/// A small floating tooltip anchored above a tile, showing `text`. Absolute,
+/// zero layout footprint, non-interactive (never eats the tile's own pointer
+/// events). Must be a child of a NON-clipping ancestor (see the wrapper in
+/// [`DockTile`]) -- the icon tile itself clips (for its icon's corner
+/// radius), which would otherwise cut this off since it renders above the
+/// tile's own bounds.
+fn tile_tooltip(text: &str, tokens: Tokens) -> Element {
+    rect()
+        .position(Position::new_absolute().bottom(tokens.icon + TOOLTIP_GAP).left(0.0))
+        .interactive(false)
+        .background(theme::PANEL.rgb())
+        .corner_radius(10.0)
+        .padding((6.0, 11.0))
+        .shadow((0.0, 6.0, 18.0, 0.0, (0u8, 0u8, 0u8, 76u8)))
+        .child(
+            label()
+                .text(text.to_string())
+                .color(theme::TX.rgb())
+                .font_size(11.5)
+                .font_weight(theme::FONT_WEIGHT_SEMIBOLD as i32)
+                .max_lines(1usize),
+        )
+        .into_element()
+}
+
 /// One pinned dock slot: the app icon on a hover-CHIP tile, the absolute dots
-/// overlay, and the full click model. Unresolved pins render a labelled
-/// PANEL2 placeholder but keep their slot and behaviour.
+/// overlay, a hover-delayed name tooltip, and the full click model. Unresolved
+/// pins render a labelled PANEL2 placeholder but keep their slot and behaviour.
 #[derive(PartialEq)]
 struct DockTile {
     pin_id: String,
@@ -317,6 +368,8 @@ impl Component for DockTile {
         let popup = use_consume::<PopupHost>();
         let dock_pins = use_consume::<DockPins>();
         let mut hovered = use_state(|| false);
+        let mut show_tooltip = use_state(|| false);
+        let mut tooltip_gen = use_state(|| 0u64);
 
         let pin_id = self.pin_id.clone();
 
@@ -343,6 +396,7 @@ impl Component for DockTile {
 
         // Icon content: the resolved icon (falling back to a glyph) or, for an
         // unresolved pin, a labelled placeholder that shows the source id.
+        let tooltip_name = app_name.clone();
         let glyph = tokens.icon * 0.7; // AGS pixelSize 31 within the 44 tile
         let content: Element = if resolved {
             AppIcon { path: icon_path, size: glyph }.into_element()
@@ -375,15 +429,39 @@ impl Component for DockTile {
         let menu_windows = windows;
         let menu_ids = win_ids;
 
-        let mut tile = rect()
+        let mut icon_tile = rect()
             .width(Size::px(tokens.icon))
             .height(Size::px(tokens.icon))
             .corner_radius(theme::RADIUS_TILE)
             .background(bg)
             .center()
             .overflow(Overflow::Clip)
-            .on_pointer_enter(move |_| hovered.set(true))
-            .on_pointer_leave(move |_| hovered.set(false))
+            .on_pointer_enter(move |_| {
+                hovered.set(true);
+                // Show the tooltip after a short delay, guarded by a generation
+                // counter so a quick pass-through (leave before the timer fires)
+                // never shows a stale tooltip -- mirrors menu.rs's submenu
+                // hover-open delay (SUBMENU_DELAY_MS).
+                let this_gen = {
+                    *tooltip_gen.write() += 1;
+                    *tooltip_gen.peek()
+                };
+                let platform = Platform::get();
+                spawn(async move {
+                    Timer::after(Duration::from_millis(TOOLTIP_DELAY_MS)).await;
+                    if *tooltip_gen.peek() == this_gen {
+                        show_tooltip.set(true);
+                        platform.send(UserEvent::RequestRedraw);
+                    }
+                });
+            })
+            .on_pointer_leave(move |_| {
+                hovered.set(false);
+                // Hide is always immediate (no delay), and bumping the generation
+                // invalidates any still-pending show-timer from this hover.
+                *tooltip_gen.write() += 1;
+                show_tooltip.set(false);
+            })
             .on_press(move |_| {
                 click_bus.send(click_command(&click_ids, focused_idx, &click_launch));
             })
@@ -416,10 +494,19 @@ impl Component for DockTile {
 
         // Dots are an absolute overlay only when the app owns windows.
         if total > 0 {
-            tile = tile.child(dots_overlay(total, focused_idx, tokens));
+            icon_tile = icon_tile.child(dots_overlay(total, focused_idx, tokens));
         }
 
-        tile
+        // The tooltip must escape the icon tile's own clip (its `Overflow::Clip`
+        // is for the icon's corner rounding), so it is a sibling in a NON-clipping
+        // wrapper, not a child of `icon_tile`. The wrapper auto-sizes to the icon
+        // tile (its only in-flow child); the tooltip is absolute and takes no
+        // layout space either way.
+        let mut wrapper = rect().child(icon_tile);
+        if *show_tooltip.read() {
+            wrapper = wrapper.child(tile_tooltip(&tooltip_name, tokens));
+        }
+        wrapper
     }
 }
 
@@ -675,8 +762,12 @@ pub fn dock() -> impl IntoElement {
         .background(theme::PANEL.rgb())
         .children(children);
 
-    // Center the slab in the (exactly sized) surface, transparent elsewhere.
-    rect().expanded().center().child(slab)
+    // Bottom-align the slab (not centered): the surface is now
+    // dock_surface_height() tall (visual dock height + TOOLTIP_HEADROOM), so
+    // centering would float the slab into the middle of that extra space. The
+    // headroom above stays empty except when a hovered tile's tooltip renders
+    // into it (see DockTile/tile_tooltip).
+    rect().expanded().vertical().main_align(Alignment::End).cross_align(Alignment::Center).child(slab)
 }
 
 // ---------------------------------------------------------------------------
@@ -719,6 +810,9 @@ mod tests {
         // 4 pins or fewer: only the media separator.
         assert_eq!(dock_width(&theme::FLOATING, 4), 5 * 44 + 1 + 4 * 5 + 10);
         assert_eq!(dock_height(&theme::FLOATING), 54);
+        // Surface height adds TOOLTIP_HEADROOM above the visual dock height,
+        // but never changes the visual height/exclusive-zone math itself.
+        assert_eq!(dock_surface_height(&theme::FLOATING), 54 + TOOLTIP_HEADROOM);
         // Concentric radius: 12 + dock_pad - 1.
         assert_eq!(dock_radius(&theme::FLOATING), 16.0);
     }

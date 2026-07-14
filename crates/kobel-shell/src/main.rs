@@ -257,16 +257,27 @@ fn osd_config() -> SurfaceConfig {
 /// height so maximized/tiled windows sit ABOVE the floating dock.
 fn dock_config(t: &theme::Tokens) -> SurfaceConfig {
     let dock_h = ui::dock::dock_height(t);
-    // The exclusive zone reserves gap + dock height so tiled windows sit above the
-    // floating dock. KOBEL_TEST_DOCK_HITTEST=1 (devkit gate only) drops it to 0: it
-    // does NOT move or resize the dock, but mutter's RemoteDesktop virtual pointer is
-    // confined to the work area, so a reserved bottom zone is otherwise unreachable
-    // by the injector -- zeroing it lets the gate right-click a real dock tile. Never
-    // set in production.
+    // The exclusive zone reserves gap + VISUAL dock height so tiled windows sit
+    // above the floating dock -- deliberately not the taller surface height
+    // below, which is a paint-only allowance for tile tooltips (see
+    // ui::dock::dock_surface_height / TOOLTIP_HEADROOM) and must never affect
+    // window tiling. KOBEL_TEST_DOCK_HITTEST=1 (devkit gate only) drops it to
+    // 0: it does NOT move or resize the dock, but mutter's RemoteDesktop
+    // virtual pointer is confined to the work area, so a reserved bottom zone
+    // is otherwise unreachable by the injector -- zeroing it lets the gate
+    // right-click a real dock tile. Never set in production.
     let exclusive = if dock_hittest_zone() { 0 } else { t.gap as i32 + dock_h as i32 };
+    // The surface itself is taller than the visual dock (dock_surface_height
+    // adds TOOLTIP_HEADROOM above it); BOTTOM-only anchoring means the extra
+    // height extends upward from the fixed bottom margin, so the tile row's
+    // own on-screen position is unchanged -- dock() bottom-aligns its slab
+    // within this taller surface for exactly that reason.
     SurfaceConfig::new(
         "kobel-dock",
-        SurfaceSize::Exact { width: ui::dock::dock_width(t, ui::dock::pins().len()), height: dock_h },
+        SurfaceSize::Exact {
+            width: ui::dock::dock_width(t, ui::dock::pins().len()),
+            height: ui::dock::dock_surface_height(t),
+        },
     )
     .layer(Layer::Top)
     .anchor(Anchor::BOTTOM)
