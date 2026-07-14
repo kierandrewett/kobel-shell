@@ -174,8 +174,15 @@ pub(crate) async fn run(events: UnboundedSender<ServiceEvent>, mut cmd_rx: Unbou
         None => RegisteredItemPaths::default(),
     };
     // The user's icon theme is read once (matches apps.rs). A live theme switch
-    // is not tracked; icons re-resolve whenever an item next changes.
-    let theme = current_icon_theme();
+    // is not tracked; icons re-resolve whenever an item next changes. Off the
+    // single tokio worker (`spawn_blocking`): this shells out to `gsettings`
+    // and a slow/stuck subprocess must not stall every other service task.
+    let theme = tokio::task::spawn_blocking(current_icon_theme)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("[tray] icon theme lookup task failed: {e}");
+            None
+        });
     // Memoize name -> path resolution: a storm of update events must not repeat
     // the synchronous freedesktop theme walk. Valid for the task's lifetime
     // since the theme is read once and never live-tracked.
@@ -513,7 +520,7 @@ async fn query_registered_item_paths(connection: &Connection) -> zbus::Result<Re
 /// scroll) AND for gating DBusMenu commands. One bus address normally hosts
 /// one item, but the SNI protocol allows a single connection to register
 /// several items at different object paths -- and the underlying
-/// `system-tray` client's own item cache ([`TrayItemMap`]) is keyed by bus
+/// `system-tray` client's own item cache (its internal `TrayItemMap`) is keyed by bus
 /// address only. Each registered object's `watch_item_properties` and
 /// `watch_menu` tasks independently mutate that SAME address-keyed slot
 /// (`system-tray-0.8.7/src/client.rs`), so for an ambiguous address the
@@ -697,13 +704,36 @@ fn scan_theme_tree(root: &Path, name: &str) -> Option<PathBuf> {
     raster_hit
 }
 
-/// Pick the highest-resolution non-empty pixmap (the crate delivers several
-/// sizes). Guards against the zero/negative dimensions some apps send.
+/// Pick the highest-resolution valid pixmap (the crate delivers several
+/// sizes). A pixmap is valid only when its dimensions are positive AND its
+/// byte count exactly matches the SNI ARGB32 contract (`width * height * 4`
+/// bytes, 4 bytes/pixel) -- the crate's own `IconPixmap::from_array` performs
+/// no such check, so a buggy or malicious tray item can freely claim any
+/// width/height alongside a mismatched (or empty) `pixels` payload, which
+/// would otherwise leak a malformed [`TrayIcon::Pixmap`] (advertised
+/// dimensions not matching its actual byte count) straight to the UI.
 fn largest_pixmap(pixmaps: &[IconPixmap]) -> Option<&IconPixmap> {
     pixmaps
         .iter()
-        .filter(|p| p.width > 0 && p.height > 0 && !p.pixels.is_empty())
+        .filter(|p| pixmap_len_is_valid(p))
         .max_by_key(|p| i64::from(p.width) * i64::from(p.height))
+}
+
+/// `true` only when `pixels.len()` exactly matches `width * height * 4`
+/// (ARGB32, 4 bytes/pixel) for positive dimensions. Checked arithmetic
+/// guards the multiplication itself against overflow for a hostile
+/// huge-dimension claim.
+fn pixmap_len_is_valid(p: &IconPixmap) -> bool {
+    let (Ok(width), Ok(height)) = (usize::try_from(p.width), usize::try_from(p.height)) else {
+        return false;
+    };
+    if width == 0 || height == 0 {
+        return false;
+    }
+    let Some(expected) = width.checked_mul(height).and_then(|area| area.checked_mul(4)) else {
+        return false;
+    };
+    p.pixels.len() == expected
 }
 
 /// The user's current icon theme directory name, read straight from gsettings
@@ -819,10 +849,35 @@ mod tests {
             "no valid pixmap among malformed entries"
         );
 
-        // A single valid entry among malformed ones is still found.
-        let mixed = vec![pixmap(0, 64, 1024), pixmap(16, 16, 256)];
+        // A single valid entry among malformed ones is still found. 16x16
+        // ARGB32 needs exactly 16*16*4 = 1024 bytes.
+        let mixed = vec![pixmap(0, 64, 1024), pixmap(16, 16, 1024)];
         let picked = largest_pixmap(&mixed).expect("the one valid entry is found");
         assert_eq!((picked.width, picked.height), (16, 16));
+    }
+
+    #[test]
+    fn largest_pixmap_rejects_a_byte_count_that_does_not_match_its_claimed_dimensions() {
+        // The crate's own `IconPixmap::from_array` performs no size validation
+        // (`system-tray-0.8.7/src/item.rs`), so a buggy or malicious tray item
+        // can freely claim a large width/height while sending far fewer bytes
+        // than ARGB32 requires. A naive "positive dims + non-empty" filter
+        // would accept this and leak a malformed `TrayIcon::Pixmap` (advertised
+        // dimensions not matching its actual byte count) to the UI.
+        let undersized = pixmap(64, 64, 1); // needs 64*64*4 = 16384 bytes, has 1
+        assert!(largest_pixmap(std::slice::from_ref(&undersized)).is_none());
+
+        // An oversized payload is equally invalid -- ARGB32 length must match
+        // exactly, not merely be "enough".
+        let oversized = pixmap(16, 16, 99_999);
+        assert!(largest_pixmap(std::slice::from_ref(&oversized)).is_none());
+
+        // A correctly-sized pixmap alongside both is still picked correctly.
+        let valid = pixmap(16, 16, 1024);
+        let pixmaps = vec![undersized, oversized, valid];
+        let picked = largest_pixmap(&pixmaps).expect("the correctly-sized entry is found");
+        assert_eq!((picked.width, picked.height), (16, 16));
+        assert_eq!(picked.pixels.len(), 1024);
     }
 
     #[test]
