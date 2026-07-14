@@ -25,10 +25,24 @@ pub struct Preedit {
     pub cursor_end: Option<usize>,
 }
 
-/// One atomic payload delivered on `done`: apply in this exact order (matches the
-/// protocol's mandated application order) -- delete `delete_before`/`delete_after`
-/// bytes around the cursor, insert `commit` at the (now-adjusted) cursor, then show
-/// `preedit` as the new composing text at the cursor.
+/// One atomic payload delivered on `done`. The protocol's mandated `done`
+/// application order (text-input-unstable-v3.xml) has 7 steps; the ones this
+/// struct's fields carry, in order, are:
+///   1. Remove any PREVIOUSLY shown preedit text (implicit -- there is no
+///      field for it; a caller replacing its editor's composing-text region
+///      with nothing accomplishes this).
+///   2. Delete `delete_before`/`delete_after` bytes around the cursor.
+///      Per the protocol, if a preedit was showing, these counts are
+///      relative to ITS start/end, not the raw committed-text cursor -- which
+///      step 1 already collapsed away, so applying delete against the
+///      cursor position AFTER removing the old preedit is correct.
+///   3. Insert `commit` at the (now-adjusted) cursor.
+///   4. (Recalculate surrounding text to send back -- no field here; a
+///      caller re-reports it via `ime_sync_surrounding_text`.)
+///   5. Show `preedit` as the new composing text at the cursor.
+///
+/// Steps 6 (cursor-inside-preedit placement) and 7 (action) are folded into
+/// `preedit`'s own cursor fields and are not separately modeled.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ImeCommit {
     pub delete_before: u32,
