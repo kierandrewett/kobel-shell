@@ -18,7 +18,7 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -100,10 +100,22 @@ const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// and releases the lock immediately, which would defeat the whole point).
 fn acquire_instance_lock(socket_path: &Path) -> std::io::Result<File> {
     let lock_path = socket_path.with_extension("lock");
+    // Owner-only at creation (mode set ATOMICALLY via OpenOptions, not a
+    // separate chmod after the fact -- same reasoning as notifd's persisted
+    // store: no window, however narrow, at a loose umask-masked default).
+    // Matters specifically because socket_path()'s `/tmp` fallback (when
+    // XDG_RUNTIME_DIR is unset) is world-writable: without this, another
+    // local user could pre-create the lock file loosely-permissioned there.
+    // A hostile pre-created file this process then can't open in write mode
+    // degrades gracefully anyway (serve_at's caller treats anything other
+    // than AddrInUse as non-fatal -- the shell still starts, just without
+    // kobelctl for that session) -- this closes the narrow window rather
+    // than just accepting that fallback.
     let file = OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
+        .mode(0o600)
         .open(&lock_path)?;
     // SAFETY: `file` is a valid, open file descriptor for the duration of this
     // call (borrowed via as_raw_fd, not consumed); LOCK_EX | LOCK_NB never
@@ -364,6 +376,26 @@ mod tests {
         assert_eq!(mode, 0o600, "control socket must not be group/other accessible");
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn instance_lock_file_is_owner_only() {
+        let path = std::env::temp_dir().join(format!("kobel-shell-ipc-lock-perm-test-{}.sock", std::process::id()));
+        let held = acquire_instance_lock(&path).expect("acquire the lock");
+
+        let lock_path = path.with_extension("lock");
+        let mode = std::fs::metadata(&lock_path)
+            .expect("stat lock file")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "the instance lock file must not be group/other accessible, even via the /tmp fallback"
+        );
+
+        drop(held);
+        let _ = std::fs::remove_file(&lock_path);
     }
 
     #[test]
