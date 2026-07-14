@@ -424,16 +424,19 @@ so every merge keeps a usable shell.
 - **`cargo audit` flags `quick-xml` 0.39.4 (RUSTSEC-2026-0194/0195, DoS via
   quadratic-time attribute scanning and unbounded namespace allocation).**
   Transitive, several levels deep: `wayland-scanner` (a proc-macro build
-  dependency of `wayland-client`/`smithay-client-toolkit`) pins it, and
-  0.20.0 is smithay-client-toolkit's latest release -- no newer upstream
-  version exists yet that resolves to a fixed quick-xml, and `cargo update`
-  cannot bump it past 0.39.x within the semver range wayland-scanner
-  declares. Practically inert here: wayland-scanner runs quick-xml only at
-  *compile time*, parsing the static, repo-vendored Wayland protocol XML
-  bundled in the wayland-protocols crates -- never untrusted or network-
-  sourced input at runtime, so neither advisory's DoS vector is reachable
-  from this shell's actual attack surface. Re-run `cargo audit` after any
-  `smithay-client-toolkit`/`wayland-client` bump to see if it clears.
+  dependency of `wayland-client`/`smithay-client-toolkit`) is the crate that
+  directly declares the quick-xml version bound, and `wayland-scanner 0.31.10`
+  is confirmed the latest published release (`cargo info wayland-scanner`) --
+  it does not yet loosen its constraint to resolve a fixed quick-xml, and
+  `cargo update -p quick-xml --dry-run` confirms no bump is available within
+  the range it declares. Practically inert here regardless: wayland-scanner
+  runs quick-xml only at *compile time*, parsing the static Wayland protocol
+  XML files bundled inside the wayland-protocols/wayland-scanner crates
+  themselves (fetched from the registry as part of those dependencies --
+  never vendored into this repository) -- never untrusted or network-sourced
+  input at runtime, so neither advisory's DoS vector is reachable from this
+  shell's actual attack surface. Re-run `cargo audit` after any
+  `wayland-scanner`/`wayland-client` bump to see if it clears.
 - **`cargo audit` also flags `paste` 1.0.15 as unmaintained (RUSTSEC-2024-0436,
   an advisory-status warning, not a vulnerability -- `cargo audit`'s own summary
   counts it separately: "2 vulnerabilities found ... 1 allowed warning found").**
