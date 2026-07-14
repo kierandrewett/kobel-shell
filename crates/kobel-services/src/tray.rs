@@ -570,6 +570,8 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use system_tray::item::{Category, Status, Tooltip};
+
     use super::*;
 
     #[tokio::test]
@@ -706,5 +708,104 @@ mod tests {
 
         assert!(!menu.items[3].enabled, "disabled flag carried");
         assert!(!menu.items[4].visible, "invisible flag carried");
+    }
+
+    fn pixmap(width: i32, height: i32, pixel_count: usize) -> IconPixmap {
+        IconPixmap { width, height, pixels: vec![0u8; pixel_count] }
+    }
+
+    #[test]
+    fn largest_pixmap_picks_the_biggest_valid_one() {
+        let pixmaps =
+            vec![pixmap(16, 16, 1024), pixmap(64, 64, 16384), pixmap(32, 32, 4096)];
+        let picked = largest_pixmap(&pixmaps).expect("a valid pixmap exists");
+        assert_eq!((picked.width, picked.height), (64, 64), "largest area wins");
+    }
+
+    #[test]
+    fn largest_pixmap_skips_zero_dimension_and_empty_entries() {
+        // Zero width, zero height, and empty pixel data are all malformed
+        // entries some apps send; none of them may be picked even though a
+        // naive max-by-area would treat a 0x0 "pixmap" as harmless.
+        let malformed = vec![
+            pixmap(0, 64, 1024),
+            pixmap(64, 0, 1024),
+            IconPixmap { width: 32, height: 32, pixels: Vec::new() },
+        ];
+        assert!(largest_pixmap(&malformed).is_none(), "no valid pixmap among malformed entries");
+
+        // A single valid entry among malformed ones is still found.
+        let mixed = vec![pixmap(0, 64, 1024), pixmap(16, 16, 256)];
+        let picked = largest_pixmap(&mixed).expect("the one valid entry is found");
+        assert_eq!((picked.width, picked.height), (16, 16));
+    }
+
+    #[test]
+    fn largest_pixmap_none_for_an_empty_list() {
+        assert!(largest_pixmap(&[]).is_none());
+    }
+
+    /// Build a minimal `StatusNotifierItem` fixture with an optional tooltip.
+    fn sni_item(tool_tip: Option<Tooltip>) -> StatusNotifierItem {
+        StatusNotifierItem {
+            id: "test".to_string(),
+            category: Category::ApplicationStatus,
+            title: None,
+            status: Status::Active,
+            window_id: 0,
+            icon_theme_path: None,
+            icon_name: None,
+            icon_pixmap: None,
+            overlay_icon_name: None,
+            overlay_icon_pixmap: None,
+            attention_icon_name: None,
+            attention_icon_pixmap: None,
+            attention_movie_name: None,
+            tool_tip,
+            item_is_menu: false,
+            menu: None,
+        }
+    }
+
+    fn tooltip(title: &str, description: &str) -> Tooltip {
+        Tooltip {
+            icon_name: String::new(),
+            icon_data: Vec::new(),
+            title: title.to_string(),
+            description: description.to_string(),
+        }
+    }
+
+    #[test]
+    fn tooltip_text_joins_title_and_description() {
+        let item = sni_item(Some(tooltip("Firefox", "3 unread tabs")));
+        assert_eq!(tooltip_text(&item), Some("Firefox\n3 unread tabs".to_string()));
+    }
+
+    #[test]
+    fn tooltip_text_falls_back_to_whichever_half_is_present() {
+        assert_eq!(
+            tooltip_text(&sni_item(Some(tooltip("Firefox", "")))),
+            Some("Firefox".to_string()),
+            "title only"
+        );
+        assert_eq!(
+            tooltip_text(&sni_item(Some(tooltip("", "3 unread tabs")))),
+            Some("3 unread tabs".to_string()),
+            "description only"
+        );
+    }
+
+    #[test]
+    fn tooltip_text_trims_whitespace_and_treats_blank_as_absent() {
+        // Both fields present but all-whitespace: no tooltip to show.
+        assert_eq!(tooltip_text(&sni_item(Some(tooltip("   ", "\t\n")))), None);
+        // No tool_tip at all.
+        assert_eq!(tooltip_text(&sni_item(None)), None);
+        // Padding around real content is trimmed.
+        assert_eq!(
+            tooltip_text(&sni_item(Some(tooltip("  Firefox  ", "")))),
+            Some("Firefox".to_string())
+        );
     }
 }
