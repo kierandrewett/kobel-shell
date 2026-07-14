@@ -26,6 +26,7 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 futures-channel = { workspace = true }
+freya-testing = { workspace = true }
 
 # render-panel: headless, compositor-free layout preview for a single surface
 # body (dev tool; see examples/render_panel.rs).

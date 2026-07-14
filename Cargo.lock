@@ -814,6 +814,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "freya-testing"
+version = "0.4.0-rc.24"
+source = "git+https://github.com/marc2332/freya?rev=5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6#5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6"
+dependencies = [
+ "accesskit",
+ "freya-clipboard",
+ "freya-components",
+ "freya-core",
+ "freya-engine",
+ "futures-channel",
+ "ragnarok",
+ "torin",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1185,6 +1200,7 @@ dependencies = [
  "freya-components",
  "freya-core",
  "freya-engine",
+ "freya-testing",
  "futures-channel",
  "kobel-services",
  "kobel-wayland",
@@ -2741,7 +2757,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

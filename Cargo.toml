@@ -22,6 +22,9 @@ freya-components = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2
 freya-animation = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-clipboard = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 torin = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
+# Dev-only: headless TestingRunner, used to validate paragraph-holder hit-test
+# behavior before wiring click-to-position (see ui/launcher.rs Editor docs).
+freya-testing = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 
 # Wayland host
 smithay-client-toolkit = { version = "0.20", features = ["calloop"] }
