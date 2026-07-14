@@ -129,13 +129,26 @@ pub(crate) fn run(
         }
     };
 
-    // Signal the mainloop once the context settles.
+    // Signal the mainloop once the context settles. libpulse-binding's state
+    // callback can fire RE-ENTRANTLY from inside a `.borrow_mut()`'d call already
+    // on the stack (PA invokes it synchronously from within `connect`/`start`/
+    // `wait` below), so a normal `context.borrow()`/`mainloop.borrow()` here would
+    // panic on the already-live outer borrow. `as_ptr()` bypasses RefCell's
+    // dynamic check instead of a real `.borrow()`.
     {
         let ml_ref = mainloop.clone();
         let ctx_ref = context.clone();
         context
             .borrow_mut()
             .set_state_callback(Some(Box::new(move || {
+                // SAFETY: sound because (a) `mainloop`/`context` never leave this
+                // function's owning thread -- every Rc clone used across this
+                // module's closures stays on the single thread `run()` executes
+                // on, so there is no cross-thread data race to worry about, and
+                // (b) `get_state`/`signal` are read-only PA accessor calls into
+                // the C-side context/mainloop, touching none of the Rust
+                // wrapper's own fields the outer live borrow is protecting --
+                // this aliases past RefCell's check without racing real mutation.
                 let state = unsafe { (*ctx_ref.as_ptr()).get_state() };
                 if matches!(state, State::Ready | State::Failed | State::Terminated) {
                     unsafe { (*ml_ref.as_ptr()).signal(false) };
@@ -251,6 +264,11 @@ fn refresh(
             };
             let st = st.clone();
             let ev = ev.clone();
+            // SAFETY: same reentrancy bypass and justification as the state
+            // callback's `as_ptr()` use in `run()` above -- PA's result callbacks
+            // (here, get_server_info's) are documented re-entrant, `context` never
+            // leaves this module's owning thread, and `introspect()` is a
+            // read-only accessor.
             let introspect = unsafe { (*ctx.as_ptr()).introspect() };
             introspect.get_sink_info_by_name(&name, move |result| {
                 if let ListResult::Item(sink) = result {

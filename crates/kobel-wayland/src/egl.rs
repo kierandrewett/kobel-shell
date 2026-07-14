@@ -66,11 +66,19 @@ pub struct LayerEglSurface {
 
 impl Egl {
     /// Initialize EGL against a Wayland `wl_display` pointer.
-    pub fn new(display_ptr: *mut c_void) -> anyhow::Result<Self> {
+    ///
+    /// # Safety
+    ///
+    /// `display_ptr` must be a valid, live `wl_display` pointer for the calling
+    /// process's Wayland connection, and must remain valid for the lifetime of the
+    /// returned `Egl` (EGL holds no reference of its own -- the caller's connection
+    /// must outlive it).
+    pub unsafe fn new(display_ptr: *mut c_void) -> anyhow::Result<Self> {
         // SAFETY: loads libEGL.so.1 from the system.
         let instance = unsafe { EglInstance::load_required() }
             .map_err(|e| anyhow!("failed to load libEGL: {e}"))?;
 
+        // SAFETY: display_ptr is a valid, live wl_display per this fn's precondition.
         let display = unsafe { instance.get_display(display_ptr) }
             .ok_or_else(|| anyhow!("eglGetDisplay returned no display"))?;
 

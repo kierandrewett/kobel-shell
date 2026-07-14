@@ -124,9 +124,11 @@ impl Shell {
         let waker = runner_waker(runner_ping.clone());
 
         // SAFETY: display_ptr() is a live libwayland wl_display for this connection
-        // (client_system backend), valid for the lifetime of `conn`.
+        // (client_system backend), valid for the lifetime of `conn`, which the
+        // constructed `Host` holds onto (`_conn` field below) for at least as long
+        // as `egl` -- satisfying `Egl::new`'s precondition.
         let display_ptr = conn.backend().display_ptr() as *mut c_void;
-        let egl = Egl::new(display_ptr)?;
+        let egl = unsafe { Egl::new(display_ptr) }?;
 
         let compositor_state =
             CompositorState::bind(&globals, &qh).map_err(|e| anyhow!("bind wl_compositor: {e}"))?;
