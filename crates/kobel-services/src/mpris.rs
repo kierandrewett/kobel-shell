@@ -219,22 +219,34 @@ fn emit_if_changed(
 }
 
 fn recompute(slots: &HashMap<String, PlayerSlot>, order: &[String]) -> MediaSnapshot {
+    let infos = order
+        .iter()
+        .map(|name| slots.get(name).and_then(|slot| slot.info.as_ref()));
+    MediaSnapshot {
+        player: pick_active(infos).cloned(),
+    }
+}
+
+/// Pure priority selection: given player snapshots in discovery order (`None`
+/// where a slot exists but its watcher hasn't delivered a first read yet),
+/// pick the first Playing one, or the first present (possibly-paused) one if
+/// none are playing, or `None` if nothing is present at all. Extracted from
+/// [`recompute`] so the actual selection priority is unit-testable without
+/// `PlayerSlot`'s real `JoinHandle` (which needs a live tokio runtime to
+/// construct).
+fn pick_active<'a>(infos: impl Iterator<Item = Option<&'a PlayerInfo>>) -> Option<&'a PlayerInfo> {
     let mut first_present: Option<&PlayerInfo> = None;
     let mut first_playing: Option<&PlayerInfo> = None;
-    for name in order {
-        if let Some(info) = slots.get(name).and_then(|slot| slot.info.as_ref()) {
-            if first_present.is_none() {
-                first_present = Some(info);
-            }
-            if info.playing {
-                first_playing = Some(info);
-                break;
-            }
+    for info in infos.flatten() {
+        if first_present.is_none() {
+            first_present = Some(info);
+        }
+        if info.playing {
+            first_playing = Some(info);
+            break;
         }
     }
-    MediaSnapshot {
-        player: first_playing.or(first_present).cloned(),
-    }
+    first_playing.or(first_present)
 }
 
 async fn handle_command(conn: &Connection, active: Option<&str>, cmd: MprisCommand) {
@@ -547,5 +559,55 @@ mod tests {
     fn art_url_to_path_none_for_remote_schemes() {
         // http(s) art (e.g. Spotify) isn't fetched.
         assert_eq!(art_url_to_path("https://example.com/art.jpg".to_string()), None);
+    }
+
+    fn info(bus: &str, playing: bool) -> PlayerInfo {
+        PlayerInfo {
+            bus_name: bus.to_string(),
+            playing,
+            title: String::new(),
+            artist: String::new(),
+            art_path: None,
+            position_secs: 0.0,
+            length_secs: 0.0,
+        }
+    }
+
+    #[test]
+    fn pick_active_none_when_nothing_present() {
+        assert_eq!(pick_active([None, None].into_iter()), None);
+        assert_eq!(pick_active(std::iter::empty()), None);
+    }
+
+    #[test]
+    fn pick_active_falls_back_to_first_present_when_nothing_playing() {
+        let a = info("a", false);
+        let b = info("b", false);
+        // Neither playing: the FIRST present one wins, in order.
+        assert_eq!(pick_active([None, Some(&a), Some(&b)].into_iter()), Some(&a));
+    }
+
+    #[test]
+    fn pick_active_prefers_a_later_playing_player_over_an_earlier_paused_one() {
+        let paused = info("paused", false);
+        let playing = info("playing", true);
+        // "paused" appears first in discovery order but is not playing;
+        // "playing" appears later but wins -- playing always beats present.
+        assert_eq!(pick_active([Some(&paused), Some(&playing)].into_iter()), Some(&playing));
+    }
+
+    #[test]
+    fn pick_active_returns_the_first_playing_one_when_several_are_playing() {
+        let first = info("first", true);
+        let second = info("second", true);
+        assert_eq!(pick_active([Some(&first), Some(&second)].into_iter()), Some(&first));
+    }
+
+    #[test]
+    fn pick_active_skips_not_yet_reported_slots() {
+        // A slot exists (tracked in `order`) but its watcher hasn't delivered
+        // a first read yet (`None`) -- must not be mistaken for "present".
+        let b = info("b", false);
+        assert_eq!(pick_active([None, Some(&b)].into_iter()), Some(&b));
     }
 }
