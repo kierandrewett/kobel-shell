@@ -929,29 +929,55 @@ fn main() -> anyhow::Result<()> {
     });
 
     // Graceful shutdown on SIGTERM/SIGINT (systemd stop, logout, Ctrl+C in a
-    // terminal launch): translate the signal into the SAME ShellMsg::Quit the IPC
-    // `quit` command already uses, so it drives the identical clean-shutdown chain
-    // (manager sees quit -> control.exit() -> shell.run() returns -> main() falls
-    // through -> every Rc<RefCell<Manager>> clone drops once shell's own callback
-    // closures are released with `shell` itself -> Manager drops -> its
-    // Box<dyn CommandSink> (the ServicesHandle) field drops -> notifd gets its
-    // bounded-3s graceful shutdown, including the SetFeature hand-back to gnoblin).
-    // Without this, SIGTERM's default disposition is immediate termination with no
-    // Drop impls running at all -- every ungraceful stop (systemd restart, a plain
-    // `kill`) would skip that hand-back. Since notifd disables gnoblin's own
-    // notification handling on startup in the common case (gnome-shell owns
-    // org.freedesktop.Notifications by default) and only re-enables it here, that
-    // would leave desktop notifications broken system-wide until kobel-shell is
-    // started again -- not a rare edge case, the normal shape of "restart the shell".
+    // terminal launch): translate the FIRST signal into the SAME ShellMsg::Quit
+    // the IPC `quit` command already uses, so it drives the identical
+    // clean-shutdown chain (manager sees quit -> control.exit() -> shell.run()
+    // returns -> main() falls through -> every Rc<RefCell<Manager>> clone drops
+    // once shell's own callback closures are released with `shell` itself ->
+    // Manager drops -> its Box<dyn CommandSink> (the ServicesHandle) field drops
+    // -> notifd gets its bounded-3s graceful shutdown, including the SetFeature
+    // hand-back to gnoblin). Without this, SIGTERM's default disposition is
+    // immediate termination with no Drop impls running at all -- every
+    // ungraceful stop (systemd restart, a plain `kill`) would skip that
+    // hand-back. Since notifd disables gnoblin's own notification handling on
+    // startup in the common case (gnome-shell owns org.freedesktop.Notifications
+    // by default) and only re-enables it here, that would leave desktop
+    // notifications broken system-wide until kobel-shell is started again --
+    // not a rare edge case, the normal shape of "restart the shell".
+    //
+    // The handler LOOPS over every signal rather than taking just one: once a
+    // Signals registration exists for SIGTERM/SIGINT, the OS delivers them to
+    // its internal queue instead of applying the default (terminate) action --
+    // and that queue keeps accumulating even after nothing drains it. Verified
+    // directly (a standalone reproduction outside this crate): a handler that
+    // reads exactly one signal then returns leaves the process COMPLETELY
+    // UNKILLABLE by a second SIGTERM (silently swallowed, no default-kill
+    // fallback) -- worse than having no handler at all, since a second
+    // impatient Ctrl+C (or a shutdown that hangs for any reason despite the
+    // bounded notifd timeout) would leave no way to stop the process short of
+    // SIGKILL. So: first signal requests the graceful path; any signal
+    // received AFTER that (the loop keeps running concurrently with the
+    // graceful shutdown already in flight) force-exits immediately, matching
+    // the standard "second Ctrl+C forces it" convention every well-behaved
+    // long-running CLI/daemon implements.
     match signal_hook::iterator::Signals::new([signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT]) {
         Ok(mut signals) => {
             let bus = bus.clone();
             thread::Builder::new()
                 .name("kobel-signals".to_string())
                 .spawn(move || {
-                    if let Some(sig) = signals.forever().next() {
-                        tracing::info!("[shell] received signal {sig}; requesting clean shutdown");
-                        bus.send(ShellMsg::Quit);
+                    let mut requested = false;
+                    for sig in signals.forever() {
+                        if !requested {
+                            tracing::info!("[shell] received signal {sig}; requesting clean shutdown");
+                            bus.send(ShellMsg::Quit);
+                            requested = true;
+                        } else {
+                            tracing::warn!(
+                                "[shell] received signal {sig} while already shutting down; forcing immediate exit"
+                            );
+                            std::process::exit(1);
+                        }
                     }
                 })
                 .expect("failed to spawn signal-handling thread");
