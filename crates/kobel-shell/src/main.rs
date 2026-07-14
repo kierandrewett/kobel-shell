@@ -1185,3 +1185,25 @@ fn main() -> anyhow::Result<()> {
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kb_open_grabs_the_keyboard_for_launcher_and_session() {
+        // Keyboard-first surfaces: typing/arrow-nav must never share focus with
+        // anything else while open.
+        assert_eq!(kb_open(SurfaceKey::Launcher), KeyboardInteractivity::Exclusive);
+        assert_eq!(kb_open(SurfaceKey::Session), KeyboardInteractivity::Exclusive);
+    }
+
+    #[test]
+    fn kb_open_shares_focus_for_pointer_first_panels() {
+        // Quicksettings/calendar/drawer are click/hover-first; a real window
+        // (or another surface) can keep keyboard focus while these are open.
+        assert_eq!(kb_open(SurfaceKey::QuickSettings), KeyboardInteractivity::OnDemand);
+        assert_eq!(kb_open(SurfaceKey::Calendar), KeyboardInteractivity::OnDemand);
+        assert_eq!(kb_open(SurfaceKey::Drawer), KeyboardInteractivity::OnDemand);
+    }
+}
