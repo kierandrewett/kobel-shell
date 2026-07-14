@@ -28,7 +28,7 @@ value steps and shadow, never from borders + shadows together.
 | `amber` | `oklch(82% .12 80)` | warnings (reserved) |
 
 Rules: the leaf accent appears **only as a solid fill with ink text** (active chips,
-primary buttons, today-in-calendar, slider fills, badge/EQ data) — never as a tint,
+primary buttons, today-in-calendar, slider fills, badge) — never as a tint,
 outline, or decorative wash. Neutrals are violet-cast (hue 300–320, chroma ≤ .022)
 to sit with the sakura art. Rose is semantic-destructive only.
 
@@ -48,7 +48,14 @@ to sit with the sakura art. Rose is semantic-destructive only.
   (`crates/kobel-shell/src/theme.rs`'s `RADIUS_*` constants are the source of
   truth; this table trails an earlier iteration -- see the v3 addenda below for
   what actually shipped.)
-- Floating panels: shadow only (`0 18px 40px` deep + `0 2px 8px` contact), **no border**.
+- Panel/sheet roots (bar, launcher, QS, calendar, drawer, session, OSD, dock,
+  menu) carry **no shadow at all** -- elevation there comes entirely from
+  surface value steps (panel/panel2/chip), not shadow. Shadow is reserved for
+  smaller floating elements sitting on top of a panel: tooltips, session
+  action tiles, and drawer header/empty-state cards use `0 6px 18px` (~30%
+  black); toast cards (which float directly over desktop content, not over a
+  panel background) use a deeper `0 15px 34px` (~45% black). No border
+  anywhere in either case.
 - Inner tiles: surface-step only (panel2 on panel), **no border, no shadow**.
 - Focus: 2px leaf `:focus-visible` outline, 2px offset — the only outline in the system.
 
@@ -60,39 +67,55 @@ harmonic oscillator (`crates/kobel-shell/src/motion.rs`'s `SpringSpec`/`SpringSi
 not a keyframed timeline; matches `Adw.SpringParams.new_full(damping, 1, stiffness)`
 semantics.
 
-| motion | spring |
-|---|---|
-| panel open | y/scale k420 d26 (slight overshoot), opacity k360 d32 |
-| panel close | k640 d48 (fast, no bounce) |
-| workspace pill morph | width k460 d21 |
-| slider knob grab/release | scale k620 d20 → k420 d25 |
-| toast in / out | x k360 d23 / k440 d36 |
-| swipe dismiss | 1:1 drag, release fling inherits gesture velocity, k280 d27 |
-| badge pop / bell shake | velocity impulse (`kick`), k400 d17 / k330 d7 |
+| motion | spring | wired? |
+|---|---|---|
+| panel open | y/scale k420 d26 (slight overshoot), opacity k360 d32 | yes -- every panel |
+| panel close | k640 d48 (fast, no bounce) | yes -- every panel |
+| toast in / out | x k360 d23 / k440 d36 | yes -- `ToastCard` |
+| QS drill in / back | k400 d27 / k440 d29 | yes -- `quick_settings.rs` |
+| QS sheet height-adapt | k440 d32 | yes -- content-sized resize |
+| dock dot width (rest → focused pill) | k430 d24 | yes -- `Dot` |
+| badge pop / bell shake | velocity impulse (`kick`), k400 d17 / k330 d7 | **no** -- `UseSpring::kick()`, `BADGE_POP`/`BELL_SHAKE` are implemented and unit-tested at the math level but have zero call sites in the UI (see FREYA-PLAN.md's risk notes) |
+| swipe-dismiss fling / snap | k280 d27 / k430 d28 | **no** -- `FLING`/`SNAP` are defined constants, zero call sites anywhere |
 
-Panel children stagger 34ms/row with an ease-out-back curve. Ambient motion
-(falling petals, EQ bars) pauses under `prefers-reduced-motion`; springs settle
-instantly.
+There is no per-row stagger and no "ease-out-back curve" panel-children reveal --
+every panel's children fade in together with the panel's own opacity spring, not
+individually offset. Ambient motion: none currently loops continuously (no
+"falling petals" or "EQ bars" -- neither was ever built in this codebase or the
+AGS port it replaced, verified by grep). `prefers-reduced-motion` freezes the
+wired springs listed above (settle instantly on `to()`); there is no separate
+ambient-animation category to freeze because none exists yet.
 
 ## Components
 
-Bar (42px, single opaque slab): launcher · workspace dots (active = 24px leaf pill) ·
-running-app mini icons · focused title · centered clock+date (→ calendar/notifs) ·
-status pill (net/vol/battery, wheelable volume) · bell+badge · power.
-Launcher: search + flat-color icon tiles, `:` switches to gnoblinctl command rows;
-full keyboard path. Quick settings: 2-col filled chips → sliders (+ per-app chevron) →
-media card with EQ visualizer → CPU/MEM stats → user row → org.gnoblin.Shell row.
-Notification centre: month calendar → header with rose Clear → swipeable cards
-(velocity fling, height-collapse) → "All caught up" empty state.
-OSD: volume pill, auto-hide 1.5s, draggable. Session: dim overlay, 4 stagger-pop
-round buttons, shutdown hovers rose.
+Bar (42px, single opaque slab): launcher toggle · focused window title ·
+centered clock+date (→ calendar) · status pill (wifi/speaker/battery glyphs,
+click → quick settings; no wheel handling) · tray icons · bell+badge (→ drawer).
+No workspace indicators (gnoblin's wlr-foreign-toplevel-management carries no
+workspace state; see FREYA-PLAN.md's open questions).
+Launcher: search + flat-color icon tiles, `:` switches to gnoblinctl command
+rows; full keyboard path.
+Quick settings: 2-col filled chips → per-app-mixer/network/bluetooth drill
+sections with a slide transition → volume/brightness sliders → an amber
+gnoblin-disconnected banner with Reconnect. No EQ visualizer, no CPU/MEM
+stats, no user row -- none of those were ever implemented. Media playback
+lives in the drawer (`MediaCard`) and the dock's media mini-tile, not here.
+Drawer + Calendar: two separate singleton surfaces (see v3 addenda below) --
+drawer is a header with rose Clear + DND toggle over a scrollable notification
+history and an "All caught up" empty state; calendar is its own month grid.
+Neither cards nor calendar days have a swipe-to-dismiss gesture (matches the
+unwired `FLING`/`SNAP` finding above): notifications dismiss by clicking their
+close button.
+OSD: volume/brightness pill, auto-hide, display-only (click-through, no drag).
+Session: dim overlay, 4 action tiles, press-again confirm on the destructive
+two, no per-tile stagger-pop entrance.
 
 ## Wallpaper
 
-Generative sakura (canvas, seeded PRNG): periwinkle sky gradient, tapered dark
-boughs with clustered 5-petal blossoms (pink-dominant), soft pink cluster glows,
-edge vignette, 9 drifting petals animated at ~0 cost. In production this is a
-user wallpaper; the shell's neutrals assume warm/violet art but don't require it.
+The compositor/desktop's own wallpaper shows through; kobel-shell paints no
+wallpaper of its own (no canvas/PRNG generative art, no drifting petals --
+neither was ever implemented in this codebase or the AGS port). The shell's
+neutrals assume warm/violet art but don't require it.
 
 ## Anti-patterns enforced
 
@@ -122,7 +145,7 @@ never decorative. If a new surface needs one of these, redesign the surface.
   distinct back chevron in the drill header -- not the same glyph rotating in
   place. The sheet's own height adapts to the active layer's measured content.
 - **Quiet accent**: leaf fills = active chips, slider fills, primary buttons, today, badge, focus ring.
-  EQ/stats/avatar/art/decorative = neutral. Amber = anomaly (connecting…, gnoblin disconnected).
+  Media art / decorative glyphs = neutral. Amber = anomaly (connecting…, gnoblin disconnected).
 - **Failure states are canon**: media-empty ("Nothing playing" + Open Music), Wi-Fi connecting/…,
   gnoblin disconnected (amber row, "Reconnect", "osd + notifs handed back to gnome"), launcher
   no-results (a permanent last-row "Search the web for..." fallback, so results are never truly empty).
