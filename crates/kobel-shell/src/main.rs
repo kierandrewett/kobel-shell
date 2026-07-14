@@ -1253,4 +1253,76 @@ mod tests {
             std::env::remove_var("KOBEL_TEST_DOCK_HITTEST");
         }
     }
+
+    /// The Drawer's `top: panel_top` (not 0) is a documented, previously-shipped
+    /// bug fix: wlr-layer-shell exclusive-zone accounting does not offset a
+    /// sibling Layer::Top surface's own anchor origin, so a bare `top: 0` here
+    /// (which looks "more correct" for a bottom-pinned rail at a glance) would
+    /// silently put the drawer's MediaCard back under the bar. Lock the value,
+    /// not just the shape.
+    #[test]
+    fn panel_config_drawer_top_margin_clears_the_bar_not_zero() {
+        let t = theme::FLOATING;
+        let drawer = panel_config(SurfaceKey::Drawer, &t);
+        assert_eq!(drawer.margins.top, t.panel_top() as i32);
+        assert_ne!(drawer.margins.top, 0, "top:0 previously rendered the MediaCard under the bar");
+        // Full-height rail: BOTTOM anchored alongside TOP+RIGHT, height axis
+        // compositor-filled (Exact height 0), deliberately NOT content-sized.
+        assert_eq!(drawer.anchor, Anchor::TOP | Anchor::RIGHT | Anchor::BOTTOM);
+        assert_eq!(drawer.size, SurfaceSize::Exact { width: t.panel_w as u32, height: 0 });
+    }
+
+    /// Every on-demand surface starts closed the same way: no keyboard, empty
+    /// input region (the manager flips both on reveal) -- a per-key regression
+    /// here would silently make a panel steal focus or eat clicks before the
+    /// user ever opens it.
+    #[test]
+    fn panel_config_every_surface_starts_closed() {
+        let t = theme::FLOATING;
+        for key in SurfaceKey::ALL {
+            let cfg = panel_config(key, &t);
+            assert_eq!(
+                cfg.keyboard_interactivity,
+                KeyboardInteractivity::None,
+                "{key:?} must start with no keyboard focus"
+            );
+            assert!(cfg.input_region_empty, "{key:?} must start click-through");
+        }
+    }
+
+    /// Content-sized vs fixed-rail is a real behavioral split, not incidental:
+    /// launcher/quicksettings/calendar hug their content, drawer stays a fixed
+    /// full-height rail, session fills the whole screen. Mixing these up would
+    /// either fight the anchoring (content-sizing a full-height rail) or leave
+    /// a panel the wrong shape.
+    #[test]
+    fn panel_config_size_mode_matches_each_surfaces_shape() {
+        let t = theme::FLOATING;
+        assert!(matches!(
+            panel_config(SurfaceKey::Launcher, &t).size,
+            SurfaceSize::ContentSized { .. }
+        ));
+        assert!(matches!(
+            panel_config(SurfaceKey::QuickSettings, &t).size,
+            SurfaceSize::ContentSized { .. }
+        ));
+        assert!(matches!(
+            panel_config(SurfaceKey::Calendar, &t).size,
+            SurfaceSize::ContentSized { .. }
+        ));
+        assert!(matches!(panel_config(SurfaceKey::Drawer, &t).size, SurfaceSize::Exact { .. }));
+        assert!(matches!(panel_config(SurfaceKey::Session, &t).size, SurfaceSize::Exact { .. }));
+    }
+
+    /// The launcher is the sole surface with a real text field -- the only one
+    /// that should ever get a live Wayland clipboard provider.
+    #[test]
+    fn panel_config_only_launcher_gets_a_clipboard() {
+        let t = theme::FLOATING;
+        assert!(panel_config(SurfaceKey::Launcher, &t).clipboard);
+        for key in [SurfaceKey::QuickSettings, SurfaceKey::Calendar, SurfaceKey::Drawer, SurfaceKey::Session]
+        {
+            assert!(!panel_config(key, &t).clipboard, "{key:?} must not get a clipboard provider");
+        }
+    }
 }
