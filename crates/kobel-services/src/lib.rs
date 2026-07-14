@@ -21,6 +21,7 @@ mod bluetooth;
 mod calendar;
 mod exec;
 mod gnoblin;
+mod icons;
 mod mpris;
 mod network;
 mod notifd;
