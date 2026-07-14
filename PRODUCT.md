@@ -15,7 +15,8 @@ ambient frame around all other work.
 
 ## Product Purpose
 
-kobel-shell is the complete chrome suite for gnoblin, built in Quickshell (QML): top
+kobel-shell is the complete chrome suite for gnoblin, built in Rust with Freya as
+the UI framework, rendered by our own wlr-layer-shell host (no winit, no GTK): top
 bar, launcher, quick-settings dashboard, notification centre with calendar, media +
 OSD, session controls. gnoblin vacates the space (no gnome panel/dash/OSD); kobel
 fills all of it and drives gnoblin live over org.gnoblin.Shell. Success = it feels
@@ -43,14 +44,15 @@ decoration for its own sake.
 ## Design Principles
 
 1. **Motion is the product.** Every state change is a spring — interruptible,
-   velocity-preserving, never a keyframe that snaps. If it can't animate at 60fps in
-   QML, it doesn't ship.
+   velocity-preserving, never a keyframe that snaps. If it can't animate at 60fps,
+   it doesn't ship.
 2. **Honest materials.** Opaque panels with real elevation. No effect the real
    compositor can't render.
 3. **Accent is earned.** The leaf accent appears only as active state, primary action,
    and live data — solid fills with dark ink text, never tints-as-decoration.
-4. **Data wears tabular.** Times, percentages, metrics render in Inter with tabular
-   numerals (`tnum`) so digits align like an instrument; one family carries the whole UI.
+4. **Data wears tabular.** Times, percentages, metrics render in a monospace face
+   with tabular numerals (`tnum`) so digits align like an instrument (see
+   DESIGN.md's typography section for the exact family split).
 5. **Dogfood gnoblin.** org.gnoblin.Shell is a visible, first-class surface (soft
    reload, feature ownership, screencast grants) — the shell demos the compositor.
 

@@ -2,7 +2,7 @@
 
 Visual system for kobel-shell ("sakura pop"). Register: **product** — see PRODUCT.md.
 Live reference: `docs/prototype.html` (open in a browser; every value below is
-implemented there and is the source of truth for the QML build).
+implemented there and is the source of truth for the kobel-shell Rust/Freya build).
 
 ## Theme
 
@@ -51,8 +51,10 @@ to sit with the sakura art. Rose is semantic-destructive only.
 ## Motion
 
 Physics, not keyframes. A shared damped-spring engine (stiffness k, damping d,
-velocity-preserving, interruptible) drives every surface; maps 1:1 to QML
-`SpringAnimation { spring; damping }`.
+velocity-preserving, interruptible) drives every surface -- a closed-form damped
+harmonic oscillator (`crates/kobel-shell/src/motion.rs`'s `SpringSpec`/`SpringSim`),
+not a keyframed timeline; matches `Adw.SpringParams.new_full(damping, 1, stiffness)`
+semantics.
 
 | motion | spring |
 |---|---|

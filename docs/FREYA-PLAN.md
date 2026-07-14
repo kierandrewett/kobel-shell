@@ -429,6 +429,20 @@ so every merge keeps a usable shell.
   sourced input at runtime, so neither advisory's DoS vector is reachable
   from this shell's actual attack surface. Re-run `cargo audit` after any
   `smithay-client-toolkit`/`wayland-client` bump to see if it clears.
+- **`theme::FONT_FAMILY_UI` (Inter, ported verbatim from AGS's `main.scss:22`) is
+  defined but has zero call sites.** Every actual `.font_family(...)` call in the
+  UI applies `FONT_FAMILY_DATA` (`ui-monospace`, for tabular numerals); plain
+  `label()`s never set a family at all, so they fall through to Skia's
+  `FontMgr::default()` (fontconfig's system default sans), not an explicitly
+  registered Inter face. This means the shell's actual rendered UI font today
+  matches DESIGN.md's typography section ("system sans") rather than PRODUCT.md's
+  original "Inter carries the whole UI" framing (PRODUCT.md's design principle 4
+  has been corrected to describe the DATA face only, matching what's really
+  wired). Whether to actually apply `FONT_FAMILY_UI` everywhere (visual fidelity
+  to the original AGS design, at the cost of a hard Inter-availability
+  dependency) or drop the unused constant (accept system-sans as the real,
+  intentional choice) is a product call, not an engineering one -- left
+  unresolved here rather than decided unilaterally.
 
 ## 9. Open questions (carry-overs, unchanged by this plan)
 
