@@ -30,8 +30,9 @@ crates/
                       IPC (kobelctl), every surface under src/ui/, icon assets
 scripts/              devkit gates: headless gnoblin + injected-input assertions
 docs/FREYA-PLAN.md    the rewrite plan (phases 0-7, all landed)
-archive/              the previous AGS/TypeScript shell + the QML sketch, frozen
-                      as reference (self-contained, including an icons copy)
+archive/              the previous AGS/TypeScript shell + the QML sketch (incl. its
+                      qml-PLAN.md design doc), frozen as reference (self-contained,
+                      including an icons copy)
 ```
 
 ## Build and run

@@ -1,3 +1,11 @@
+> **Archived.** This is the original Quickshell/QML plan, superseded by the Rust +
+> Freya rewrite. See `docs/FREYA-PLAN.md` for the current architecture and
+> `archive/ags/` for the AGS/TypeScript port that came after this plan (also
+> superseded). Kept for historical reference alongside the QML sketch
+> (`archive/qml-shell.qml`, `archive/qml-modules/`, `archive/qml-services/`) this
+> document describes -- values, phase numbers, and risks below are frozen as
+> originally written, not current state.
+
 # kobel-shell — design & build plan
 
 The full chrome suite for [gnoblin](https://github.com/kierandrewett/gnoblin), built in
