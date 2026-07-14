@@ -416,6 +416,19 @@ so every merge keeps a usable shell.
 - **`freya-components` context requirements:** stock components expect Platform /
   ticker / clock / clipboard / AssetCacher root contexts - the host provides all of
   them from day one so we can adopt components freely.
+- **`cargo audit` flags `quick-xml` 0.39.4 (RUSTSEC-2026-0194/0195, DoS via
+  quadratic-time attribute scanning and unbounded namespace allocation).**
+  Transitive, several levels deep: `wayland-scanner` (a proc-macro build
+  dependency of `wayland-client`/`smithay-client-toolkit`) pins it, and
+  0.20.0 is smithay-client-toolkit's latest release -- no newer upstream
+  version exists yet that resolves to a fixed quick-xml, and `cargo update`
+  cannot bump it past 0.39.x within the semver range wayland-scanner
+  declares. Practically inert here: wayland-scanner runs quick-xml only at
+  *compile time*, parsing the static, repo-vendored Wayland protocol XML
+  bundled in the wayland-protocols crates -- never untrusted or network-
+  sourced input at runtime, so neither advisory's DoS vector is reachable
+  from this shell's actual attack surface. Re-run `cargo audit` after any
+  `smithay-client-toolkit`/`wayland-client` bump to see if it clears.
 
 ## 9. Open questions (carry-overs, unchanged by this plan)
 
