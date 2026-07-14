@@ -7,6 +7,7 @@
 //! on exit (main.rs, after the loop returns).
 
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -83,6 +84,13 @@ pub fn serve_at(path: PathBuf, bus: ShellBus) -> std::io::Result<PathBuf> {
     // Unlink a stale socket from a previous run; bind fails with EADDRINUSE otherwise.
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
+    // Owner-only: UnixListener::bind creates the socket at the umask-masked
+    // default (typically 0755, world-connectable), and this accepts unauthenticated
+    // commands (including `quit`) from anyone who can reach it -- restrict to the
+    // owning user explicitly rather than relying solely on the containing
+    // directory's protection (XDG_RUNTIME_DIR is usually 0700, but the `/tmp`
+    // fallback in socket_path() is world-traversable).
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
     tracing::info!("[ipc] listening at {}", path.display());
     let listen_path = path.clone();
     thread::Builder::new().name("kobel-ipc".to_string()).spawn(move || {
@@ -203,6 +211,21 @@ mod tests {
         }
         assert!(got.iter().any(|m| matches!(m, ShellMsg::Toggle(SurfaceKey::Launcher))));
         assert!(got.iter().any(|m| matches!(m, ShellMsg::CloseAll)));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn control_socket_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (bus, _rx) = ShellBus::new();
+        let path = std::env::temp_dir()
+            .join(format!("kobel-shell-ipc-perm-test-{}.sock", std::process::id()));
+        serve_at(path.clone(), bus).expect("bind test control socket");
+
+        let mode = std::fs::metadata(&path).expect("stat socket").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "control socket must not be group/other accessible");
+
         let _ = std::fs::remove_file(&path);
     }
 }
