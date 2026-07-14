@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+kobel-ipc = { workspace = true }
 kobel-wayland = { workspace = true }
 kobel-services = { workspace = true }
 freya-core = { workspace = true }

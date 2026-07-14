@@ -1,0 +1,12 @@
+[package]
+name = "kobel-ipc"
+description = "Control-socket path resolution shared by kobel-shell and kobelctl"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Deliberately zero dependencies: kobelctl links this crate to stay a tiny,
+# fast-building CLI independent of the shell's Freya/Wayland/D-Bus stack (see
+# bin/kobelctl.rs's header comment). Never add a dependency here without
+# checking that intent still holds.
+[dependencies]

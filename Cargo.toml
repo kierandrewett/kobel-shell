@@ -4,6 +4,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/kobel-ipc",
     "crates/kobel-wayland",
     "crates/kobel-services",
     "crates/kobel-shell",
@@ -58,6 +59,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Internal
+kobel-ipc = { path = "crates/kobel-ipc" }
 kobel-wayland = { path = "crates/kobel-wayland" }
 kobel-services = { path = "crates/kobel-services" }
 

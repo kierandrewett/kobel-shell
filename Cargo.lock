@@ -1169,6 +1169,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kobel-ipc"
+version = "0.1.0"
+
+[[package]]
 name = "kobel-services"
 version = "0.1.0"
 dependencies = [
@@ -1202,6 +1206,7 @@ dependencies = [
  "freya-engine",
  "freya-testing",
  "futures-channel",
+ "kobel-ipc",
  "kobel-services",
  "kobel-wayland",
  "serde",
