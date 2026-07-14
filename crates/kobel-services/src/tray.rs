@@ -387,7 +387,7 @@ async fn handle_command(
                 tracing::warn!("[tray] context menu: no object path for {address}");
                 return;
             };
-            if let Err(error) = context_menu(connection, &address, &path, x, y).await {
+            if let Err(error) = context_menu(connection, &address, path, x, y).await {
                 tracing::warn!("[tray] context menu failed: {error}");
             }
         }
@@ -404,7 +404,7 @@ async fn handle_command(
                 tracing::warn!("[tray] scroll: no object path for {address}");
                 return;
             };
-            if let Err(error) = scroll(connection, &address, &path, delta, orientation).await {
+            if let Err(error) = scroll(connection, &address, path, delta, orientation).await {
                 tracing::warn!("[tray] scroll failed: {error}");
             }
         }
@@ -676,8 +676,6 @@ fn current_icon_theme() -> Option<String> {
 mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
-
-    use system_tray::item::{Category, Status, Tooltip};
 
     use super::*;
 
