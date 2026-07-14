@@ -24,6 +24,8 @@ crates/
 |-- kobel-services    system state, zero UI: gnoblin, audio (pipewire-pulse),
 |                     battery, network, bluetooth, apps, mpris, notifd (owns the
 |                     o.fd.Notifications bus name), tray (SNI), exec, sysctl
+|-- kobel-ipc         control-socket path resolution, shared by kobel-shell and
+|                     kobelctl (zero deps, so kobelctl stays independent of Freya)
 `-- kobel-shell       the bin: theme tokens, spring engine, surface manager,
                       IPC (kobelctl), every surface under src/ui/, icon assets
 scripts/              devkit gates: headless gnoblin + injected-input assertions

@@ -119,6 +119,9 @@ kobel-shell/
 |   |   |-- brightness.rs     # logind SetBrightness (fallback: brightnessctl)
 |   |   |-- power.rs          # net.hadess.PowerProfiles; session verbs (loginctl/systemctl)
 |   |   `-- settings.rs       # color-scheme / night light (gsettings)
+|   |-- kobel-ipc/            # control-socket path resolution. Zero dependencies,
+|   |   `-- lib.rs            # shared by kobel-shell (`pub use`) and kobelctl, so the
+|   |                         # latter stays independent of the Freya/Wayland/D-Bus stack
 |   `-- kobel-shell/          # the bin: theme, motion, surfaces, wiring
 |       |-- main.rs           # spawn surfaces per output + singletons, service fan-out, IPC
 |       |-- theme.rs          # THE token layer (colors, radii, spacing, type, Tokens presets)
@@ -130,9 +133,11 @@ kobel-shell/
 `-- ags/                      # reference implementation until parity, then archived
 ```
 
-Three crates, not five: the host is genuinely separable (candidate to extract as a
-`freya-layer-shell` repo later), services are testable headless, and everything
-kobel-specific (theme, motion, components) lives in one coherent bin crate.
+Four crates, not five (or three): the host is genuinely separable (candidate to
+extract as a `freya-layer-shell` repo later), services are testable headless,
+kobel-ipc exists only because kobelctl needs `socket_path()` without linking the
+shell's heavy dependency tree, and everything kobel-specific (theme, motion,
+components) lives in one coherent bin crate.
 
 ### 2.1 One process, one surface = one Freya instance
 
