@@ -54,7 +54,7 @@ use kobel_services::{
 };
 
 use crate::manager::ShellBus;
-use crate::ui::panels::{KeyFeed, OpenProgress};
+use crate::ui::panels::{ImeFeed, KeyFeed, OpenProgress};
 
 #[derive(Clone, Copy)]
 enum Panel {
@@ -278,6 +278,7 @@ fn main() {
     runner.provide_root_context(|| bus.clone());
     runner.provide_root_context(|| OpenProgress(State::create(1.0)));
     runner.provide_root_context(|| KeyFeed(State::create(None::<crate::ui::panels::KeyEvent>)));
+    runner.provide_root_context(|| ImeFeed(State::create(None::<crate::ui::panels::ImeFeedEvent>)));
 
     // --- Fonts (mirrors feature_embedded.rs / freya-testing). ---
     let mut font_collection = FontCollection::new();
