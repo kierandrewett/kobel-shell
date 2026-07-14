@@ -14,8 +14,10 @@
 //!
 //! The service machinery (apps + mpris) lands in a sibling crate; this file
 //! codes against the stable contract types (`AppsSnapshot`/`AppEntry::by_id`,
-//! `MediaSnapshot`/`PlayerInfo`) and the `LaunchApp`/`ActivateWindow`/
-//! `MinimizeWindow`/`MediaPlayPause` commands.
+//! `MediaSnapshot`/`PlayerInfo`), the `LaunchApp`/`MediaPlayPause` kobel-services
+//! commands, and the `ActivateWindow`/`MinimizeWindow`/`CloseWindow` `ShellMsg`
+//! verbs that go straight to the Wayland host (`zwlr_foreign_toplevel_manager_v1`,
+//! not kobel-services -- `org.gnoblin.Shell` never had window D-Bus methods).
 
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -183,25 +185,27 @@ fn windows_for<'a>(pin_id: &str, windows: &'a [GnoblinWindow]) -> Vec<&'a Gnobli
         .collect()
 }
 
-/// Primary-click command (ags/widget/Dock.tsx section 4):
+/// Primary-click message (ags/widget/Dock.tsx section 4):
 /// no windows -> launch; windows but none focused -> focus the first; focused +
-/// many -> focus the NEXT (cycle forward); focused + one -> minimize it.
-fn click_command(win_ids: &[String], focused: Option<usize>, launch_id: &str) -> Command {
+/// many -> focus the NEXT (cycle forward); focused + one -> minimize it. Window
+/// verbs go straight to the Wayland host (`ShellMsg::ActivateWindow`/
+/// `MinimizeWindow`), not through kobel-services -- see gnoblin.rs's module doc.
+fn click_command(win_ids: &[String], focused: Option<usize>, launch_id: &str) -> ShellMsg {
     if win_ids.is_empty() {
-        return Command::LaunchApp(launch_id.to_string());
+        return ShellMsg::Service(Command::LaunchApp(launch_id.to_string()));
     }
     match focused {
-        None => Command::ActivateWindow(win_ids[0].clone()),
+        None => ShellMsg::ActivateWindow(win_ids[0].clone()),
         Some(cur) if win_ids.len() > 1 => {
-            Command::ActivateWindow(win_ids[(cur + 1) % win_ids.len()].clone())
+            ShellMsg::ActivateWindow(win_ids[(cur + 1) % win_ids.len()].clone())
         }
-        Some(cur) => Command::MinimizeWindow(win_ids[cur].clone()),
+        Some(cur) => ShellMsg::MinimizeWindow(win_ids[cur].clone()),
     }
 }
 
-/// Wheel command: multiple windows -> cycle by direction (forward on a positive
+/// Wheel message: multiple windows -> cycle by direction (forward on a positive
 /// delta); a single unfocused window -> focus it; otherwise nothing.
-fn wheel_command(win_ids: &[String], focused: Option<usize>, forward: bool) -> Option<Command> {
+fn wheel_command(win_ids: &[String], focused: Option<usize>, forward: bool) -> Option<ShellMsg> {
     let len = win_ids.len();
     if len == 0 {
         return None;
@@ -209,9 +213,9 @@ fn wheel_command(win_ids: &[String], focused: Option<usize>, forward: bool) -> O
     if len > 1 {
         let base = focused.unwrap_or(0);
         let next = if forward { (base + 1) % len } else { (base + len - 1) % len };
-        Some(Command::ActivateWindow(win_ids[next].clone()))
+        Some(ShellMsg::ActivateWindow(win_ids[next].clone()))
     } else if focused.is_none() {
-        Some(Command::ActivateWindow(win_ids[0].clone()))
+        Some(ShellMsg::ActivateWindow(win_ids[0].clone()))
     } else {
         None
     }
@@ -381,8 +385,7 @@ impl Component for DockTile {
             .on_pointer_enter(move |_| hovered.set(true))
             .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| {
-                click_bus
-                    .send(ShellMsg::Service(click_command(&click_ids, focused_idx, &click_launch)));
+                click_bus.send(click_command(&click_ids, focused_idx, &click_launch));
             })
             .on_mouse_down(move |e: Event<MouseEventData>| {
                 // Middle-click always opens a new window (ags: BUTTON_MIDDLE).
@@ -391,8 +394,8 @@ impl Component for DockTile {
                 }
             })
             .on_wheel(move |e: Event<WheelEventData>| {
-                if let Some(cmd) = wheel_command(&wheel_ids, focused_idx, e.delta_y > 0.0) {
-                    wheel_bus.send(ShellMsg::Service(cmd));
+                if let Some(msg) = wheel_command(&wheel_ids, focused_idx, e.delta_y > 0.0) {
+                    wheel_bus.send(msg);
                 }
             })
             .on_secondary_down(move |e: Event<PressEventData>| {
@@ -432,12 +435,10 @@ fn tile_anchor(e: &Event<PressEventData>) -> (i32, i32, i32, i32) {
 /// Build the dock tile's right-click context menu (docs/FREYA-PLAN.md dock model):
 /// an Unpin row (persists to dock.json + re-renders live), a window-list section
 /// that activates a window on click (the focused one carries a radio dot), and a
-/// danger Quit row.
-///
-/// GAP: `org.gnoblin.Shell` exposes no close/quit verb (only Activate/Minimize/
-/// Reload...). Rather than reintroduce a `pkill`, Quit MINIMIZES every window of the
-/// app -- the honest closest existing command. A true quit needs a new gnoblin
-/// method plus a `Command` variant, owned by kobel-services.
+/// danger Quit row that closes every window of the app via the real
+/// `zwlr_foreign_toplevel_manager_v1` protocol (`ShellMsg::CloseWindow`, one per
+/// window -- previously minimized them instead, a stand-in from before window
+/// control moved off the never-existent `org.gnoblin.Shell` D-Bus methods).
 fn dock_menu_model(
     pin_id: &str,
     app_name: &str,
@@ -480,13 +481,13 @@ fn dock_menu_model(
                 enabled: true,
                 danger: false,
                 on_activate: EventHandler::new(move |_: ()| {
-                    bus.send(ShellMsg::Service(Command::ActivateWindow(id.clone())));
+                    bus.send(ShellMsg::ActivateWindow(id.clone()));
                 }),
             });
         }
     }
 
-    // Quit (danger). See the GAP note above: this minimizes every window.
+    // Quit (danger): close every window of the app for real.
     rows.push(MenuRow::Separator);
     let quit_ids = win_ids.to_vec();
     let quit_bus = bus.clone();
@@ -497,7 +498,7 @@ fn dock_menu_model(
         danger: true,
         on_activate: EventHandler::new(move |_: ()| {
             for id in &quit_ids {
-                quit_bus.send(ShellMsg::Service(Command::MinimizeWindow(id.clone())));
+                quit_bus.send(ShellMsg::CloseWindow(id.clone()));
             }
         }),
     });
@@ -742,27 +743,27 @@ mod tests {
     fn click_model_maps_each_case() {
         // No windows -> launch.
         match click_command(&[], None, "dev.zed.Zed") {
-            Command::LaunchApp(id) => assert_eq!(id, "dev.zed.Zed"),
+            ShellMsg::Service(Command::LaunchApp(id)) => assert_eq!(id, "dev.zed.Zed"),
             other => panic!("expected launch, got {other:?}"),
         }
         let ids = vec!["a".to_string(), "b".to_string(), "c".to_string()];
         // Windows, none focused -> focus first.
         match click_command(&ids, None, "x") {
-            Command::ActivateWindow(id) => assert_eq!(id, "a"),
+            ShellMsg::ActivateWindow(id) => assert_eq!(id, "a"),
             other => panic!("expected activate a, got {other:?}"),
         }
         // Focused + many -> cycle forward (wraps).
         match click_command(&ids, Some(2), "x") {
-            Command::ActivateWindow(id) => assert_eq!(id, "a"),
+            ShellMsg::ActivateWindow(id) => assert_eq!(id, "a"),
             other => panic!("expected activate a, got {other:?}"),
         }
         match click_command(&ids, Some(0), "x") {
-            Command::ActivateWindow(id) => assert_eq!(id, "b"),
+            ShellMsg::ActivateWindow(id) => assert_eq!(id, "b"),
             other => panic!("expected activate b, got {other:?}"),
         }
         // Focused + single -> minimize it.
         match click_command(&["only".to_string()], Some(0), "x") {
-            Command::MinimizeWindow(id) => assert_eq!(id, "only"),
+            ShellMsg::MinimizeWindow(id) => assert_eq!(id, "only"),
             other => panic!("expected minimize, got {other:?}"),
         }
     }
@@ -772,17 +773,17 @@ mod tests {
         let ids = vec!["a".to_string(), "b".to_string(), "c".to_string()];
         // Forward from focused 0 -> b.
         match wheel_command(&ids, Some(0), true) {
-            Some(Command::ActivateWindow(id)) => assert_eq!(id, "b"),
+            Some(ShellMsg::ActivateWindow(id)) => assert_eq!(id, "b"),
             other => panic!("expected activate b, got {other:?}"),
         }
         // Backward from focused 0 -> c (wraps).
         match wheel_command(&ids, Some(0), false) {
-            Some(Command::ActivateWindow(id)) => assert_eq!(id, "c"),
+            Some(ShellMsg::ActivateWindow(id)) => assert_eq!(id, "c"),
             other => panic!("expected activate c, got {other:?}"),
         }
         // Single unfocused window -> focus it.
         match wheel_command(&["only".to_string()], None, true) {
-            Some(Command::ActivateWindow(id)) => assert_eq!(id, "only"),
+            Some(ShellMsg::ActivateWindow(id)) => assert_eq!(id, "only"),
             other => panic!("expected activate only, got {other:?}"),
         }
         // Single focused window -> nothing.

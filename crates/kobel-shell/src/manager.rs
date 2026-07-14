@@ -73,6 +73,17 @@ pub enum ShellMsg {
     /// never the whole surface -- so the gaps between cards stay click-through. Sent
     /// by the Toasts component whenever its visible card layout changes.
     ToastsRegion(Vec<(i32, i32, i32, i32)>),
+    /// Activate (raise + focus) a window by its `kobel_wayland::ToplevelInfo` id,
+    /// via the real `zwlr_foreign_toplevel_manager_v1` protocol -- NOT routed
+    /// through kobel-services/Command, that D-Bus path never existed (see
+    /// kobel-services/src/gnoblin.rs's module doc).
+    ActivateWindow(String),
+    /// Minimize a window by id (same protocol path as `ActivateWindow`).
+    MinimizeWindow(String),
+    /// Close a window by id -- the real Quit verb (`zwlr_foreign_toplevel_handle_
+    /// v1.close`), replacing the old dishonest "Quit minimizes every window"
+    /// dock behaviour.
+    CloseWindow(String),
 }
 
 /// Cloneable handle provided as a root context on every surface.
@@ -130,6 +141,12 @@ pub trait RevealHost {
     /// rectangles (empty slice = fully click-through). Used to make only the visible
     /// toast cards interactive while the gaps between them stay click-through.
     fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]);
+    /// Activate (raise + focus) a window by its `ToplevelInfo` id.
+    fn activate_window(&mut self, id: &str);
+    /// Minimize a window by id.
+    fn minimize_window(&mut self, id: &str);
+    /// Close a window by id (the real Quit verb).
+    fn close_window(&mut self, id: &str);
 }
 
 impl RevealHost for Control<'_> {
@@ -143,6 +160,18 @@ impl RevealHost for Control<'_> {
 
     fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]) {
         Control::set_input_region_rects(self, id, rects);
+    }
+
+    fn activate_window(&mut self, id: &str) {
+        Control::activate_toplevel(self, id);
+    }
+
+    fn minimize_window(&mut self, id: &str) {
+        Control::minimize_toplevel(self, id);
+    }
+
+    fn close_window(&mut self, id: &str) {
+        Control::close_toplevel(self, id);
     }
 }
 
@@ -448,6 +477,9 @@ impl Manager {
                     self.quit = true;
                 }
                 ShellMsg::ToastsRegion(rects) => self.apply_toasts_region(&rects, host),
+                ShellMsg::ActivateWindow(id) => host.activate_window(&id),
+                ShellMsg::MinimizeWindow(id) => host.minimize_window(&id),
+                ShellMsg::CloseWindow(id) => host.close_window(&id),
             }
         }
         if self.any_active() {
@@ -657,6 +689,7 @@ mod tests {
         kb: Vec<(SurfaceId, KeyboardInteractivity)>,
         region: Vec<(SurfaceId, bool)>,
         rects: Vec<(SurfaceId, Vec<(i32, i32, i32, i32)>)>,
+        window_calls: Vec<(&'static str, String)>,
     }
     impl RevealHost for FakeHost {
         fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
@@ -667,6 +700,15 @@ mod tests {
         }
         fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]) {
             self.rects.push((id, rects.to_vec()));
+        }
+        fn activate_window(&mut self, id: &str) {
+            self.window_calls.push(("activate", id.to_string()));
+        }
+        fn minimize_window(&mut self, id: &str) {
+            self.window_calls.push(("minimize", id.to_string()));
+        }
+        fn close_window(&mut self, id: &str) {
+            self.window_calls.push(("close", id.to_string()));
         }
     }
 

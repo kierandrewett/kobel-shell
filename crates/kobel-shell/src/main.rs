@@ -22,12 +22,12 @@ use std::sync::mpsc;
 use freya_core::prelude::{IntoElement, State, WritableUtils};
 use kobel_services::{
     AppsSnapshot, AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot,
-    CalendarSnapshot, GnoblinSnapshot, MediaSnapshot, NetworkSnapshot, NotifdSnapshot,
-    PowerSnapshot, ServiceEvent, Services, SettingsSnapshot, TraySnapshot,
+    CalendarSnapshot, GnoblinSnapshot, GnoblinWindow, MediaSnapshot, NetworkSnapshot,
+    NotifdSnapshot, PowerSnapshot, ServiceEvent, Services, SettingsSnapshot, TraySnapshot,
 };
 use kobel_wayland::{
     Anchor, Control, KeyboardInteractivity, Layer, Margins, OutputControl, OutputEvent, OutputId,
-    PopupConfig, Shell, SurfaceConfig, SurfaceContexts, SurfaceId, SurfaceSize,
+    PopupConfig, Shell, SurfaceConfig, SurfaceContexts, SurfaceId, SurfaceSize, ToplevelInfo,
 };
 
 use crate::manager::{Manager, ShellBus, ShellMsg, SurfaceKey};
@@ -1030,6 +1030,29 @@ fn main() -> anyhow::Result<()> {
                             }
                         }
                     }
+                }
+
+                // Window list: refreshed every tick from the Wayland host directly
+                // (zwlr_foreign_toplevel_manager_v1 via kobel-wayland), NOT from
+                // kobel-services -- org.gnoblin.Shell never had window D-Bus methods
+                // (see gnoblin.rs's module doc). `connected` above still comes from
+                // the services fan-out (real Ping-based liveness); this only ever
+                // touches `windows`, preserving whatever `connected` currently is.
+                let windows: Vec<GnoblinWindow> = control
+                    .toplevels()
+                    .into_iter()
+                    .map(|t: ToplevelInfo| GnoblinWindow {
+                        id: t.id,
+                        app_id: t.app_id,
+                        title: t.title,
+                        focused: t.focused,
+                        minimized: t.minimized,
+                    })
+                    .collect();
+                for surface in reg.all_states() {
+                    let mut handle = surface.gnoblin;
+                    let connected = handle.read().connected;
+                    handle.set_if_modified(GnoblinSnapshot { connected, windows: windows.clone() });
                 }
             }
             let quit = manager.borrow_mut().tick(control);
