@@ -77,7 +77,7 @@ libc = "0.2"
 # Internal
 kobel-ipc = { path = "crates/kobel-ipc" }
 kobel-wayland = { path = "crates/kobel-wayland" }
-kobel-services = { path = "crates/kobel-services" }
+kobel-services = { path = "crates/kobel-services", default-features = false }
 kobel-shell = { path = "crates/kobel-shell" }
 kobel-theme = { path = "crates/kobel-theme" }
 

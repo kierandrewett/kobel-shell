@@ -26,6 +26,7 @@ mod mpris;
 mod network;
 mod notifd;
 mod sysctl;
+#[cfg(feature = "tray")]
 mod tray;
 
 pub use apps::{AppEntry, AppsSnapshot};
@@ -38,9 +39,10 @@ pub use mpris::{MediaSnapshot, PlayerInfo};
 pub use network::{AccessPointInfo, NetworkSnapshot};
 pub use notifd::{NotifdSnapshot, Notification};
 pub use sysctl::{BrightnessSnapshot, PowerProfile, PowerSnapshot, SettingsSnapshot};
+#[cfg(feature = "tray")]
 pub use tray::{
     TrayCategory, TrayIcon, TrayItem, TrayMenu, TrayMenuDisposition, TrayMenuItem, TrayMenuItemKind, TrayProtocolItem,
-    TrayScrollOrientation, TraySnapshot, TrayStatus, TrayToggleKind, TrayToggleState, TrayTooltip,
+    TraySnapshot, TrayStatus, TrayToggleKind, TrayToggleState, TrayTooltip,
 };
 
 use apps::AppsCommand;
@@ -52,7 +54,25 @@ use mpris::MprisCommand;
 use network::NetworkCommand;
 use notifd::NotifdCommand;
 use sysctl::{BrightnessCommand, PowerCommand, SettingsCommand};
+#[cfg(feature = "tray")]
 use tray::TrayCommand;
+
+/// Axis reported to a StatusNotifierItem `Scroll` method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayScrollOrientation {
+    Horizontal,
+    Vertical,
+}
+
+#[cfg(feature = "tray")]
+impl TrayScrollOrientation {
+    fn as_dbus_str(self) -> &'static str {
+        match self {
+            Self::Horizontal => "horizontal",
+            Self::Vertical => "vertical",
+        }
+    }
+}
 
 /// Deadline for one command's D-Bus round-trip inside a service's sequential
 /// event loop (a `tokio::select!` processing one command/event at a time).
@@ -96,6 +116,7 @@ pub enum ServiceEvent {
     Power(sysctl::PowerSnapshot),
     Settings(sysctl::SettingsSnapshot),
     Notifd(notifd::NotifdSnapshot),
+    #[cfg(feature = "tray")]
     Tray(tray::TraySnapshot),
     Calendar(calendar::CalendarSnapshot),
 }
@@ -216,7 +237,10 @@ pub enum ServiceCapability {
 pub struct ServiceSet(u16);
 
 impl ServiceSet {
+    #[cfg(feature = "tray")]
     const ALL: u16 = (1 << 14) - 1;
+    #[cfg(not(feature = "tray"))]
+    const ALL: u16 = ((1 << 14) - 1) & !(ServiceCapability::Tray as u16);
 
     /// No providers or command executors.
     pub const fn empty() -> Self {
@@ -263,6 +287,11 @@ impl Services {
     /// only [`ServiceCapability::Apps`] and [`ServiceCapability::Media`] should
     /// not start or compete for any of those unrelated facilities.
     pub fn spawn_with(services: ServiceSet, on_event: impl Fn(ServiceEvent) + Send + 'static) -> ServicesHandle {
+        #[cfg(not(feature = "tray"))]
+        if services.contains(ServiceCapability::Tray) {
+            tracing::warn!("[services] tray capability requested, but kobel-services was built without feature `tray`");
+        }
+
         let (cmd_tx, cmd_rx) = unbounded_channel::<Command>();
         let (event_tx, event_rx) = unbounded_channel::<ServiceEvent>();
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
@@ -402,7 +431,9 @@ async fn run(
     if services.contains(ServiceCapability::Settings) {
         tasks.push(tokio::spawn(sysctl::run_settings(event_tx.clone(), settings_rx)));
     }
+    #[cfg(feature = "tray")]
     let (tray_tx, tray_rx) = unbounded_channel::<TrayCommand>();
+    #[cfg(feature = "tray")]
     if services.contains(ServiceCapability::Tray) {
         tasks.push(tokio::spawn(tray::run(event_tx.clone(), tray_rx)));
     }
@@ -493,15 +524,19 @@ async fn run(
                 Command::SetNightLight(on) if services.contains(ServiceCapability::Settings) => {
                     let _ = settings_tx.send(SettingsCommand::SetNightLight(on));
                 }
+                #[cfg(feature = "tray")]
                 Command::ActivateTrayItem { address, x, y } if services.contains(ServiceCapability::Tray) => {
                     let _ = tray_tx.send(TrayCommand::Activate { address, x, y });
                 }
+                #[cfg(feature = "tray")]
                 Command::SecondaryActivateTrayItem { address, x, y } if services.contains(ServiceCapability::Tray) => {
                     let _ = tray_tx.send(TrayCommand::SecondaryActivate { address, x, y });
                 }
+                #[cfg(feature = "tray")]
                 Command::ContextMenuTrayItem { address, x, y } if services.contains(ServiceCapability::Tray) => {
                     let _ = tray_tx.send(TrayCommand::ContextMenu { address, x, y });
                 }
+                #[cfg(feature = "tray")]
                 Command::ScrollTrayItem {
                     address,
                     delta,
@@ -513,9 +548,11 @@ async fn run(
                         orientation,
                     });
                 }
+                #[cfg(feature = "tray")]
                 Command::TrayMenuAboutToShow { address, item_id } if services.contains(ServiceCapability::Tray) => {
                     let _ = tray_tx.send(TrayCommand::MenuAboutToShow { address, item_id });
                 }
+                #[cfg(feature = "tray")]
                 Command::TrayMenuClicked { address, item_id } if services.contains(ServiceCapability::Tray) => {
                     let _ = tray_tx.send(TrayCommand::MenuClicked { address, item_id });
                 }
@@ -572,6 +609,14 @@ mod tests {
         assert!(set.contains(ServiceCapability::Media));
         assert!(!set.contains(ServiceCapability::Notifications));
         assert!(!set.contains(ServiceCapability::Audio));
+    }
+
+    #[test]
+    fn all_services_matches_compiled_tray_provider() {
+        assert_eq!(
+            ServiceSet::all().contains(ServiceCapability::Tray),
+            cfg!(feature = "tray"),
+        );
     }
 
     #[test]

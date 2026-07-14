@@ -23,6 +23,8 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use zbus::Connection;
 
+use crate::TrayScrollOrientation;
+
 #[zbus::proxy(interface = "org.kde.StatusNotifierItem")]
 trait StatusNotifierActions {
     fn context_menu(&self, x: i32, y: i32) -> zbus::Result<()>;
@@ -92,22 +94,6 @@ pub enum TrayIcon {
 #[derive(Debug, Clone, Default)]
 pub struct TraySnapshot {
     pub items: Vec<TrayItem>,
-}
-
-/// Axis reported to the StatusNotifierItem `Scroll` method.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrayScrollOrientation {
-    Horizontal,
-    Vertical,
-}
-
-impl TrayScrollOrientation {
-    fn as_dbus_str(self) -> &'static str {
-        match self {
-            Self::Horizontal => "horizontal",
-            Self::Vertical => "vertical",
-        }
-    }
 }
 
 /// Command routed to the tray task; acts on an item by its bus address.

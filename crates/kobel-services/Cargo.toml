@@ -5,12 +5,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["tray"]
+tray = ["dep:system-tray"]
+
 [dependencies]
-# zbus over tokio: the `tokio` feature switches zbus's executor/transport to
-# tokio (compile-time cfg), so the connections live on our tokio runtime.
-zbus = { workspace = true, features = ["tokio"] }
-# `net` gives tokio the IO driver zbus needs (UnixStream) + enable_all();
-# `io-util` powers the exec/gsettings child stdio and the settings line reader.
+# Keep zbus on its default async-io backend. Enabling `zbus/tokio` changes the
+# executor for every unified zbus user, including AccessKit in native Freya
+# previews, which then panics before a Tokio runtime exists.
+zbus = { workspace = true }
+# Tokio owns the services orchestration thread; zbus's runtime-independent
+# futures are polled there without changing zbus's process-wide backend.
 tokio = { workspace = true, features = ["io-util", "net", "process"] }
 libpulse-binding = { workspace = true }
 futures-util = "0.3"
@@ -25,10 +30,10 @@ freedesktop-desktop-entry = "0.8"
 inotify = "0.11"
 # Icon theme lookup (apps.rs): theme -> Inherits -> hicolor -> /usr/share/pixmaps.
 freedesktop-icons = "0.4"
-# SNI tray host (tray.rs): async StatusNotifierWatcher/host + item cache. The
-# default `data` feature keeps the merged item map we read on every event.
-# Uses zbus 5, unified with our workspace pin.
-system-tray = "0.8"
+# SNI tray host (tray.rs): optional because `system-tray` forces zbus's Tokio
+# backend process-wide. Small independent surfaces do not need SNI and can
+# disable default features so their native Freya previews retain async-io.
+system-tray = { version = "0.8", optional = true }
 # Notification persistence (notifd.rs): serialize the stored notifications to
 # disk. Workspace serde already enables the derive feature.
 serde = { workspace = true }
@@ -36,6 +41,10 @@ serde_json = { workspace = true }
 # Notification store lock (notifd.rs): parking_lot guards return without an
 # unwrap path (rs-parking-lot rule) and are never held across an await.
 parking_lot = "0.12"
+
+[[example]]
+name = "services-probe"
+required-features = ["tray"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
