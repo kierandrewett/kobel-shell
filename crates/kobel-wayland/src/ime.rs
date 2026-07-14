@@ -55,8 +55,13 @@ pub struct ImeCommit {
 }
 
 impl ImeCommit {
-    /// True when this payload is a no-op (nothing to delete, commit, or preedit) --
-    /// worth skipping a dispatch for.
+    /// True when this payload has no content mutations to apply (nothing to
+    /// delete, commit, or set as preedit). This does NOT mean the enclosing
+    /// `done`/[`ImeEvent::Commit`] is safe to drop -- every `done` is
+    /// dispatched regardless of `is_empty()`, since an empty done can still
+    /// be the `in_sync` release signal a deferring caller is waiting for
+    /// (see [`ImeEvent`]'s doc). This is purely a content-changed check for
+    /// callers that only care about text mutations.
     pub fn is_empty(&self) -> bool {
         self.delete_before == 0 && self.delete_after == 0 && self.commit.is_none() && self.preedit.is_none()
     }
