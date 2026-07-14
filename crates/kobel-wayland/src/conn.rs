@@ -70,7 +70,7 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 use crate::egl::Egl;
 use crate::frame::runner_waker;
 use crate::ime::{ImeCommit, ImeEvent, Preedit, decode_cursor};
-use crate::surface::{FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole};
+use crate::surface::{FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole, floor_content_size};
 use crate::toplevel::{ToplevelInfo, ToplevelState, decode_state_array};
 use crate::{
     KeyPress, LoopWaker, OutputEvent, OutputId, PopupAnchor, PopupConfig, PopupGravity, Result, SurfaceConfig,
@@ -702,13 +702,21 @@ impl Host {
         setup: impl FnOnce(&mut SurfaceContexts<'_>) -> C,
         app: impl Fn() -> Element + 'static,
     ) -> Result<(SurfaceId, C)> {
-        // Exact uses the configured size directly. ContentSized starts at
-        // (width, max_height) -- the tallest it can ever be -- then, once the tree is
-        // built below, measures its content and requests the real height before the
-        // first commit, so the very first configure already carries a hugged size.
+        // Exact uses the configured size directly (0 is protocol-legal there --
+        // "let the compositor decide" -- and physical_dim's own floor makes it
+        // safe downstream). ContentSized starts at (width, max_height) -- the
+        // tallest it can ever be -- then, once the tree is built below, measures
+        // its content and requests the real height before the first commit, so
+        // the very first configure already carries a hugged size. A zero axis
+        // here is NOT protocol-shorthand for anything -- content_logical_height
+        // clamps to `[1, max_height]`, which panics if max_height is 0 -- so both
+        // the initial layer size AND the stored content bound are floored at 1.
         let (init_w, init_h, content) = match config.size {
             SurfaceSize::Exact { width, height } => (width, height, None),
-            SurfaceSize::ContentSized { width, max_height } => (width, max_height, Some((width, max_height))),
+            SurfaceSize::ContentSized { width, max_height } => {
+                let (width, max_height) = floor_content_size(width, max_height);
+                (width, max_height, Some((width, max_height)))
+            }
         };
 
         let id = SurfaceId(self.next_id);
@@ -840,13 +848,18 @@ impl Host {
             return Err(anyhow!("create_popup: parent {parent:?} not found"));
         };
 
-        // Exact uses the size directly; ContentSized maps at (width, max_height) and
-        // hugs its content later via xdg_popup.reposition (the popup analogue of a
-        // layer set_size). A zero axis is invalid for a positioner, so floor at 1.
+        // Exact and ContentSized both feed `positioner.set_size` (int32 per the xdg
+        // protocol) and, for ContentSized, content_logical_height's `[1, max_height]`
+        // clamp -- so both branches route through the same u32-safe-for-i32 floor/cap
+        // rather than a bare `.max(1)` that could still wrap negative above i32::MAX.
         let (init_w, init_h, content) = match config.size {
-            SurfaceSize::Exact { width, height } => (width.max(1), height.max(1), None),
+            SurfaceSize::Exact { width, height } => {
+                let (width, height) = floor_content_size(width, height);
+                (width, height, None)
+            }
             SurfaceSize::ContentSized { width, max_height } => {
-                (width.max(1), max_height.max(1), Some((width, max_height)))
+                let (width, max_height) = floor_content_size(width, max_height);
+                (width, max_height, Some((width, max_height)))
             }
         };
 

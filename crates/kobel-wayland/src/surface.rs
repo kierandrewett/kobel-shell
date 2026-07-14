@@ -735,18 +735,46 @@ fn physical_dim(logical: u32, scale_num: u32) -> i32 {
     phys.clamp(1, i32::MAX as u128) as i32
 }
 
+/// Clamp a size destined for an XDG positioner (`xdg_positioner::set_size`,
+/// `xdg_surface::set_window_geometry`) to `[1, i32::MAX]` on both axes -- the
+/// protocol methods take `int32`, so this crate always reaches them via `as
+/// i32`, and an unclamped `u32` caller value above `i32::MAX` would silently
+/// wrap negative, which `xdg_positioner::set_size` treats as a fatal protocol
+/// error (killing the whole Wayland connection, not just this surface). The
+/// lower bound doubles as the ContentSized floor: zero is not protocol-
+/// shorthand for anything here (unlike a zero `Exact` axis on a
+/// fully-anchored LAYER surface, which legitimately means "let the
+/// compositor decide", and which [`physical_dim`] already floors downstream
+/// for that separate, u32-native `zwlr_layer_surface_v1::set_size` path) --
+/// it is the upper bound [`content_logical_height`] clamps into, and
+/// `i64::clamp` panics if its `max` argument is below its `min` (1).
+/// Callers creating or resizing a content-sized surface MUST apply this to
+/// BOTH the initial positioner/layer size AND the value stored for later
+/// measurement (they must stay equal, or the surface starts at one size and
+/// immediately measures against a different bound).
+pub(crate) fn floor_content_size(width: u32, max_height: u32) -> (u32, u32) {
+    const MAX: u32 = i32::MAX as u32;
+    (width.clamp(1, MAX), max_height.clamp(1, MAX))
+}
+
 /// Convert a measured physical content height into the logical surface height to
 /// request for a content-sized surface. Rounds UP (so a fractional last row is
-/// never clipped) and clamps to `[1, max_height]` (never a zero-height surface,
-/// never taller than the configured viewport bound).
+/// never clipped) and clamps to `[1, max_height.max(1)]` -- never a zero-height
+/// surface, never taller than the configured viewport bound. `max_height` is
+/// itself expected to already be non-zero (construction-time callers route
+/// through [`floor_content_size`]), but this function stays total on its own:
+/// `i64::clamp` panics if `max < min`, and a bare `max_height as i64` upper
+/// bound would panic here on a 0 that somehow reached this far, which is a far
+/// worse failure mode for a measurement callback than silently flooring.
 fn content_logical_height(content_phys: f32, scale: f64, max_height: u32) -> u32 {
     let scale = if scale > 0.0 { scale } else { 1.0 };
-    ((content_phys as f64 / scale).ceil() as i64).clamp(1, max_height as i64) as u32
+    let max_height = i64::from(max_height.max(1));
+    ((content_phys as f64 / scale).ceil() as i64).clamp(1, max_height) as u32
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{SCALE_DENOM, content_logical_height, physical_dim, sane_axis};
+    use super::{SCALE_DENOM, content_logical_height, floor_content_size, physical_dim, sane_axis};
 
     #[test]
     fn sane_axis_maps_out_of_i32_range_to_zero() {
@@ -830,5 +858,52 @@ mod tests {
         // Absurd inputs must clamp to i32::MAX (u128 intermediate), never wrap
         // negative or panic.
         assert_eq!(physical_dim(u32::MAX, u32::MAX), i32::MAX);
+    }
+
+    #[test]
+    fn floor_content_size_never_returns_a_zero_axis() {
+        // The exact regression case: a zero max_height would otherwise reach
+        // content_logical_height's `.clamp(1, max_height)` and panic, since
+        // i64::clamp requires min <= max.
+        assert_eq!(floor_content_size(0, 0), (1, 1));
+        assert_eq!(floor_content_size(0, 500), (1, 500));
+        assert_eq!(floor_content_size(300, 0), (300, 1));
+    }
+
+    #[test]
+    fn floor_content_size_leaves_positive_dimensions_untouched() {
+        assert_eq!(floor_content_size(300, 500), (300, 500));
+    }
+
+    #[test]
+    fn floor_content_size_caps_above_i32_max_to_prevent_a_negative_wrap() {
+        // Every consumer of this value eventually does `as i32` for an XDG
+        // positioner call; an unclamped u32 above i32::MAX would silently wrap
+        // negative there, which xdg_positioner::set_size treats as a fatal
+        // protocol error (dropping the whole Wayland connection).
+        assert_eq!(
+            floor_content_size(u32::MAX, u32::MAX),
+            (i32::MAX as u32, i32::MAX as u32)
+        );
+        assert_eq!(floor_content_size(i32::MAX as u32 + 1, 500), (i32::MAX as u32, 500));
+    }
+
+    #[test]
+    fn floor_content_size_boundary_values_are_exact() {
+        assert_eq!(floor_content_size(1, 1), (1, 1));
+        assert_eq!(
+            floor_content_size(i32::MAX as u32, i32::MAX as u32),
+            (i32::MAX as u32, i32::MAX as u32)
+        );
+    }
+
+    #[test]
+    fn content_logical_height_never_panics_on_a_zero_max_height() {
+        // Even though construction-time callers already floor max_height via
+        // floor_content_size, this function stays total on its own -- a zero
+        // max_height must degrade to the same 1px floor as empty content,
+        // never panic (i64::clamp panics if max < min).
+        assert_eq!(content_logical_height(0.0, 1.0, 0), 1);
+        assert_eq!(content_logical_height(900.0, 1.0, 0), 1);
     }
 }
