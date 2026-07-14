@@ -1,8 +1,11 @@
 # Design
 
 Visual system for kobel-shell ("sakura pop"). Register: **product** — see PRODUCT.md.
-Live reference: `docs/prototype.html` (open in a browser; every value below is
-implemented there and is the source of truth for the kobel-shell Rust/Freya build).
+Design reference: `docs/prototype.html` (open in a browser) is the source of the
+tokens below (colour, type, radii, spacing) but is a richer standalone mockup, not
+a literal feature contract -- it includes a wallpaper/petal canvas the Rust build
+deliberately never paints (see Wallpaper below). `crates/kobel-shell/src/theme.rs`
+is the authoritative source for exact values; this document explains what they mean.
 
 ## Theme
 
