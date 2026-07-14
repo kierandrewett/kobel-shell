@@ -434,6 +434,15 @@ so every merge keeps a usable shell.
   sourced input at runtime, so neither advisory's DoS vector is reachable
   from this shell's actual attack surface. Re-run `cargo audit` after any
   `smithay-client-toolkit`/`wayland-client` bump to see if it clears.
+- **`cargo audit` also flags `paste` 1.0.15 as unmaintained (RUSTSEC-2024-0436,
+  an advisory-status warning, not a vulnerability -- `cargo audit`'s own summary
+  counts it separately: "2 vulnerabilities found ... 1 allowed warning found").**
+  Transitive via Freya itself (`cargo tree -i paste` roots at `freya-core`/
+  `freya-components`, pinned to this project's tracked git rev), not a choice
+  kobel-shell made. A proc-macro-only, compile-time identifier-concatenation
+  helper -- it never touches runtime input, so the "unmaintained" status carries
+  no practical exposure here. Nothing to act on from this side; would only
+  clear on an upstream Freya dependency change.
 - **`theme::FONT_FAMILY_UI` (Inter, ported verbatim from AGS's `main.scss:22`) is
   defined but has zero call sites.** Every actual `.font_family(...)` call in the
   UI applies `FONT_FAMILY_DATA` (`ui-monospace`, for tabular numerals); plain
