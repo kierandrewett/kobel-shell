@@ -8,6 +8,7 @@ members = [
     "crates/kobel-wayland",
     "crates/kobel-services",
     "crates/kobel-shell",
+    "crates/kobel-ui",
 ]
 
 [workspace.package]
@@ -16,15 +17,16 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-# Freya (pinned rev on main, 0.4.0-rc.24 line). No `freya` facade, no winit.
+# Production uses direct crates and remains winit-free. The optional `freya` facade
+# exists only for kobel-ui's devtools preview binary.
+freya = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6", default-features = false }
 freya-core = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-engine = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-components = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-animation = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 freya-clipboard = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 torin = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
-# Dev-only: headless TestingRunner, used to validate paragraph-holder hit-test
-# behavior before wiring click-to-position (see ui/launcher.rs Editor docs).
+# Dev-only headless component runner for UI tests.
 freya-testing = { git = "https://github.com/marc2332/freya", rev = "5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6" }
 
 # Wayland host
@@ -74,6 +76,7 @@ libc = "0.2"
 kobel-ipc = { path = "crates/kobel-ipc" }
 kobel-wayland = { path = "crates/kobel-wayland" }
 kobel-services = { path = "crates/kobel-services" }
+kobel-shell = { path = "crates/kobel-shell" }
 
 [profile.release]
 # Thin LTO: meaningful runtime win for a per-frame Skia/EGL renderer at a much

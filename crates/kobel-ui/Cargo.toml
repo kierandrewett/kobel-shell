@@ -1,0 +1,31 @@
+[package]
+name = "kobel-ui"
+description = "Human-owned Freya UI for kobel-shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+devtools = ["dep:freya", "freya/devtools", "freya/winit"]
+
+[dependencies]
+kobel-shell = { workspace = true }
+kobel-wayland = { workspace = true }
+kobel-services = { workspace = true }
+freya-core = { workspace = true }
+freya-components = { workspace = true }
+freya-animation = { workspace = true }
+freya-clipboard = { workspace = true }
+freya = { workspace = true, optional = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+freya-testing = { workspace = true }
+
+[[bin]]
+name = "preview"
+path = "src/bin/preview.rs"
+required-features = ["devtools"]
