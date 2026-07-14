@@ -1,8 +1,9 @@
 //! Calendar popover -- GNOME-style month view (ags/widget/Calendar.tsx).
 //!
 //! A sheet (calendar_w wide) whose opacity follows the manager's reveal spring,
-//! multiplied into the root opacity exactly like the placeholder panels: a
-//! closed-but-mapped surface renders fully transparent. Layout top to bottom:
+//! multiplied into the root opacity like every on-demand surface (see
+//! ui/panels.rs's [`OpenProgress`]) -- a closed-but-mapped surface renders fully
+//! transparent. Layout top to bottom:
 //!   - hero: weekday sublabel (MUT) + full date (large);
 //!   - month nav: left/right chevrons + a month-year label button that jumps to
 //!     today;

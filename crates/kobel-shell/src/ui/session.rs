@@ -8,8 +8,8 @@
 //! after 4s (DESIGN.md v3 "two-step confirm on Restart/Shut down").
 //!
 //! The reveal opacity is the manager's per-surface [`OpenProgress`] spring,
-//! multiplied into the root opacity exactly like the placeholder panels: a
-//! closed-but-mapped surface renders fully transparent. Keys arrive through the
+//! multiplied into the root opacity like every on-demand surface (see ui/panels.rs):
+//! a closed-but-mapped surface renders fully transparent. Keys arrive through the
 //! exclusive-surface [`KeyFeed`] context (main.rs routes every press to the open
 //! exclusive surface).
 //!
