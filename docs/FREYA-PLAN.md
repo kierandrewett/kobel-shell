@@ -45,9 +45,11 @@ Verified against upstream `main` (`0.4.0-rc.24`, workspace at `marc2332/freya`):
     `Platform` (with a `sender` for `UserEvent::RequestRedraw`), `RenderingTicker`
     (+ send a tick after each presented frame), `AnimationClock`, clipboard state,
     `AssetCacher`, and optionally the accessibility tree.
-- **Feature flags:** `freya` defaults to `winit`. We do NOT depend on the `freya`
-  facade at all; we depend on `freya-core`, `freya-engine`, `freya-components`,
-  `freya-animation`, `torin` directly from git, pinned to one rev.
+- **Feature flags:** `freya` defaults to `winit`. Production layer-shell crates do
+  not use the facade; they depend on `freya-core`, `freya-engine`,
+  `freya-components`, `freya-animation`, and `torin` directly from the pinned git
+  revision. The optional bar/dock preview targets and standalone inspector use the
+  `freya`/`freya-winit` path only for normal desktop development windows.
 - **Skia:** `freya-skia-safe 0.98` (fork of skia-safe) with `textlayout`, `svg`,
   `webp`; on Linux `freya-engine` enables `gl`, `vulkan`, `wayland`, `x11`. GL via a
   wrapped framebuffer (`backend_render_targets::make_gl` +
@@ -206,7 +208,7 @@ Port `lib/surface.ts` semantics, drop the GTK mechanisms:
 | Skia | `freya-engine` re-exports | `backend_render_targets::make_gl` + `wrap_backend_render_target` per frame |
 | Fractional scale | `wp_fractional_scale_v1` + `wp_viewporter` | fall back to integer `buffer_scale`; scale feeds measure_layout + events + Platform |
 | Keyboard | sctk xkb + `keyboard-types` 0.8 | Freya's own key/code types; repeat handled host-side |
-| Freya | `freya-core`, `freya-engine`, `freya-components`, `freya-animation`, `torin` | git-pinned to one rev; NO `freya` facade, NO `winit` feature anywhere |
+| Freya | `freya-core`, `freya-engine`, `freya-components`, `freya-animation`, `torin` | Production host is git-pinned and facade/winit-free; optional desktop previews and the inspector use `freya` + `freya-winit` |
 
 Alternative considered and rejected for now: `layershellev` (waycrate's ready-made
 layer-shell event loop) would save some sctk boilerplate but adds a young dependency
