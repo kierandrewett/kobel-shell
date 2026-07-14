@@ -60,3 +60,15 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Internal
 kobel-wayland = { path = "crates/kobel-wayland" }
 kobel-services = { path = "crates/kobel-services" }
+
+[profile.release]
+# Thin LTO: meaningful runtime win for a per-frame Skia/EGL renderer at a much
+# smaller build-time cost than fat LTO (`lto = true`) -- this app rebuilds
+# release binaries often enough (every devkit RenderDoc capture, every real
+# deploy) that a multi-minute fat-LTO link isn't worth it for the marginal
+# gain over thin.
+lto = "thin"
+# No debug symbols in the shipped binary: smaller artifact, no internal
+# symbol names leaking into a release build. Debug builds are unaffected
+# (this profile only applies to `--release`).
+strip = true
