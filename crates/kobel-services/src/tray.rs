@@ -36,12 +36,6 @@ const ICON_SIZE: u16 = 64;
 /// dependent, so it can still return a PNG that shadows the scalable SVG).
 const SCALABLE_ICON_SIZE: u16 = 512;
 
-/// Deadline for one tray command's D-Bus round-trip (activate/about-to-show/
-/// clicked). zbus method calls have no default timeout, and the tray event
-/// loop processes commands one at a time -- see [`run`]'s command-branch
-/// comment for why a hung SNI item must not be allowed to block forever.
-const COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-
 /// One StatusNotifierItem as the bar renders it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrayItem {
@@ -201,24 +195,15 @@ pub(crate) async fn run(
                 }
             },
             cmd = cmd_rx.recv() => match cmd {
-                Some(cmd) => {
-                    // zbus method calls (system-tray's activate/about-to-show
-                    // wrappers) have no default deadline, and this loop
-                    // processes one command at a time -- a single hung/broken
-                    // SNI tray item (never replying on the bus) would otherwise
-                    // block every OTHER item's clicks and every item add/
-                    // remove/update event indefinitely. Bound it so one bad
-                    // tray app degrades to "this click did nothing", not
-                    // "the whole tray is dead until the shell restarts".
-                    if tokio::time::timeout(COMMAND_TIMEOUT, handle_command(&client, cmd))
-                        .await
-                        .is_err()
-                    {
-                        tracing::warn!(
-                            "[tray] command timed out after {COMMAND_TIMEOUT:?} (item unresponsive on the bus)"
-                        );
-                    }
-                }
+                // zbus method calls (system-tray's activate/about-to-show
+                // wrappers) have no default deadline, and this loop processes
+                // one command at a time -- a single hung/broken SNI tray item
+                // (never replying on the bus) would otherwise block every
+                // OTHER item's clicks and every item add/remove/update event
+                // indefinitely. crate::with_command_timeout bounds it so one
+                // bad tray app degrades to "this click did nothing", not
+                // "the whole tray is dead until the shell restarts".
+                Some(cmd) => crate::with_command_timeout("tray", handle_command(&client, cmd)).await,
                 None => break,
             },
         }

@@ -168,7 +168,15 @@ pub(crate) async fn run(
                 // else: update from an already-removed player; ignore.
             }
             Some(cmd) = cmd_rx.recv() => {
-                handle_command(&conn, active.as_deref(), cmd).await;
+                // A hung/frozen player (an unresponsive PlayPause/Next/
+                // Previous call) would otherwise block this whole select! --
+                // including discovery of NEW players (name_changes) and
+                // snapshot updates from OTHER already-tracked players
+                // (upd_rx) -- for as long as the bad player stays wedged.
+                // crate::with_command_timeout bounds it so one frozen player
+                // degrades to "this control did nothing", not "the whole
+                // media service stalled".
+                crate::with_command_timeout("mpris", handle_command(&conn, active.as_deref(), cmd)).await;
             }
             else => break,
         }

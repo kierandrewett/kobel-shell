@@ -147,7 +147,15 @@ pub(crate) async fn run(
                 refresh(&om, &mut adapter_path, &mut dev_index, &mut last, &events).await;
             }
             Some(cmd) = cmd_rx.recv() => {
-                handle_command(&conn, adapter_path.as_ref(), &dev_index, cmd).await;
+                // BlueZ D-Bus calls have no default deadline (zbus itself
+                // implements none -- see device_action's note below); a hung
+                // adapter (SetPowered) would otherwise block this whole
+                // refresh loop indefinitely.
+                crate::with_command_timeout(
+                    "bluetooth",
+                    handle_command(&conn, adapter_path.as_ref(), &dev_index, cmd),
+                )
+                .await;
             }
             else => break,
         }
@@ -267,9 +275,16 @@ async fn handle_command(
     }
 }
 
-/// Connect/Disconnect a device. Runs on its own task: the BlueZ calls block
-/// until the operation resolves (zbus's default ~25s timeout), and must not
-/// stall the refresh loop.
+/// Connect/Disconnect a device. Runs on its own task (NOT awaited inline in
+/// the main select! loop): zbus itself implements no default reply timeout
+/// for method calls (confirmed against zbus's own source -- call_method has
+/// no deadline of its own), so without this isolation a stuck BlueZ
+/// connect/disconnect would otherwise block the refresh loop indefinitely.
+/// A generous 30s bound (real pairing/reconnect handshakes can legitimately
+/// take several seconds) still catches a genuinely wedged call rather than
+/// leaking the task and its connection/proxy clones forever.
+const DEVICE_ACTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 fn device_action(
     conn: &Connection,
     dev_index: &HashMap<String, OwnedObjectPath>,
@@ -298,14 +313,13 @@ fn device_action(
                 return;
             }
         };
-        let result = if connect {
-            device.connect().await
-        } else {
-            device.disconnect().await
-        };
-        match result {
-            Ok(()) => tracing::info!("[bluetooth] {verb} {address} ok"),
-            Err(e) => tracing::warn!("[bluetooth] {verb} {address} failed: {e}"),
+        let call = async { if connect { device.connect().await } else { device.disconnect().await } };
+        match tokio::time::timeout(DEVICE_ACTION_TIMEOUT, call).await {
+            Ok(Ok(())) => tracing::info!("[bluetooth] {verb} {address} ok"),
+            Ok(Err(e)) => tracing::warn!("[bluetooth] {verb} {address} failed: {e}"),
+            Err(_) => tracing::warn!(
+                "[bluetooth] {verb} {address} timed out after {DEVICE_ACTION_TIMEOUT:?}"
+            ),
         }
     });
 }

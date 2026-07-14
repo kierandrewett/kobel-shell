@@ -147,7 +147,13 @@ pub(crate) async fn run_brightness(
             }
             cmd = cmd_rx.recv() => match cmd {
                 Some(BrightnessCommand::Set(level)) => {
-                    set_brightness(session.as_ref(), &name, level, max).await;
+                    // logind's SetBrightness has no default deadline; bound
+                    // it so a hung logind doesn't stall the 2s sysfs poll too.
+                    crate::with_command_timeout(
+                        "brightness",
+                        set_brightness(session.as_ref(), &name, level, max),
+                    )
+                    .await;
                 }
                 None => break,
             },
@@ -285,9 +291,14 @@ pub(crate) async fn run_power(
             }
             cmd = cmd_rx.recv() => match cmd {
                 Some(PowerCommand::Set(profile)) => {
-                    if let Err(e) = proxy.set_active_profile(profile_str(profile)).await {
-                        tracing::warn!("[power] SetPowerProfile failed: {e}");
-                    }
+                    // power-profiles-daemon has no default deadline; bound it
+                    // so a hung daemon doesn't stall ActiveProfile updates too.
+                    crate::with_command_timeout("power", async {
+                        if let Err(e) = proxy.set_active_profile(profile_str(profile)).await {
+                            tracing::warn!("[power] SetPowerProfile failed: {e}");
+                        }
+                    })
+                    .await;
                 }
                 None => break,
             },

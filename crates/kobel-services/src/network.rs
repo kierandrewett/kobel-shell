@@ -279,7 +279,16 @@ pub(crate) async fn run(
                 refresh_and_emit(&conn, &nm, &wireless, &events, &mut last, &mut index, &mut active_ap, &mut active_changes).await;
             }
             Some(cmd) = cmd_rx.recv() => {
-                handle_command(&conn, &nm, &device_path, &index, cmd).await;
+                // NetworkManager D-Bus calls (activate/create a connection) have
+                // no default deadline, and this loop processes commands one at a
+                // time alongside every scan/PropertiesChanged refresh -- a hung
+                // NetworkManager (or a slow WPA handshake stalling the D-Bus
+                // reply) would otherwise block scanning and status updates too.
+                crate::with_command_timeout(
+                    "network",
+                    handle_command(&conn, &nm, &device_path, &index, cmd),
+                )
+                .await;
             }
             else => break,
         }

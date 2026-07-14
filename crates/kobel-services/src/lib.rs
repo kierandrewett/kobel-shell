@@ -53,6 +53,27 @@ use sysctl::{BrightnessCommand, PowerCommand, SettingsCommand};
 use tray::TrayCommand;
 use notifd::NotifdCommand;
 
+/// Deadline for one command's D-Bus round-trip inside a service's sequential
+/// event loop (a `tokio::select!` processing one command/event at a time).
+/// zbus method calls have no default timeout, so a hung external service
+/// (NetworkManager, BlueZ, power-profiles-daemon, a stray tray app, an
+/// unresponsive media player) would otherwise block that whole loop --
+/// discovery, snapshot updates, and every other command -- indefinitely.
+pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Run `fut` under [`COMMAND_TIMEOUT`], logging (and swallowing) a timeout as
+/// a warning so the caller's event loop always continues to the next
+/// iteration -- one hung command degrades to "this one did nothing", never
+/// "the whole service stalled". `label` is the service's log tag, e.g. "tray".
+pub(crate) async fn with_command_timeout<F>(label: &str, fut: F)
+where
+    F: Future<Output = ()>,
+{
+    if tokio::time::timeout(COMMAND_TIMEOUT, fut).await.is_err() {
+        tracing::warn!("[{label}] command timed out after {COMMAND_TIMEOUT:?}");
+    }
+}
+
 /// A state change from one of the services. Plain, thread-safe data only.
 #[derive(Debug, Clone)]
 pub enum ServiceEvent {
