@@ -4,3 +4,7 @@
 .qmlcache/
 /target
 __pycache__/
+
+# Local agent long-term memory store (Mnemopi) -- per-machine SQLite state,
+# never project source.
+/banks/
