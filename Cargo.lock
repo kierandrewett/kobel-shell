@@ -2464,9 +2464,14 @@ name = "kobel-bar"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-io",
+ "chrono",
  "freya",
+ "freya-components",
  "freya-core",
  "freya-testing",
+ "kobel-services",
+ "kobel-theme",
  "kobel-wayland",
  "torin",
 ]
