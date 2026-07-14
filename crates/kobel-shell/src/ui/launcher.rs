@@ -22,7 +22,7 @@
 use std::path::PathBuf;
 
 use freya_core::prelude::*;
-use torin::prelude::{Alignment, Content, Size};
+use torin::prelude::{Alignment, Area, Content, Size};
 
 use kobel_services::{AppEntry, AppsSnapshot, Command, SessionVerb};
 use kobel_wayland::Preedit;
@@ -443,6 +443,19 @@ impl Editor {
     pub(crate) fn click_at(&mut self, byte_offset: usize) {
         let target = clamp_boundary_back(&self.query, byte_offset);
         self.move_cursor(target, false);
+    }
+
+    /// Extend the selection to `byte_offset` while dragging. Starts a fresh
+    /// selection from the current cursor position (set by the preceding
+    /// [`Editor::click_at`] on pointer-down) the first time this is called,
+    /// exactly like [`Stroke::Left`]/[`Stroke::Right`] with `shift` held --
+    /// [`Editor::move_cursor`]'s `extend` flag already implements that anchor-
+    /// pinning, so dragging is just repeated cursor moves with `extend: true`.
+    /// Bypasses [`Stroke`]/[`Editor::apply`] like [`Editor::click_at`]: a drag
+    /// isn't a keystroke.
+    pub(crate) fn drag_to(&mut self, byte_offset: usize) {
+        let target = clamp_boundary_back(&self.query, byte_offset);
+        self.move_cursor(target, true);
     }
 }
 
@@ -1359,6 +1372,21 @@ impl Component for Launcher {
                 anchor.set(editor.anchor);
             })
         };
+        let on_field_drag = {
+            let bus = bus.clone();
+            EventHandler::new(move |byte_offset: usize| {
+                let mut editor = Editor {
+                    query: query.peek().clone(),
+                    selected: *selected.peek(),
+                    cursor: *cursor.peek(),
+                    anchor: *anchor.peek(),
+                };
+                editor.drag_to(byte_offset);
+                sync_ime_surrounding_text(&bus, &editor);
+                cursor.set(editor.cursor);
+                anchor.set(editor.anchor);
+            })
+        };
         let field = field_row(
             &q,
             ghost.as_deref(),
@@ -1366,6 +1394,7 @@ impl Component for Launcher {
             *anchor.read(),
             preedit.read().as_ref(),
             on_field_click,
+            on_field_drag,
         );
 
         let body: Element = if q.trim().is_empty() {
@@ -1416,6 +1445,7 @@ fn field_row(
     anchor: Option<usize>,
     preedit: Option<&Preedit>,
     on_click: EventHandler<usize>,
+    on_drag: EventHandler<usize>,
 ) -> Element {
     let selection = anchor.and_then(|a| {
         let (start, end) = (a.min(cursor), a.max(cursor));
@@ -1442,43 +1472,80 @@ fn field_row(
         .height(Size::px(2.0 * FIELD_TEXT_PAD_V + CARET_H))
         .overflow(Overflow::Clip);
 
-    // Click-to-position. While composing (preedit active) a click is a no-op:
-    // repositioning mid-composition isn't verified against a real IME in this
-    // environment (see README's IME gap), so the safest behavior is to leave
-    // the cursor alone rather than risk desyncing the compositor's notion of
-    // the surrounding text. Otherwise, a hidden 0x0-clipped paragraph mirrors
-    // `query` at the SAME font/size as the visible text; Skia's
-    // `get_glyph_position_at_coordinate` needs a real, laid-out paragraph
-    // (FontCollection is never exposed to component code, confirmed against
-    // freya-core's element/render context types -- there's no way to build one
-    // outside the render tree), so this is attached via `paragraph().holder(_)`
-    // and hit-tested on click. Zero visible/layout footprint: width(0) takes no
-    // flex space, and it's the FIRST child so its own origin sits at the same
-    // x=0 the visible text starts at, matching `element_location.x` from a
-    // click on `text` itself. `get_glyph_position_at_coordinate` reports UTF-16
-    // code-unit offsets (verified empirically), hence `utf16_offset_to_byte`.
+    // Click-to-position + drag-to-select. While composing (preedit active) a
+    // click/drag is a no-op: repositioning mid-composition isn't verified
+    // against a real IME in this environment (see README's IME gap), so the
+    // safest behavior is to leave the cursor alone rather than risk
+    // desyncing the compositor's notion of the surrounding text. Otherwise,
+    // a hidden 0x0-clipped paragraph mirrors `query` at the SAME font/size
+    // as the visible text; Skia's `get_glyph_position_at_coordinate` needs a
+    // real, laid-out paragraph (FontCollection is never exposed to
+    // component code, confirmed against freya-core's element/render context
+    // types -- there's no way to build one outside the render tree), so
+    // this is attached via `paragraph().holder(_)` and hit-tested on click
+    // and drag. Zero visible/layout footprint: width(0) takes no flex
+    // space, and it's the FIRST child so its own origin sits at the same
+    // x=0 the visible text starts at. `get_glyph_position_at_coordinate`
+    // reports UTF-16 code-unit offsets (verified empirically), hence
+    // `utf16_offset_to_byte`.
+    //
+    // Down uses `element_location()` (local to `text`, matches the hidden
+    // paragraph's own coordinate space directly); a drag needs
+    // `on_global_pointer_move` to keep tracking past `text`'s own bounds
+    // (dragging the selection beyond the field, matching ordinary text-field
+    // UX), whose `global_location()` is screen-absolute, so it's converted
+    // via `text`'s own tracked Area -- same technique as chip.rs's KSlider.
     if preedit.is_none() {
         let owned_query = query.to_string();
-        let hit_query = owned_query.clone();
-        let holder = ParagraphHolder::default();
+        let holder = use_hook(ParagraphHolder::default);
+        let mut dragging = use_state(|| false);
+        let mut drag_area = use_state(Area::default);
+
         text = text.child(
             rect().width(Size::px(0.0)).height(Size::px(0.0)).overflow(Overflow::Clip).child(
                 paragraph()
                     .width(Size::px(2000.0))
                     .max_lines(Some(1usize))
                     .holder(holder.clone())
-                    .span(Span::new(owned_query).font_size(FIELD_FONT)),
+                    .span(Span::new(owned_query.clone()).font_size(FIELD_FONT)),
             ),
         );
-        text = text.on_mouse_down(move |e: Event<MouseEventData>| {
-            let Some(sk_paragraph) = holder.0.borrow().as_ref().map(|h| h.paragraph.clone())
+
+        text = text.on_sized(move |e: Event<SizedEventData>| drag_area.set(e.area));
+
+        let down_holder = holder.clone();
+        let down_query = owned_query.clone();
+        text = text.on_pointer_down(move |e: Event<PointerEventData>| {
+            if !e.data().is_primary() {
+                return;
+            }
+            let Some(sk_paragraph) = down_holder.0.borrow().as_ref().map(|h| h.paragraph.clone())
             else {
                 return;
             };
-            let x = e.element_location.x as f32;
+            let x = e.element_location().x as f32;
             let pos = sk_paragraph.get_glyph_position_at_coordinate((x, 1.0));
-            on_click.call(utf16_offset_to_byte(&hit_query, pos.position as usize));
+            on_click.call(utf16_offset_to_byte(&down_query, pos.position as usize));
+            dragging.set(true);
         });
+
+        let move_holder = holder.clone();
+        let move_query = owned_query.clone();
+        text = text.on_global_pointer_move(move |e: Event<PointerEventData>| {
+            if !*dragging.peek() {
+                return;
+            }
+            let Some(sk_paragraph) = move_holder.0.borrow().as_ref().map(|h| h.paragraph.clone())
+            else {
+                return;
+            };
+            let area = drag_area.read();
+            let x = (e.global_location().x - area.min_x() as f64) as f32;
+            let pos = sk_paragraph.get_glyph_position_at_coordinate((x, 1.0));
+            on_drag.call(utf16_offset_to_byte(&move_query, pos.position as usize));
+        });
+
+        text = text.on_global_pointer_press(move |_: Event<PointerEventData>| dragging.set(false));
     }
 
     if let Some(pe) = preedit {
@@ -1917,6 +1984,7 @@ mod tests {
                 None,
                 None,
                 EventHandler::new(move |offset: usize| reported.set(Some(offset))),
+                EventHandler::new(move |_offset: usize| {}),
             )
         };
 
@@ -1950,6 +2018,63 @@ mod tests {
             Some(query.len()),
             "click far past the text should clamp to the query's byte length"
         );
+    }
+
+    #[test]
+    fn field_row_drag_extends_the_selection_past_the_down_point() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        use freya_core::elements::paragraph::Paragraph;
+        use freya_testing::launch_test;
+
+        let query = "hello world";
+        let reported_click: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
+        let reported_drag: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
+        let click_for_app = reported_click.clone();
+        let drag_for_app = reported_drag.clone();
+        let app = move || {
+            let click_for_app = click_for_app.clone();
+            let drag_for_app = drag_for_app.clone();
+            field_row(
+                query,
+                None,
+                query.len(),
+                None,
+                None,
+                EventHandler::new(move |offset: usize| click_for_app.set(Some(offset))),
+                EventHandler::new(move |offset: usize| drag_for_app.set(Some(offset))),
+            )
+        };
+
+        let mut test = launch_test(app);
+        test.sync_and_update();
+
+        let area = test
+            .find(|node, element| Paragraph::try_downcast(element).map(|_| node.layout().area))
+            .expect("field_row renders a hidden hit-test paragraph");
+        let y = (area.min_y() + 5.0) as f64;
+        let start_x = area.min_x() as f64 + 1.0;
+        let end_x = area.min_x() as f64 + 150.0;
+
+        // Press near the start (fires on_click, arms the drag), then move
+        // WITHOUT releasing -- on_drag should fire, extending the selection
+        // from the down-point to wherever the drag currently is.
+        test.press_cursor((start_x, y));
+        assert!(reported_click.get().is_some(), "press fires on_click first");
+        test.move_cursor((end_x, y));
+        test.sync_and_update();
+        let dragged = reported_drag.get().expect("on_drag fired while dragging past the down-point");
+        assert_eq!(dragged, query.len(), "drag past the text clamps to the query's byte length");
+
+        // Release, then move again: on_drag must NOT keep firing once the
+        // drag has ended (a stray move after release would silently keep
+        // rewriting the selection).
+        test.release_cursor((end_x, y));
+        reported_drag.set(None);
+        test.move_cursor((start_x, y));
+        test.sync_and_update();
+        assert_eq!(reported_drag.get(), None, "on_drag must not fire after release");
     }
 
     fn snapshot() -> AppsSnapshot {
