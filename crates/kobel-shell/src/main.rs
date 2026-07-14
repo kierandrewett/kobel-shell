@@ -1325,4 +1325,31 @@ mod tests {
             assert!(!panel_config(key, &t).clipboard, "{key:?} must not get a clipboard provider");
         }
     }
+
+    /// `bar_config`'s exclusive zone reserves gap + the VISUAL bar height
+    /// (`t.bar_h`), never `ui::bar::bar_surface_height` (which adds
+    /// TOOLTIP_HEADROOM for the tray's tile tooltips) -- the same "surface is
+    /// taller than the space real windows must respect" pattern as
+    /// dock_config, documented at length in bar_config's own doc comment but
+    /// never asserted. Mixing these up would either eat real screen space
+    /// tiled windows should get, or let a window overlap the bar.
+    #[test]
+    fn bar_config_exclusive_zone_uses_visual_height_not_surface_height() {
+        let t = theme::FLOATING;
+        let cfg = bar_config(&t);
+        assert_eq!(cfg.exclusive_zone, t.gap as i32 + t.bar_h as i32);
+        let surface_h = ui::bar::bar_surface_height(&t);
+        assert!(
+            (surface_h as i32) > t.bar_h as i32,
+            "the surface must genuinely be taller than the visual bar for this test to mean anything"
+        );
+        assert_ne!(
+            cfg.exclusive_zone,
+            t.gap as i32 + surface_h as i32,
+            "exclusive zone must never reserve the tooltip headroom -- that would push real windows down further than the visible bar needs"
+        );
+        // The surface height itself IS the taller value: paint-only headroom,
+        // must never affect window tiling (only the exclusive zone above does).
+        assert_eq!(cfg.size, SurfaceSize::Exact { width: 0, height: surface_h });
+    }
 }
