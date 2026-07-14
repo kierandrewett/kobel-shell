@@ -71,7 +71,7 @@ use crate::egl::Egl;
 use crate::frame::runner_waker;
 use crate::ime::{ImeCommit, ImeEvent, Preedit, decode_cursor};
 use crate::surface::{FreyaLayerSurface, PopupGeometry, PopupRole, SurfaceContexts, SurfaceRole};
-use crate::toplevel::{ToplevelInfo, decode_state_array};
+use crate::toplevel::{ToplevelInfo, ToplevelState, decode_state_array};
 use crate::{
     KeyPress, LoopWaker, OutputEvent, OutputId, PopupAnchor, PopupConfig, PopupGravity, Result, SurfaceConfig,
     SurfaceId, SurfaceSize, input,
@@ -623,31 +623,26 @@ struct Host {
     announced_outputs: HashSet<OutputId>,
 }
 
-/// One live `zwlr_foreign_toplevel_handle_v1` plus the decoded snapshot exposed to
-/// the UI. The handle is kept to send activate/set_minimized/close requests.
-///
-/// `info` is the last-published, caller-visible snapshot; `pending` accumulates
-/// Title/AppId/State events as they arrive and is copied into `info` only on
-/// `Event::Done`, matching the protocol's documented atomicity guarantee (a caller
-/// must never observe e.g. a new title paired with a stale app_id mid-batch --
-/// exactly the pattern already used for `ime_pending` below). `ready` stays false
-/// until the first `done`, so a toplevel with no confirmed data yet does not
-/// appear in [`Host::toplevels`] at all.
+/// One live `zwlr_foreign_toplevel_handle_v1` plus its batched, publish-gated
+/// snapshot. The handle is kept to send activate/set_minimized/close requests;
+/// [`ToplevelState`] (toplevel.rs) owns the stage-then-publish invariant itself,
+/// unit-tested there without a live Wayland connection.
 struct TrackedToplevel {
     handle: ZwlrForeignToplevelHandleV1,
-    info: ToplevelInfo,
-    pending: ToplevelInfo,
-    ready: bool,
+    state: ToplevelState,
 }
 
 impl Host {
-    /// Current toplevel snapshot, oldest-announced first. Only toplevels that have
-    /// received at least one `done` are included (see [`TrackedToplevel::ready`]).
+    /// Current toplevel snapshot, oldest-announced first. Only toplevels with at
+    /// least one published batch are included (see [`ToplevelState::published`]).
     /// Cloned (not borrowed) so `Control` can hand it to the app tick without
     /// holding a `Host` borrow open -- mirrors [`Shell::remaining`]'s
     /// `Vec<OutputId>` convention for the same reason.
     fn toplevels(&self) -> Vec<ToplevelInfo> {
-        self.toplevels.iter().filter(|t| t.ready).map(|t| t.info.clone()).collect()
+        self.toplevels
+            .iter()
+            .filter_map(|t| t.state.published().cloned())
+            .collect()
     }
 
     fn activate_toplevel(&mut self, id: &str) {
@@ -655,21 +650,21 @@ impl Host {
             tracing::warn!("[host] activate_toplevel({id}): no seat bound yet");
             return;
         };
-        match self.toplevels.iter().find(|t| t.info.id == id) {
+        match self.toplevels.iter().find(|t| t.state.id() == id) {
             Some(t) => t.handle.activate(&seat),
             None => tracing::debug!("[host] activate_toplevel({id}): unknown toplevel"),
         }
     }
 
     fn minimize_toplevel(&mut self, id: &str) {
-        match self.toplevels.iter().find(|t| t.info.id == id) {
+        match self.toplevels.iter().find(|t| t.state.id() == id) {
             Some(t) => t.handle.set_minimized(),
             None => tracing::debug!("[host] minimize_toplevel({id}): unknown toplevel"),
         }
     }
 
     fn close_toplevel(&mut self, id: &str) {
-        match self.toplevels.iter().find(|t| t.info.id == id) {
+        match self.toplevels.iter().find(|t| t.state.id() == id) {
             Some(t) => t.handle.close(),
             None => tracing::debug!("[host] close_toplevel({id}): unknown toplevel"),
         }
@@ -1792,9 +1787,9 @@ impl Dispatch<WpFractionalScaleV1, SurfaceId> for Host {
 // control protocol, only the newer listing-only ext-foreign-toplevel-list) ---
 // The manager's `toplevel` event hands us a new_id-created handle; its user data is
 // () (event_created_child below), and we track it by inserting a TrackedToplevel
-// with a freshly-minted id. `title`/`app_id`/`state` update that entry in place;
-// `done` is an atomicity marker (already applied per-event, nothing to batch);
-// `closed` removes it and sends the required `destroy` request.
+// with a freshly-minted id. `title`/`app_id`/`state` stage into `ToplevelState`
+// (toplevel.rs); `done` publishes the batch atomically (see the comment on the
+// Done arm below); `closed` removes it and sends the required `destroy` request.
 
 impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Host {
     fn event(
@@ -1810,15 +1805,9 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Host {
                 let id = host.next_toplevel_id;
                 host.next_toplevel_id += 1;
                 tracing::debug!("[host] toplevel {id} created ({:?})", toplevel.id());
-                let seed = ToplevelInfo {
-                    id: id.to_string(),
-                    ..Default::default()
-                };
                 host.toplevels.push(TrackedToplevel {
                     handle: toplevel,
-                    info: seed.clone(),
-                    pending: seed,
-                    ready: false,
+                    state: ToplevelState::new(id.to_string()),
                 });
             }
             zwlr_foreign_toplevel_manager_v1::Event::Finished => {
@@ -1849,53 +1838,49 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for Host {
         match event {
             Event::Title { title } => {
                 if let Some(t) = host.toplevels.iter_mut().find(|t| t.handle.id() == handle.id()) {
-                    t.pending.title = title;
+                    t.state.set_title(title);
                 }
             }
             Event::AppId { app_id } => {
                 if let Some(t) = host.toplevels.iter_mut().find(|t| t.handle.id() == handle.id()) {
-                    t.pending.app_id = app_id;
+                    t.state.set_app_id(app_id);
                 }
             }
             Event::State { state } => {
                 let (focused, minimized) = decode_state_array(&state);
                 if let Some(t) = host.toplevels.iter_mut().find(|t| t.handle.id() == handle.id()) {
-                    t.pending.focused = focused;
-                    t.pending.minimized = minimized;
+                    t.state.set_focus_and_minimized(focused, minimized);
                 }
             }
             Event::Closed => {
                 if let Some(pos) = host.toplevels.iter().position(|t| t.handle.id() == handle.id()) {
                     let closed = host.toplevels.remove(pos);
                     closed.handle.destroy();
-                    tracing::debug!(
-                        "[host] toplevel {} closed ({}/{})",
-                        closed.info.id,
-                        closed.info.app_id,
-                        closed.info.title
-                    );
+                    let snap = closed.state.pending();
+                    tracing::debug!("[host] toplevel {} closed ({}/{})", snap.id, snap.app_id, snap.title);
                 }
             }
             // `done` is the ONLY point at which the batched Title/AppId/State
-            // fields staged in `pending` become visible via `Host::toplevels` --
-            // publishing eagerly per-event (as this used to do) let a caller
+            // fields staged in `ToplevelState` become visible via `Host::toplevels`
+            // -- publishing eagerly per-event (as this used to do) let a caller
             // observe a torn snapshot (e.g. new title, stale app_id) mid-batch,
             // violating the protocol's documented atomicity guarantee. Same
-            // pattern as `ime_pending` below. The first `done` also flips `ready`,
-            // so a brand-new toplevel with no confirmed data never appears in a
-            // snapshot at all. output_enter/leave and parent are not surfaced to
-            // the dock/bar.
+            // pattern as `ime_pending` below. The first `done` also makes the
+            // toplevel visible at all (see [`ToplevelState::published`]), so a
+            // brand-new toplevel with no confirmed data never appears in a
+            // snapshot. output_enter/leave and parent are not surfaced to the
+            // dock/bar.
             Event::Done => {
                 if let Some(t) = host.toplevels.iter_mut().find(|t| t.handle.id() == handle.id()) {
-                    t.info = t.pending.clone();
-                    t.ready = true;
+                    t.state.publish();
+                    let info = t.state.published().expect("just published");
                     tracing::info!(
                         "[host] toplevel {} ready: app_id={:?} title={:?} focused={} minimized={}",
-                        t.info.id,
-                        t.info.app_id,
-                        t.info.title,
-                        t.info.focused,
-                        t.info.minimized,
+                        info.id,
+                        info.app_id,
+                        info.title,
+                        info.focused,
+                        info.minimized,
                     );
                 }
             }

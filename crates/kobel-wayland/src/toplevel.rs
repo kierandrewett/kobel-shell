@@ -1,10 +1,12 @@
-// toplevel.rs -- pure data/logic for zwlr_foreign_toplevel_manager_v1 (window list +
-// activate/minimize/close for the dock/bar). The Wayland glue (global bind, Dispatch
-// impls, Host fields) lives in conn.rs alongside every other raw-Dispatch protocol
-// (fractional-scale, viewporter, xdg shell) -- Host is private to that module, so
-// there is nowhere else for the glue to live. This file holds only what can be
-// tested without a live Wayland connection: the public snapshot type and the
-// `state` event's wire decode.
+// toplevel.rs -- pure data/logic for zwlr_foreign_toplevel_manager_v1 (the window
+// list + activate/minimize/close requests a concrete UI can build a dock/taskbar
+// from). The Wayland glue (global bind, Dispatch impls, Host fields) lives in
+// conn.rs alongside every other raw-Dispatch protocol (fractional-scale,
+// viewporter, xdg shell) -- Host is private to that module, so there is nowhere
+// else for the glue to live. This file holds only what can be tested without a
+// live Wayland connection: the public snapshot type, the `state` event's wire
+// decode, and the stage-then-publish batching state machine the Dispatch impl
+// drives on Title/AppId/State/Done.
 //
 // Protocol: /home/kieran/dev/gnoblin/src/protocols/foreign-toplevel-management/
 // wlr-foreign-toplevel-management-unstable-v1.xml (v3, gnoblin's mutter implements
@@ -17,7 +19,9 @@
 /// host-minted stable string (a monotonic counter, not a Wayland object id -- object
 /// ids are an implementation detail and not guaranteed stable-shaped across
 /// wayland-client versions), matching the shape `kobel_services::GnoblinWindow` used
-/// to carry over D-Bus so `crates/kobel-shell/src/main.rs` can map 1:1.
+/// to carry over D-Bus historically (see `archive/freya-ui-v1` for the last shell
+/// implementation that consumed this -- the current UI-neutral core exposes it via
+/// `Control::toplevels` for whichever concrete UI wires it up next).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ToplevelInfo {
     pub id: String,
@@ -48,6 +52,75 @@ pub(crate) fn decode_state_array(bytes: &[u8]) -> (bool, bool) {
         }
     }
     (focused, minimized)
+}
+
+/// Pure batching state-machine for one `zwlr_foreign_toplevel_handle_v1`: stages
+/// Title/AppId/State field writes and exposes them via [`ToplevelState::published`]
+/// only after [`ToplevelState::publish`] (called on `done`) has run at least once.
+/// Extracted from the `Dispatch` impl in conn.rs (which owns the real
+/// `ZwlrForeignToplevelHandleV1` proxy and can't be constructed off-compositor) so
+/// the stage-then-publish invariant -- required by the protocol's documented
+/// atomicity guarantee for `done` -- is unit-testable on its own, without a live
+/// Wayland connection.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ToplevelState {
+    pending: ToplevelInfo,
+    published: Option<ToplevelInfo>,
+}
+
+impl ToplevelState {
+    /// A freshly-created toplevel: `id` is known immediately (host-minted), every
+    /// other field starts empty, and nothing is published yet.
+    pub(crate) fn new(id: String) -> Self {
+        Self {
+            pending: ToplevelInfo {
+                id,
+                ..Default::default()
+            },
+            published: None,
+        }
+    }
+
+    /// The host-minted id, stable for this toplevel's whole lifetime -- valid even
+    /// before the first `publish`, so lookups (activate/minimize/close) work
+    /// regardless of publish state.
+    pub(crate) fn id(&self) -> &str {
+        &self.pending.id
+    }
+
+    /// The latest known fields, published or not -- for logging only (e.g. on
+    /// `closed`, where "whatever we knew" is more useful than nothing).
+    pub(crate) fn pending(&self) -> &ToplevelInfo {
+        &self.pending
+    }
+
+    pub(crate) fn set_title(&mut self, title: String) {
+        self.pending.title = title;
+    }
+
+    pub(crate) fn set_app_id(&mut self, app_id: String) {
+        self.pending.app_id = app_id;
+    }
+
+    pub(crate) fn set_focus_and_minimized(&mut self, focused: bool, minimized: bool) {
+        self.pending.focused = focused;
+        self.pending.minimized = minimized;
+    }
+
+    /// Apply `done`: publish every field staged since the last publish (or since
+    /// creation, for the first `done`) as one atomic snapshot. A field the
+    /// compositor did not resend this batch keeps whatever `pending` already held
+    /// (its own last-published value) -- it is never reset to default.
+    pub(crate) fn publish(&mut self) {
+        self.published = Some(self.pending.clone());
+    }
+
+    /// The last-published snapshot, or `None` if `publish` has never run -- the
+    /// toplevel has no confirmed data yet and must not appear in a caller-visible
+    /// list.
+    pub(crate) fn published(&self) -> Option<&ToplevelInfo> {
+        self.published.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -94,5 +167,69 @@ mod tests {
         let mut bytes = state_bytes(&[2]);
         bytes.push(0xFF); // 1 trailing byte, not a full u32
         assert_eq!(decode_state_array(&bytes), (true, false));
+    }
+
+    #[test]
+    fn new_toplevel_has_no_published_snapshot() {
+        let state = ToplevelState::new("0".into());
+        assert_eq!(state.published(), None);
+    }
+
+    #[test]
+    fn staged_fields_stay_invisible_until_publish() {
+        let mut state = ToplevelState::new("0".into());
+        state.set_title("Firefox".into());
+        state.set_app_id("org.mozilla.firefox".into());
+        state.set_focus_and_minimized(true, false);
+        // Nothing published yet: a caller must not see this in-progress batch.
+        assert_eq!(state.published(), None);
+    }
+
+    #[test]
+    fn publish_makes_every_staged_field_visible_together() {
+        let mut state = ToplevelState::new("0".into());
+        state.set_title("Firefox".into());
+        state.set_app_id("org.mozilla.firefox".into());
+        state.set_focus_and_minimized(true, false);
+        state.publish();
+        let info = state.published().expect("published after done");
+        assert_eq!(info.id, "0");
+        assert_eq!(info.title, "Firefox");
+        assert_eq!(info.app_id, "org.mozilla.firefox");
+        assert!(info.focused);
+        assert!(!info.minimized);
+    }
+
+    #[test]
+    fn later_batch_omitting_a_field_keeps_its_prior_value() {
+        let mut state = ToplevelState::new("0".into());
+        state.set_title("Firefox".into());
+        state.set_app_id("org.mozilla.firefox".into());
+        state.publish();
+        // A tab switch resends only the title; app_id is not part of this batch.
+        state.set_title("Firefox - New Tab".into());
+        state.publish();
+        let info = state.published().unwrap();
+        assert_eq!(info.title, "Firefox - New Tab");
+        assert_eq!(info.app_id, "org.mozilla.firefox"); // preserved, not reset
+    }
+
+    #[test]
+    fn a_write_after_publish_is_invisible_until_the_next_publish() {
+        let mut state = ToplevelState::new("0".into());
+        state.set_title("Firefox".into());
+        state.publish();
+        state.set_title("Firefox - New Tab".into()); // mid next batch, no done yet
+        // The published snapshot must still reflect the LAST publish, not this
+        // still-accumulating write -- this is the exact bug being regression-
+        // tested: a caller polling mid-batch must never see a torn update.
+        assert_eq!(state.published().unwrap().title, "Firefox");
+    }
+
+    #[test]
+    fn id_is_stable_and_readable_before_the_first_publish() {
+        let state = ToplevelState::new("42".into());
+        assert_eq!(state.id(), "42");
+        assert_eq!(state.published(), None);
     }
 }
