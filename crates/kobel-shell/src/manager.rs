@@ -84,6 +84,13 @@ pub enum ShellMsg {
     /// v1.close`), replacing the old dishonest "Quit minimizes every window"
     /// dock behaviour.
     CloseWindow(String),
+    /// The launcher's live text-editing state (query, cursor, anchor byte offsets),
+    /// resent to the IME on every change (keystroke or IME commit) so a real input
+    /// method (ibus etc.) has fresh context -- surrounding-text reporting is
+    /// optional per zwp_text_input_v3, but real CJK compose relies on it (e.g. to
+    /// react correctly when the user backspaces mid-composition). Ignored by the
+    /// host when the launcher does not currently hold text-input focus.
+    ImeSurroundingText { text: String, cursor: i32, anchor: i32 },
 }
 
 /// Cloneable handle provided as a root context on every surface.
@@ -147,6 +154,11 @@ pub trait RevealHost {
     fn minimize_window(&mut self, id: &str);
     /// Close a window by id (the real Quit verb).
     fn close_window(&mut self, id: &str);
+    /// Report the launcher's live surrounding text to the IME and commit it
+    /// immediately. No-op if text input is not currently enabled on any surface
+    /// (the host's `Control::ime_set_surrounding_text` is itself a no-op when
+    /// `text_input` is `None`; this just always calls through).
+    fn ime_sync_surrounding_text(&mut self, text: &str, cursor: i32, anchor: i32);
 }
 
 impl RevealHost for Control<'_> {
@@ -172,6 +184,11 @@ impl RevealHost for Control<'_> {
 
     fn close_window(&mut self, id: &str) {
         Control::close_toplevel(self, id);
+    }
+
+    fn ime_sync_surrounding_text(&mut self, text: &str, cursor: i32, anchor: i32) {
+        Control::ime_set_surrounding_text(self, text, cursor, anchor);
+        Control::ime_commit(self);
     }
 }
 
@@ -480,6 +497,9 @@ impl Manager {
                 ShellMsg::ActivateWindow(id) => host.activate_window(&id),
                 ShellMsg::MinimizeWindow(id) => host.minimize_window(&id),
                 ShellMsg::CloseWindow(id) => host.close_window(&id),
+                ShellMsg::ImeSurroundingText { text, cursor, anchor } => {
+                    host.ime_sync_surrounding_text(&text, cursor, anchor)
+                }
             }
         }
         if self.any_active() {
@@ -690,6 +710,7 @@ mod tests {
         region: Vec<(SurfaceId, bool)>,
         rects: Vec<(SurfaceId, Vec<(i32, i32, i32, i32)>)>,
         window_calls: Vec<(&'static str, String)>,
+        ime_calls: Vec<(String, i32, i32)>,
     }
     impl RevealHost for FakeHost {
         fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
@@ -709,6 +730,9 @@ mod tests {
         }
         fn close_window(&mut self, id: &str) {
             self.window_calls.push(("close", id.to_string()));
+        }
+        fn ime_sync_surrounding_text(&mut self, text: &str, cursor: i32, anchor: i32) {
+            self.ime_calls.push((text.to_string(), cursor, anchor));
         }
     }
 

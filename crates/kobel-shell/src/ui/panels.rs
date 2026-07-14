@@ -94,6 +94,29 @@ impl PartialEq for KeyEvent {
     }
 }
 
+/// Additive root context for the launcher's text field (the only surface with a
+/// real text-editing IME target): the host's IME `done` stream, routed by main.rs
+/// while the launcher currently holds text-input focus (`ImeEvent::Enter` matched
+/// against the launcher's `SurfaceId`). `seq` increments per delivery so consumers
+/// can detect repeats. `None` until the first commit arrives, and reset to `None`
+/// whenever text-input focus leaves the launcher (clears any live preedit).
+#[derive(Clone, Copy, PartialEq)]
+pub struct ImeFeed(pub State<Option<ImeFeedEvent>>);
+
+/// One delivered IME `done` payload (host [`kobel_wayland::ImeCommit`]) plus a
+/// sequence number. Compared by `seq` alone, like [`KeyEvent`].
+#[derive(Clone)]
+pub struct ImeFeedEvent {
+    pub seq: u64,
+    pub commit: kobel_wayland::ImeCommit,
+}
+
+impl PartialEq for ImeFeedEvent {
+    fn eq(&self, other: &Self) -> bool {
+        self.seq == other.seq
+    }
+}
+
 /// The shared placeholder panel body for `key`: a sheet (PANEL fill, sheet radius)
 /// labelled with the surface name, faded by the surface's [`OpenProgress`].
 pub fn panel(key: SurfaceKey) -> impl IntoElement {

@@ -25,9 +25,10 @@ use freya_core::prelude::*;
 use torin::prelude::{Alignment, Content, Size};
 
 use kobel_services::{AppEntry, AppsSnapshot, Command, SessionVerb};
+use kobel_wayland::Preedit;
 
 use super::fuzzy::{Frecency, fuzzy};
-use super::panels::{KeyFeed, OpenProgress, use_open_scale};
+use super::panels::{ImeFeed, KeyFeed, OpenProgress, use_open_scale};
 use super::{
     AppIcon, ICON_CALCULATOR, ICON_GLOBE, ICON_LOCK, ICON_LOGOUT, ICON_MAGNIFIER,
     ICON_MOON, ICON_POWER, ICON_RESTART, ICON_TERMINAL, dock, icon,
@@ -52,9 +53,29 @@ const RI_GLYPH: f32 = 20.0;
 /// Empty-state tile geometry (`.tile` min-width 64, icon chip 42, glyph 30).
 const TILE_W: f32 = 72.0;
 const TILE_GLYPH: f32 = 30.0;
+/// Sheet outer padding (`impl Component for Launcher`'s `.padding(SHEET_PAD)`).
+const SHEET_PAD: f32 = 8.0;
+/// Field row vertical padding (`field_row`'s `.padding((FIELD_PAD_V, 12.0))`).
+const FIELD_PAD_V: f32 = 3.0;
 
 /// Faux placeholder shown when the query is empty.
 const PLACEHOLDER: &str = "Search apps, actions...";
+
+/// The field row's surface-local `(x, y, width, height)`, in the launcher's own
+/// coordinate space -- exactly what `zwp_text_input_v3.set_cursor_rectangle`
+/// wants ("surface local coordinates", the whole text-input surface, not the
+/// screen). A whole-row bounding box rather than the precise glyph-level caret
+/// position: this crate has no text-measurement API wired for that, and a
+/// row-bounding rect is a legitimate, common approximation for candidate-window
+/// placement (correct Y, reasonable X, never obstructs the field). The field's
+/// position never changes while the launcher is open (fixed layout, no scroll
+/// above it), so this is computed once and never needs to move mid-session.
+pub(crate) fn ime_cursor_rect(launcher_w: f32) -> (i32, i32, i32, i32) {
+    let pad = SHEET_PAD as i32;
+    let w = (launcher_w - 2.0 * SHEET_PAD).round() as i32;
+    let h = (2.0 * FIELD_PAD_V + CARET_H + 4.0).round() as i32;
+    (pad, pad, w, h)
+}
 
 // ---------------------------------------------------------------------------
 // Keystroke classification (pure; testable without keyboard_types names)
@@ -328,6 +349,53 @@ impl Editor {
         self.query.insert_str(self.cursor, s);
         self.cursor += s.len();
     }
+
+    /// Apply one IME `done` payload's delete + commit parts (the protocol's
+    /// mandated apply order: delete around the cursor first, then insert the
+    /// commit string at the resulting cursor). The live preedit text is NOT
+    /// spliced into `query` -- it is rendering-only state the component tracks
+    /// separately (see [`Preedit`]/`ImeFeed`) -- so `delete_before`/`delete_after`
+    /// count from the real cursor, exactly as they would with no preedit active.
+    /// Any active selection is dropped first ONLY when there is surrounding text
+    /// to delete (the protocol defines `delete_before`/`delete_after` relative to
+    /// the plain cursor, "excluding the selection"); a bare `commit_string` with
+    /// no delete instead replaces the active selection itself, via [`Editor::insert`]
+    /// (matching ordinary typed-character behaviour) -- clearing the anchor here
+    /// unconditionally would have made `insert` see no selection to replace.
+    pub(crate) fn apply_ime_commit(&mut self, delete_before: u32, delete_after: u32, commit: Option<&str>) {
+        if delete_before > 0 || delete_after > 0 {
+            self.anchor = None;
+            let start = clamp_boundary_back(&self.query, self.cursor.saturating_sub(delete_before as usize));
+            let end = clamp_boundary_fwd(&self.query, (self.cursor + delete_after as usize).min(self.query.len()));
+            self.query.replace_range(start..end, "");
+            self.cursor = start;
+        }
+        if let Some(text) = commit {
+            self.insert(text);
+        }
+        self.selected = 0;
+    }
+}
+
+/// Clamp `pos` (a byte offset that may land mid-codepoint -- e.g. a possibly-
+/// misaligned `delete_surrounding_text` byte count) to the nearest valid char
+/// boundary AT or BEFORE `pos`. Defensive: the protocol requires boundary-aligned
+/// indices, but a compositor bug should degrade gracefully, never panic.
+fn clamp_boundary_back(s: &str, pos: usize) -> usize {
+    let mut i = pos.min(s.len());
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// Clamp `pos` to the nearest valid char boundary AT or AFTER `pos`.
+fn clamp_boundary_fwd(s: &str, pos: usize) -> usize {
+    let mut i = pos.min(s.len());
+    while !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
 }
 
 /// The previous char boundary strictly before `pos`, or `None` at the string
@@ -972,6 +1040,21 @@ fn close_and_reset(bus: &ShellBus, mut query: State<String>, mut selected: State
     selected.set(0);
 }
 
+/// Report the editor's current text/cursor/selection to the IME so a real input
+/// method (ibus etc.) has fresh context, right after ANY edit -- keystroke or IME
+/// commit alike (the protocol asks for this on both: "including changes caused by
+/// handling incoming text-input events as well as changes caused by other
+/// mechanisms like keyboard typing"). Ignored host-side when the launcher does not
+/// currently hold text-input focus (main.rs's `on_ime` gates `enable` on that).
+fn sync_ime_surrounding_text(bus: &ShellBus, editor: &Editor) {
+    let anchor = editor.anchor.unwrap_or(editor.cursor);
+    bus.send(ShellMsg::ImeSurroundingText {
+        text: editor.query.clone(),
+        cursor: editor.cursor as i32,
+        anchor: anchor as i32,
+    });
+}
+
 /// Run a row's action. App launches bump frecency (by `name`) and close;
 /// commands fire and close; surface opens toggle and reset without a CloseAll
 /// (the surface itself closes the launcher via the one-open-at-a-time rule);
@@ -1021,11 +1104,13 @@ impl Component for Launcher {
         let apps = use_consume::<State<AppsSnapshot>>();
         let progress = use_consume::<OpenProgress>();
         let feed = use_consume::<KeyFeed>();
+        let ime_feed = use_consume::<ImeFeed>();
 
         let mut query = use_state(String::new);
         let mut selected = use_state(|| 0usize);
         let mut cursor = use_state(|| 0usize);
         let mut anchor = use_state(|| None::<usize>);
+        let mut preedit = use_state(|| None::<Preedit>);
         let frecency = use_state(Frecency::load);
 
         // Reveal opacity + open-state (subscribes this scope to the spring).
@@ -1033,13 +1118,14 @@ impl Component for Launcher {
         let opacity = p.clamp(0.0, 1.0);
         let open_now = p > 0.01;
 
-        // Reset the query/selection/cursor on the closed -> open transition.
+        // Reset the query/selection/cursor/preedit on the closed -> open transition.
         use_side_effect_with_deps(&open_now, move |&now| {
             if now {
                 query.set(String::new());
                 selected.set(0);
                 cursor.set(0);
                 anchor.set(None);
+                preedit.set(None);
             }
         });
 
@@ -1071,6 +1157,7 @@ impl Component for Launcher {
                 };
                 match editor.apply(&stroke, ghost.as_deref(), rows) {
                     Outcome::Redraw => {
+                        sync_ime_surrounding_text(&bus, &editor);
                         query.set(editor.query);
                         selected.set(editor.selected);
                         cursor.set(editor.cursor);
@@ -1087,6 +1174,41 @@ impl Component for Launcher {
             });
         }
 
+        // Route IME `done` payloads (delete + commit -> the Editor; the live
+        // preedit -> its own state, rendered inline by field_row -- never spliced
+        // into `query`). The effect re-runs only on a new commit (its dep is the
+        // ImeFeed seq); Enter/Leave are handled host-side (main.rs), not here.
+        let ime_seq = ime_feed.0.read().as_ref().map(|e| e.seq).unwrap_or(0);
+        {
+            let bus = bus.clone();
+            use_side_effect_with_deps(&ime_seq, move |_| {
+                let event = ime_feed.0.peek();
+                let Some(event) = event.as_ref() else {
+                    return;
+                };
+                let payload = &event.commit;
+                if payload.delete_before > 0 || payload.delete_after > 0 || payload.commit.is_some() {
+                    let mut editor = Editor {
+                        query: query.peek().clone(),
+                        selected: *selected.peek(),
+                        cursor: *cursor.peek(),
+                        anchor: *anchor.peek(),
+                    };
+                    editor.apply_ime_commit(
+                        payload.delete_before,
+                        payload.delete_after,
+                        payload.commit.as_deref(),
+                    );
+                    sync_ime_surrounding_text(&bus, &editor);
+                    query.set(editor.query);
+                    selected.set(editor.selected);
+                    cursor.set(editor.cursor);
+                    anchor.set(editor.anchor);
+                }
+                preedit.set(payload.preedit.clone());
+            });
+        }
+
         // Providers for display (same pure path the key effect uses).
         let q = query.read();
         let sel = *selected.read();
@@ -1094,7 +1216,8 @@ impl Component for Launcher {
         let sections = results(&q, &snap, &frecency.peek());
         let ghost = ghost_for(&q, &sections);
 
-        let field = field_row(&q, ghost.as_deref(), *cursor.read(), *anchor.read());
+        let field =
+            field_row(&q, ghost.as_deref(), *cursor.read(), *anchor.read(), preedit.read().as_ref());
 
         let body: Element = if q.trim().is_empty() {
             empty_state(&snap, frecency)
@@ -1107,7 +1230,7 @@ impl Component for Launcher {
             .width(Size::fill())
             .background(theme::PANEL.rgb())
             .corner_radius(theme::RADIUS_SHEET)
-            .padding(8.0)
+            .padding(SHEET_PAD)
             .vertical()
             .spacing(6.0)
             .scale(scale)
@@ -1131,17 +1254,32 @@ impl Component for Launcher {
 /// highlight, the faux placeholder (empty) or the DIM ghost suffix (only
 /// shown when the cursor sits at the very end -- mid-string it would read as
 /// text inserted ahead of the cursor), and a `super` kbd chip.
-fn field_row(query: &str, ghost: Option<&str>, cursor: usize, anchor: Option<usize>) -> Element {
+///
+/// `preedit` is the IME's live composing text (see [`kobel_wayland::Preedit`]):
+/// when present and non-empty it takes over rendering entirely (no ghost, no
+/// selection highlight -- the IME owns the cursor while composing), shown as a
+/// CHIP-background span spliced in at `cursor`, with its own inner caret at the
+/// preedit's cursor position when the compositor reports one.
+fn field_row(
+    query: &str,
+    ghost: Option<&str>,
+    cursor: usize,
+    anchor: Option<usize>,
+    preedit: Option<&Preedit>,
+) -> Element {
     let selection = anchor.and_then(|a| {
         let (start, end) = (a.min(cursor), a.max(cursor));
         (start != end).then_some((start, end))
     });
+    let preedit = preedit.filter(|p| !p.text.is_empty());
 
-    let caret = rect()
-        .width(Size::px(CARET_W))
-        .height(Size::px(CARET_H))
-        .corner_radius(2.0)
-        .background(theme::LEAF.rgb());
+    let mk_caret = || {
+        rect()
+            .width(Size::px(CARET_W))
+            .height(Size::px(CARET_H))
+            .corner_radius(2.0)
+            .background(theme::LEAF.rgb())
+    };
 
     let plain = |s: &str| {
         label().text(s.to_string()).color(theme::TX.rgb()).font_size(FIELD_FONT).max_lines(1usize)
@@ -1154,8 +1292,40 @@ fn field_row(query: &str, ghost: Option<&str>, cursor: usize, anchor: Option<usi
         .height(Size::px(CARET_H + 4.0))
         .overflow(Overflow::Clip);
 
-    if query.is_empty() {
-        text = text.child(caret).child(
+    if let Some(pe) = preedit {
+        // Composing: before-cursor text, the preedit span (CHIP background --
+        // distinct from the LEAF selection highlight, "still composing" reads as
+        // a different affordance than "selected"), after-cursor text. The inner
+        // caret sits at the preedit's own cursor when the compositor reports one
+        // collapsed (cursor_begin == cursor_end); a real range or a hidden cursor
+        // (both None) renders the span with no inner caret.
+        let (before, after) = (&query[..cursor], &query[cursor..]);
+        if !before.is_empty() {
+            text = text.child(plain(before));
+        }
+        let pe_text = |s: &str| {
+            label().text(s.to_string()).color(theme::TX.rgb()).font_size(FIELD_FONT).max_lines(1usize)
+        };
+        let mut pe_row = rect().horizontal().background(theme::CHIP.rgb()).corner_radius(2.0);
+        match (pe.cursor_begin, pe.cursor_end) {
+            (Some(b), Some(e)) if b == e => {
+                let (pb, pa) = (&pe.text[..b], &pe.text[b..]);
+                if !pb.is_empty() {
+                    pe_row = pe_row.child(pe_text(pb));
+                }
+                pe_row = pe_row.child(mk_caret());
+                if !pa.is_empty() {
+                    pe_row = pe_row.child(pe_text(pa));
+                }
+            }
+            _ => pe_row = pe_row.child(pe_text(&pe.text)),
+        }
+        text = text.child(pe_row);
+        if !after.is_empty() {
+            text = text.child(plain(after));
+        }
+    } else if query.is_empty() {
+        text = text.child(mk_caret()).child(
             label()
                 .text(PLACEHOLDER)
                 .color(theme::DIM.rgb())
@@ -1186,7 +1356,7 @@ fn field_row(query: &str, ghost: Option<&str>, cursor: usize, anchor: Option<usi
         if !before.is_empty() {
             text = text.child(plain(before));
         }
-        text = text.child(caret);
+        text = text.child(mk_caret());
         if !after.is_empty() {
             text = text.child(plain(after));
         }
@@ -1213,7 +1383,7 @@ fn field_row(query: &str, ghost: Option<&str>, cursor: usize, anchor: Option<usi
         .spacing(11.0)
         .background(theme::PANEL2.rgb())
         .corner_radius(theme::RADIUS_TILE)
-        .padding((3.0, 12.0))
+        .padding((FIELD_PAD_V, 12.0))
         .child(icon(ICON_MAGNIFIER, 16.0, theme::MUT))
         .child(text)
         .child(kbd_chip("super"))
@@ -1947,5 +2117,102 @@ mod tests {
         assert_eq!(next_word_boundary("foo   bar", 0), 3);
         assert_eq!(prev_word_boundary("word", 4), 0);
         assert_eq!(next_word_boundary("word", 0), 4);
+    }
+
+    #[test]
+    fn ime_commit_inserts_at_cursor() {
+        // A plain commit_string (no preceding preedit/delete) inserts at the
+        // cursor and advances it, just like typing -- the common case for a
+        // single-keystroke CJK candidate accept with no compose sequence.
+        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: None };
+        e.apply_ime_commit(0, 0, Some(""));
+        assert_eq!(e.query, "hello world"); // empty commit is a no-op insert
+        e.apply_ime_commit(0, 0, Some("!"));
+        assert_eq!(e.query, "hello! world");
+        assert_eq!(e.cursor, 6);
+    }
+
+    #[test]
+    fn ime_commit_replaces_a_selection() {
+        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        e.apply_ime_commit(0, 0, Some("goodbye"));
+        assert_eq!(e.query, "goodbye world");
+        assert_eq!(e.cursor, 7);
+        assert_eq!(e.anchor, None);
+    }
+
+    #[test]
+    fn ime_commit_deletes_surrounding_text_before_and_after() {
+        // A CJK correction round-trip: the IME asks to delete 2 bytes before and
+        // 1 after the cursor (e.g. replacing a mis-composed syllable), then
+        // commits the corrected text.
+        let mut e = Editor { query: "abXcd".into(), selected: 0, cursor: 3, anchor: None };
+        e.apply_ime_commit(2, 1, Some("Y"));
+        // delete_before=2 removes "bX" ([1,3)); delete_after=1 removes "c" ([3,4));
+        // the combined [1,4) range leaves "a"+"d", "Y" lands at the resulting cursor 1.
+        assert_eq!(e.query, "aYd");
+        assert_eq!(e.cursor, 2);
+    }
+
+    #[test]
+    fn ime_commit_delete_only_no_commit_text() {
+        let mut e = Editor { query: "hello".into(), selected: 0, cursor: 5, anchor: None };
+        e.apply_ime_commit(3, 0, None);
+        assert_eq!(e.query, "he");
+        assert_eq!(e.cursor, 2);
+    }
+
+    #[test]
+    fn ime_commit_delete_before_clamps_at_string_start() {
+        let mut e = Editor { query: "ab".into(), selected: 0, cursor: 1, anchor: None };
+        e.apply_ime_commit(100, 0, Some("Z"));
+        assert_eq!(e.query, "Zb");
+        assert_eq!(e.cursor, 1);
+    }
+
+    #[test]
+    fn ime_commit_delete_after_clamps_at_string_end() {
+        let mut e = Editor { query: "ab".into(), selected: 0, cursor: 1, anchor: None };
+        e.apply_ime_commit(0, 100, Some("Z")); // delete "b" onward, then insert Z
+        assert_eq!(e.query, "aZ");
+        assert_eq!(e.cursor, 2);
+    }
+
+    #[test]
+    fn ime_commit_never_splits_a_multibyte_codepoint() {
+        // Cursor sits right after the 2-byte "e" (cafe with an acute accent);
+        // deleting 1 byte before must clamp back to the FULL codepoint's start,
+        // not land mid-UTF-8-sequence (which would panic on the replace_range).
+        let s = "caf\u{e9}"; // "caf" + 2-byte e-acute
+        let mut e = Editor { query: s.into(), selected: 0, cursor: s.len(), anchor: None };
+        e.apply_ime_commit(1, 0, Some("e"));
+        assert_eq!(e.query, "cafe");
+        assert_eq!(e.cursor, 4);
+    }
+
+    #[test]
+    fn ime_commit_resets_selected_row() {
+        let mut e = Editor { query: String::new(), selected: 3, cursor: 0, anchor: None };
+        e.apply_ime_commit(0, 0, Some("x"));
+        assert_eq!(e.selected, 0);
+    }
+
+    #[test]
+    fn decode_preedit_cursor_hidden_vs_collapsed() {
+        use kobel_wayland::Preedit;
+        // A collapsed cursor (begin == end) is what field_row renders an inner
+        // caret for; hidden (None, None) renders no inner caret.
+        let collapsed = Preedit { text: "n".into(), cursor_begin: Some(1), cursor_end: Some(1) };
+        assert_eq!(collapsed.cursor_begin, collapsed.cursor_end);
+        let hidden = Preedit { text: "n".into(), cursor_begin: None, cursor_end: None };
+        assert!(hidden.cursor_begin.is_none() && hidden.cursor_end.is_none());
+    }
+
+    #[test]
+    fn ime_cursor_rect_is_within_the_launcher_width_and_has_positive_height() {
+        let (x, y, w, h) = ime_cursor_rect(584.0);
+        assert_eq!((x, y), (8, 8));
+        assert_eq!(w, 584 - 16);
+        assert!(h > 0);
     }
 }

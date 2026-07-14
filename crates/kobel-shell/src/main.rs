@@ -26,8 +26,9 @@ use kobel_services::{
     NotifdSnapshot, PowerSnapshot, ServiceEvent, Services, SettingsSnapshot, TraySnapshot,
 };
 use kobel_wayland::{
-    Anchor, Control, KeyboardInteractivity, Layer, Margins, OutputControl, OutputEvent, OutputId,
-    PopupConfig, Shell, SurfaceConfig, SurfaceContexts, SurfaceId, SurfaceSize, ToplevelInfo,
+    Anchor, Control, ImeEvent, KeyboardInteractivity, Layer, Margins, OutputControl, OutputEvent,
+    OutputId, PopupConfig, Shell, SurfaceConfig, SurfaceContexts, SurfaceId, SurfaceSize,
+    ToplevelInfo,
 };
 
 use crate::manager::{Manager, ShellBus, ShellMsg, SurfaceKey};
@@ -106,7 +107,12 @@ fn provide_panel_contexts(
     bus: &ShellBus,
     tokens: theme::Tokens,
     key: SurfaceKey,
-) -> (SurfaceStates, State<f32>, Option<State<Option<ui::panels::KeyEvent>>>) {
+) -> (
+    SurfaceStates,
+    State<f32>,
+    Option<State<Option<ui::panels::KeyEvent>>>,
+    Option<State<Option<ui::panels::ImeFeedEvent>>>,
+) {
     let states = provide_contexts(cx, bus, tokens);
     let progress = cx.provide(|| ui::panels::OpenProgress(State::create(0.0)));
     // KeyFeed on the keyboard-Exclusive surfaces (launcher, session) AND on
@@ -118,7 +124,12 @@ fn provide_panel_contexts(
         SurfaceKey::Launcher | SurfaceKey::Session | SurfaceKey::QuickSettings
     )
     .then(|| cx.provide(|| ui::panels::KeyFeed(State::create(None))).0);
-    (states, progress.0, keyfeed)
+    // ImeFeed on the launcher only -- the sole surface with a real text-editing
+    // target. main.rs's `on_ime` handler gates `enable`/`disable` on membership in
+    // the registry's `ime_feeds` map, which this populates (see mount_one_singleton).
+    let ime_feed = (key == SurfaceKey::Launcher)
+        .then(|| cx.provide(|| ui::panels::ImeFeed(State::create(None))).0);
+    (states, progress.0, keyfeed, ime_feed)
 }
 
 /// Provide the frozen root contexts plus the additive [`ui::notifications::DrawerOpen`]
@@ -358,6 +369,10 @@ struct Registry {
     /// surface id -> KeyFeed, so the app key handler can route each press into
     /// whichever surface holds the keyboard. Rebuilt for the new ids on primary death.
     keyfeeds: HashMap<SurfaceId, State<Option<ui::panels::KeyEvent>>>,
+    /// surface id -> ImeFeed, populated only for the launcher (the sole
+    /// text-editing surface). Rebuilt for the new id on primary death, same as
+    /// keyfeeds.
+    ime_feeds: HashMap<SurfaceId, State<Option<ui::panels::ImeFeedEvent>>>,
 }
 
 impl Registry {
@@ -540,7 +555,7 @@ fn mount_one_singleton(
             Ok(SingletonSurface { role, id, states })
         }
         SingletonRole::Panel(key) => {
-            let (id, (states, progress, keyfeed)) = control.create_on(
+            let (id, (states, progress, keyfeed, ime_feed)) = control.create_on(
                 output,
                 panel_config(key, &tokens),
                 |cx| provide_panel_contexts(cx, bus, tokens, key),
@@ -554,6 +569,9 @@ fn mount_one_singleton(
             )?;
             if let Some(feed) = keyfeed {
                 registry.borrow_mut().keyfeeds.insert(id, feed);
+            }
+            if let Some(feed) = ime_feed {
+                registry.borrow_mut().ime_feeds.insert(id, feed);
             }
             // The drawer's reveal callback mirrors its open state into EVERY output's
             // toasts DrawerOpen flag (read live from the registry, so hotplugged outputs
@@ -637,9 +655,10 @@ fn handle_surface_closed(
     manager: &Rc<RefCell<Manager>>,
     registry: &Rc<RefCell<Registry>>,
 ) {
-    // Drop any keyfeed for the retired surface first (chrome has none; launcher /
-    // session / quicksettings do) so key routing never points at a dead surface.
+    // Drop any keyfeed/ime_feed for the retired surface first (chrome has none;
+    // launcher/session/quicksettings do) so routing never points at a dead surface.
     registry.borrow_mut().keyfeeds.remove(&surface);
+    registry.borrow_mut().ime_feeds.remove(&surface);
 
     // 1) Per-output chrome: drop just this surface's record from its bundle. The
     //    bundle and the other outputs' bundles stay; the wholesale drop is Removed's.
@@ -885,11 +904,13 @@ fn main() -> anyhow::Result<()> {
                 if registry.borrow_mut().per_output.remove(&output).is_some() {
                     tracing::info!("[shell] output {output:?} removed: dropped chrome bookkeeping");
                 }
-                // Clear keyfeeds for any retired surface (the singletons live here).
+                // Clear keyfeeds/ime_feeds for any retired surface (the singletons
+                // live here).
                 {
                     let mut reg = registry.borrow_mut();
                     for id in &retired {
                         reg.keyfeeds.remove(id);
+                        reg.ime_feeds.remove(id);
                     }
                 }
                 // Primary death: if this output hosted the singletons, rebind them to
@@ -956,6 +977,61 @@ fn main() -> anyhow::Result<()> {
                 feed.set(Some(ui::panels::KeyEvent { seq, press }));
             } else if press.is_escape() {
                 bus.send(ShellMsg::CloseAll);
+            }
+        }
+    });
+
+    // Route IME (CJK/compose input) focus by the registry's ime_feeds membership:
+    // Enter on a surface that has a feed (the launcher, the only text-editing
+    // surface today) enables text input and reports the field's cursor rect;
+    // Enter on anything else explicitly disables it (the protocol asks the
+    // focused surface to commit enable/disable as focus moves across editable and
+    // non-editable elements). Commit payloads route to whichever surface's Enter
+    // last fired (ime_focus), matching the protocol's single-object-per-seat model
+    // (`done` carries no surface argument, only Enter/Leave do).
+    shell.on_ime({
+        let registry = registry.clone();
+        let mut ime_focus: Option<SurfaceId> = None;
+        let mut seq: u64 = 0;
+        move |event, control| match event {
+            ImeEvent::Enter(surface) => {
+                let feed = registry.borrow().ime_feeds.contains_key(&surface);
+                if feed {
+                    let (x, y, w, h) = ui::launcher::ime_cursor_rect(tokens.launcher_w);
+                    control.ime_enable();
+                    control.ime_set_cursor_rectangle(x, y, w, h);
+                    control.ime_commit();
+                    ime_focus = Some(surface);
+                    tracing::debug!("[shell] ime entered {surface:?}: enabled");
+                } else {
+                    control.ime_disable();
+                    control.ime_commit();
+                }
+            }
+            ImeEvent::Leave(surface) => {
+                if ime_focus == Some(surface) {
+                    ime_focus = None;
+                    // Clear any live preedit the launcher was showing -- an empty
+                    // ImeCommit has no delete/commit/preedit, so this only ever
+                    // resets the rendering-only preedit state, never touches `query`.
+                    let feed = registry.borrow().ime_feeds.get(&surface).copied();
+                    if let Some(mut feed) = feed {
+                        seq += 1;
+                        feed.set(Some(ui::panels::ImeFeedEvent {
+                            seq,
+                            commit: kobel_wayland::ImeCommit::default(),
+                        }));
+                    }
+                    tracing::debug!("[shell] ime left {surface:?}");
+                }
+            }
+            ImeEvent::Commit(payload) => {
+                let Some(focus) = ime_focus else { return };
+                let feed = registry.borrow().ime_feeds.get(&focus).copied();
+                if let Some(mut feed) = feed {
+                    seq += 1;
+                    feed.set(Some(ui::panels::ImeFeedEvent { seq, commit: payload }));
+                }
             }
         }
     });
