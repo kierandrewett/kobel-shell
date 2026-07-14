@@ -117,8 +117,16 @@ was drawn, not a replacement for them.
 ## gnoblin integration
 
 - All surfaces are `kobel-*` namespaced layer surfaces (window rules key on these).
-- `kobel-services` talks `org.gnoblin.Shell`: soft reload, feature toggles, the
-  window list that drives the dock and bar title.
+- `kobel-services` talks `org.gnoblin.Shell`: soft reload and feature toggles only --
+  that interface has never had window methods (`ListWindows`/`ActivateWindow`/
+  `MinimizeWindow`/`WindowsChanged` all return `UnknownMethod`; an earlier version
+  of this crate called them anyway, silently failing every session, debug-logged
+  and never crashing). The window list that drives the dock and bar title comes
+  from `kobel-wayland` speaking the real `zwlr_foreign_toplevel_manager_v1`
+  **Wayland protocol** directly (gnoblin's mutter already implements it and gates
+  it on by default; no gnoblin-repo change was needed). See
+  `crates/kobel-services/src/gnoblin.rs`'s module doc and
+  `crates/kobel-wayland/src/toplevel.rs`.
 - The notification daemon negotiates bus-name ownership itself: it asks gnoblin to
   release `notifications`, claims `org.freedesktop.Notifications`, and hands the
   feature back on exit.
@@ -128,6 +136,3 @@ was drawn, not a replacement for them.
 ## Follow-ups (known, deliberate)
 
 - IME (`zwp_text_input_v3`) for CJK input in the launcher.
-- Dock context menu's Quit minimizes every window instead of closing them --
-  `org.gnoblin.Shell` has no close/quit verb yet; a real close needs a new
-  gnoblin method.
