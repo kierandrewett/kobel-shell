@@ -280,7 +280,12 @@ case "$res" in "(true,"*) ;; *) echo "FAIL: screenshot call failed"; fail=1;; es
 
 kill -0 "$AP" 2>/dev/null && echo "== kobel-shell alive ==" || { echo "== kobel-shell DIED =="; tail -10 "$DK/kobel.log"; fail=1; }
 echo "== kobel log =="
-grep -aE "\[(shell|manager|ipc|host|conn|egl)\]|error|panic|WARN" "$DK/kobel.log" | head -30
+# head -120 (not -30): a 2-output run's full startup sequence (both outputs' surface
+# creation + "mounted chrome" lines) runs past 90 matching lines, so a tighter cap
+# silently truncates before the second output's confirmation -- looks like a missing
+# mount, but /tmp/kobel-shell-run.log (the untruncated copy) always has it. Verified
+# 2026-07-14: chasing this exact false alarm cost a full investigation cycle.
+grep -aE "\[(shell|manager|ipc|host|conn|egl)\]|error|panic|WARN" "$DK/kobel.log" | head -120
 
 # --- reveal machinery end to end (this wave): toggle reveals the launcher, capture it
 #     while open, toggle hides it; assert the manager reveal/hide logs (FREYA-PLAN 2.4). ---
