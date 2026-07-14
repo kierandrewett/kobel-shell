@@ -216,9 +216,15 @@ pub(crate) async fn run(
                         cache.clear();
                         let _ =
                             events.send(ServiceEvent::Calendar(snapshot(has_calendars, &cache)));
-                        if let Err(e) = proxy.set_time_range(since, until, true).await {
-                            tracing::warn!("[calendar] SetTimeRange failed: {e}");
-                        }
+                        // CalendarServer's SetTimeRange has no default
+                        // deadline; bound it so a hung EDS backend doesn't
+                        // stall event add/remove signal processing too.
+                        crate::with_command_timeout("calendar", async {
+                            if let Err(e) = proxy.set_time_range(since, until, true).await {
+                                tracing::warn!("[calendar] SetTimeRange failed: {e}");
+                            }
+                        })
+                        .await;
                     }
                 }
             }

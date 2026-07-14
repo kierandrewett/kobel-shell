@@ -147,7 +147,12 @@ pub(crate) async fn run(
                 emit(&events, connected);
             }
             Some(cmd) = cmd_rx.recv() => {
-                handle_command(proxy.as_ref(), cmd).await;
+                // org.gnoblin.Shell calls have no default deadline, and this
+                // loop also tracks bus ownership (the connected/disconnected
+                // amber status) via name_changes -- a hung gnoblin would
+                // otherwise freeze that status indicator too, right when the
+                // user most needs it to be accurate.
+                crate::with_command_timeout("gnoblin", handle_command(proxy.as_ref(), cmd)).await;
             }
             else => break,
         }
