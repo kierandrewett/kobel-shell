@@ -401,12 +401,17 @@ fn first_artist(value: OwnedValue) -> Option<String> {
     String::try_from(value).ok().filter(|s| !s.is_empty())
 }
 
-/// `mpris:length` is microseconds, usually `x` (i64) but occasionally `t` (u64).
+/// `mpris:length` is microseconds, usually `x` (i64) but occasionally `t`
+/// (u64). Never negative: a negative i64 straight off the wire, or a u64
+/// above `i64::MAX` that an unchecked `as` cast would wrap into a negative
+/// i64, both have no valid microsecond-length meaning here -- rejected
+/// (`None`, "no length reported") rather than exposed as a garbage negative
+/// track length.
 fn length_micros(value: OwnedValue) -> Option<i64> {
     if let Ok(n) = i64::try_from(&value) {
-        return Some(n);
+        return (n >= 0).then_some(n);
     }
-    u64::try_from(&value).ok().map(|n| n as i64)
+    u64::try_from(&value).ok().and_then(|n| i64::try_from(n).ok())
 }
 
 fn micros_to_secs(micros: i64) -> f64 {
@@ -477,6 +482,25 @@ mod tests {
         assert_eq!(length_micros(owned(240_000_000_i64)), Some(240_000_000));
         // Some players send mpris:length as u64 (`t`) instead of i64 (`x`).
         assert_eq!(length_micros(owned(240_000_000_u64)), Some(240_000_000));
+    }
+
+    #[test]
+    fn length_micros_rejects_negative_values_from_either_representation() {
+        // A negative i64 straight off the wire (buggy/hostile player) has no
+        // valid microsecond-length meaning -- must not surface as a negative
+        // track length.
+        assert_eq!(length_micros(owned(-1_i64)), None);
+        assert_eq!(length_micros(owned(i64::MIN)), None);
+        // A u64 mpris:length above i64::MAX has no valid representation as
+        // microseconds here; the old `as i64` cast wrapped it into a negative
+        // number (a garbage, visibly-wrong track length) instead of rejecting
+        // it. u64::MAX itself, and the smallest out-of-range value, both.
+        assert_eq!(length_micros(owned(u64::MAX)), None);
+        assert_eq!(length_micros(owned(i64::MAX as u64 + 1)), None);
+        // The boundary value (exactly i64::MAX) is still valid.
+        assert_eq!(length_micros(owned(i64::MAX as u64)), Some(i64::MAX));
+        // Zero (a player reporting an unknown/zero length) is valid, not negative.
+        assert_eq!(length_micros(owned(0_i64)), Some(0));
     }
 
     #[test]
