@@ -794,6 +794,32 @@ impl Host {
         if self.xdg_shell.is_none() {
             return Err(anyhow!("create_popup: xdg_wm_base not advertised (popups unavailable)"));
         }
+        if !self.surfaces.iter().any(|s| s.id == parent) {
+            return Err(anyhow!("create_popup: parent {parent:?} not found"));
+        }
+
+        // At most one live child popup per parent: a menu shows one active submenu
+        // flyout at a time (standard menu UX), and a chrome surface (bar/dock) shows
+        // one active context menu at a time. Nothing else enforces this -- a pure
+        // hover-driven submenu swap (SubmenuItem's delayed open) never triggers the
+        // sibling's outside-click grab-dismiss, since the pointer stays inside the
+        // shared parent popup the whole time; a right-click on a second dock tile
+        // or tray icon is a fresh popup request with the same fixed per-surface
+        // parent id, same gap. Without this, either scenario stacks two live popups
+        // instead of replacing one. retire_popup also tears down each retired
+        // popup's own descendants (a nested sub-submenu), so swapping a whole
+        // chain is one call. Computed and applied BEFORE the parent_idx lookup
+        // below: retiring a sibling mutates `self.surfaces` (Vec::remove shifts
+        // later indices), so any index taken beforehand would be stale.
+        let links: Vec<(SurfaceId, Option<SurfaceId>)> = self
+            .surfaces
+            .iter()
+            .map(|s| (s.id, s.popup().map(|p| p.parent)))
+            .collect();
+        for child in direct_popup_children(&links, parent) {
+            self.retire_popup(child);
+        }
+
         let Some(parent_idx) = self.surfaces.iter().position(|s| s.id == parent) else {
             return Err(anyhow!("create_popup: parent {parent:?} not found"));
         };
@@ -2140,9 +2166,23 @@ fn popup_descendants(links: &[(SurfaceId, Option<SurfaceId>)], roots: &[SurfaceI
     out
 }
 
+/// The DIRECT (non-transitive) popup children of `parent` among `links`: the
+/// existing sibling(s) [`Host::create_popup`] must retire before creating a new
+/// popup under the same parent (see its doc comment for why) -- swapping one
+/// submenu flyout, or one chrome context menu, for another rather than
+/// stacking both. Extracted alongside [`popup_descendants`] for the same
+/// reason: unit-testable without a live compositor.
+fn direct_popup_children(links: &[(SurfaceId, Option<SurfaceId>)], parent: SurfaceId) -> Vec<SurfaceId> {
+    links
+        .iter()
+        .filter(|&&(id, link)| link == Some(parent) && id != parent)
+        .map(|&(id, _)| id)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{focus_after_single_close, popup_descendants, retire_plan};
+    use super::{direct_popup_children, focus_after_single_close, popup_descendants, retire_plan};
     use crate::{OutputId, SurfaceId};
 
     fn sid(n: u32) -> SurfaceId {
@@ -2288,5 +2328,49 @@ mod tests {
     fn popup_descendants_empty_when_no_children() {
         let links = [(sid(0), None), (sid(1), Some(sid(0)))];
         assert!(popup_descendants(&links, &[sid(1)]).is_empty());
+    }
+
+    #[test]
+    fn direct_popup_children_finds_only_the_immediate_children() {
+        // Layer 0 has two direct popup children (1, 2); popup 2 has its own child
+        // (3), which is NOT a direct child of 0.
+        let links = [
+            (sid(0), None),
+            (sid(1), Some(sid(0))),
+            (sid(2), Some(sid(0))),
+            (sid(3), Some(sid(2))),
+        ];
+        let mut got = direct_popup_children(&links, sid(0));
+        got.sort_by_key(|s| s.0);
+        assert_eq!(got, vec![sid(1), sid(2)]);
+    }
+
+    #[test]
+    fn direct_popup_children_empty_for_a_childless_parent() {
+        let links = [(sid(0), None), (sid(1), Some(sid(0)))];
+        assert!(direct_popup_children(&links, sid(1)).is_empty());
+    }
+
+    #[test]
+    fn direct_popup_children_ignores_unrelated_trees() {
+        // Two independent layer surfaces (0 and 4), each with their own popup;
+        // asking for 0's children must never see 3 (a child of 4).
+        let links = [
+            (sid(0), None),
+            (sid(1), Some(sid(0))),
+            (sid(4), None),
+            (sid(3), Some(sid(4))),
+        ];
+        assert_eq!(direct_popup_children(&links, sid(0)), vec![sid(1)]);
+    }
+
+    #[test]
+    fn direct_popup_children_this_is_the_sibling_swap_scenario() {
+        // The actual bug this guards: a submenu-bearing popup 0 has an open child
+        // submenu (1); the user hovers/clicks a SIBLING submenu row, requesting a
+        // new popup under the SAME parent (0). create_popup must retire exactly
+        // {1} before creating the new one, never leaving both live.
+        let links = [(sid(0), None), (sid(1), Some(sid(0)))];
+        assert_eq!(direct_popup_children(&links, sid(0)), vec![sid(1)]);
     }
 }
