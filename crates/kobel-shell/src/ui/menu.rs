@@ -467,3 +467,59 @@ impl Component for SubmenuItem {
         row
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(label: &str) -> MenuRow {
+        MenuRow::Item {
+            label: label.to_string(),
+            glyph: MenuGlyph::None,
+            enabled: true,
+            danger: false,
+            on_activate: EventHandler::new(move |_: ()| {}),
+        }
+    }
+
+    fn submenu(label: &str) -> MenuRow {
+        MenuRow::Submenu {
+            label: label.to_string(),
+            enabled: true,
+            model: MenuModel::new(vec![item("nested")]),
+        }
+    }
+
+    /// An empty menu is still padding-only, never a zero/negative-height popup.
+    #[test]
+    fn empty_model_is_just_the_vertical_padding() {
+        assert_eq!(MenuModel::new(vec![]).measured_height(), (2.0 * PAD_V).ceil() as u32);
+    }
+
+    /// Items and submenu rows count identically (both are one ITEM_H row); a
+    /// submenu row's own nested model does NOT recurse into the parent's height.
+    #[test]
+    fn items_and_submenus_each_count_one_item_height() {
+        let model = MenuModel::new(vec![item("a"), submenu("b"), item("c")]);
+        let expected = (2.0 * PAD_V + 3.0 * ITEM_H).ceil() as u32;
+        assert_eq!(model.measured_height(), expected);
+    }
+
+    /// Separators use their own, shorter fixed height, not ITEM_H.
+    #[test]
+    fn separators_use_the_shorter_row_height() {
+        let model = MenuModel::new(vec![MenuRow::Separator, MenuRow::Separator]);
+        let expected = (2.0 * PAD_V + 2.0 * SEP_H).ceil() as u32;
+        assert_eq!(model.measured_height(), expected);
+    }
+
+    /// A realistic mixed menu (dock's context menu shape: items, a separator,
+    /// a danger item) sums each row's own fixed height plus the sheet padding.
+    #[test]
+    fn mixed_rows_sum_their_own_fixed_heights() {
+        let model =
+            MenuModel::new(vec![item("Open"), item("Unpin"), MenuRow::Separator, item("Quit")]);
+        let expected = (2.0 * PAD_V + 3.0 * ITEM_H + SEP_H).ceil() as u32;
+        assert_eq!(model.measured_height(), expected);
+    }
+}
