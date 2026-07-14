@@ -75,10 +75,6 @@ pub enum Command {
     Reload,
     /// gnoblin: toggle a named compositor feature.
     SetFeature { name: String, on: bool },
-    /// gnoblin: focus a window by id.
-    ActivateWindow(String),
-    /// gnoblin: minimize a window by id.
-    MinimizeWindow(String),
     /// audio: set the default sink volume (normalized, 1.0 == VOLUME_NORM).
     SetVolume(f32),
     /// audio: set the default sink mute state.
@@ -298,12 +294,6 @@ async fn run(
                 }
                 Command::SetFeature { name, on } => {
                     let _ = gnoblin_tx.send(GnoblinCommand::SetFeature { name, on });
-                }
-                Command::ActivateWindow(id) => {
-                    let _ = gnoblin_tx.send(GnoblinCommand::Activate(id));
-                }
-                Command::MinimizeWindow(id) => {
-                    let _ = gnoblin_tx.send(GnoblinCommand::Minimize(id));
                 }
                 Command::SetVolume(v) => {
                     let _ = audio_tx.send(AudioMsg::Command(AudioCommand::SetVolume(v)));

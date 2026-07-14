@@ -1,22 +1,37 @@
 //! org.gnoblin.Shell proxy: the compositor link. Faithful port of
-//! ags/services/gnoblin.ts: window list, reload, feature toggles, and the
-//! connected/amber state driven by a NameOwnerChanged watch.
-
-use std::collections::HashMap;
+//! ags/services/gnoblin.ts: reload, feature toggles, and the connected/amber
+//! state driven by a NameOwnerChanged watch.
+//!
+//! Window list/activate/minimize/close do NOT live here. `org.gnoblin.Shell`'s
+//! wire contract (`/home/kieran/dev/gnoblin/src/gnome-shell-overlay/js/ui/
+//! components/gnoblinControl.js`, the `IFACE` XML) has never had a `ListWindows`/
+//! `ActivateWindow`/`MinimizeWindow`/`WindowsChanged` method or signal -- an
+//! earlier version of this module called them anyway (a leftover assumption from
+//! the pre-Freya AGS plan that gnoblin would grow window methods on this bus).
+//! `gdbus call --dest org.gnoblin.Shell ... ListWindows` against a live devkit
+//! session returns `org.freedesktop.DBus.Error.UnknownMethod`; these calls have
+//! silently failed (debug-level log, empty window list, no crash) for the whole
+//! session. Window control belongs to the WLR **Wayland protocol**
+//! `zwlr_foreign_toplevel_manager_v1`, which gnoblin's mutter already implements
+//! natively and gates on by default (`wlr-foreign-toplevel-management = true` in
+//! `gnoblin.conf.example`) -- no gnoblin-repo change was needed. See
+//! `crates/kobel-wayland/src/toplevel.rs` + `conn.rs` for the real client, and
+//! `crates/kobel-shell/src/main.rs`'s `on_tick` for how `GnoblinSnapshot.windows`
+//! is populated from the host every tick instead.
 
 use futures_util::stream::BoxStream;
-use futures_util::{Stream, StreamExt};
+use futures_util::StreamExt;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
-use zbus::zvariant::OwnedValue;
 use zbus::{Connection, proxy};
 
 use crate::ServiceEvent;
 
 const BUS: &str = "org.gnoblin.Shell";
 
-/// One compositor window. `app_id` decodes the on-bus `appId` key (see the .ts).
+/// One compositor window (see the module doc: sourced from kobel-wayland's
+/// `zwlr_foreign_toplevel_manager_v1` client now, not this D-Bus proxy).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GnoblinWindow {
     pub id: String,
@@ -27,6 +42,9 @@ pub struct GnoblinWindow {
 }
 
 /// Snapshot of the compositor link. `connected == false` => amber everywhere.
+/// `connected` comes from this module (Ping-based liveness, real). `windows` is
+/// populated by `main.rs` from the Wayland host every tick, NOT by this module --
+/// `run()` below only ever emits `windows: Vec::new()`; callers merge it in.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GnoblinSnapshot {
     pub connected: bool,
@@ -36,8 +54,6 @@ pub struct GnoblinSnapshot {
 pub(crate) enum GnoblinCommand {
     Reload,
     SetFeature { name: String, on: bool },
-    Activate(String),
-    Minimize(String),
     ReloadScripts,
     ReloadExtension(String),
 }
@@ -50,16 +66,8 @@ pub(crate) enum GnoblinCommand {
 pub(crate) trait Shell {
     fn reload(&self) -> zbus::Result<()>;
     fn set_feature(&self, name: &str, on: bool) -> zbus::Result<()>;
-    fn activate_window(&self, id: &str) -> zbus::Result<()>;
-    fn minimize_window(&self, id: &str) -> zbus::Result<()>;
-    // ListWindows returns aa{sv}: an array of dicts with camelCase keys, matching
-    // the .ts `deep_unpack() as [GnoblinWindow[]]` + `w.appId`/`w.focused` access.
-    fn list_windows(&self) -> zbus::Result<Vec<HashMap<String, OwnedValue>>>;
     fn reload_scripts(&self) -> zbus::Result<()>;
     fn reload_extension(&self, uuid: &str) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    fn windows_changed(&self) -> zbus::Result<()>;
 }
 
 pub(crate) async fn run(
@@ -97,8 +105,6 @@ pub(crate) async fn run(
     };
 
     let mut proxy: Option<ShellProxy> = None;
-    let mut windows_changed: Option<BoxStream<'static, WindowsChanged>> = None;
-    let mut windows: Vec<GnoblinWindow> = Vec::new();
     let mut connected = false;
 
     // Initial state: connect immediately if the service is already up.
@@ -107,15 +113,15 @@ pub(crate) async fn run(
         .await
         .unwrap_or(false);
     if already_up {
-        if let Some((p, wc)) = build_proxy(&conn).await {
-            refresh_windows(&p, &mut windows).await;
+        if let Ok(p) = ShellProxy::new(&conn).await {
             proxy = Some(p);
-            windows_changed = Some(wc);
             connected = true;
-            tracing::info!("[gnoblin] connected ({} windows)", windows.len());
+            tracing::info!("[gnoblin] connected");
+        } else {
+            tracing::warn!("[gnoblin] proxy build failed");
         }
     }
-    emit(&events, connected, &windows);
+    emit(&events, connected);
 
     loop {
         tokio::select! {
@@ -125,81 +131,25 @@ pub(crate) async fn run(
                     .map(|args| args.new_owner().as_ref().is_some())
                     .unwrap_or(false);
                 if appeared {
-                    if let Some((p, wc)) = build_proxy(&conn).await {
-                        refresh_windows(&p, &mut windows).await;
-                        proxy = Some(p);
-                        windows_changed = Some(wc);
-                        connected = true;
-                        tracing::info!("[gnoblin] connected ({} windows)", windows.len());
-                        emit(&events, connected, &windows);
+                    match ShellProxy::new(&conn).await {
+                        Ok(p) => {
+                            proxy = Some(p);
+                            connected = true;
+                            tracing::info!("[gnoblin] connected");
+                        }
+                        Err(e) => tracing::warn!("[gnoblin] proxy build failed: {e}"),
                     }
                 } else {
                     proxy = None;
-                    windows_changed = None;
                     connected = false;
                     tracing::info!("[gnoblin] disconnected");
-                    // Keep last-known window list; the connected flag carries truth.
-                    emit(&events, connected, &windows);
                 }
-            }
-            changed = opt_next(&mut windows_changed) => {
-                match changed {
-                    Some(_) => {
-                        if let Some(p) = proxy.as_ref() {
-                            refresh_windows(p, &mut windows).await;
-                            emit(&events, connected, &windows);
-                        }
-                    }
-                    None => windows_changed = None,
-                }
+                emit(&events, connected);
             }
             Some(cmd) = cmd_rx.recv() => {
                 handle_command(proxy.as_ref(), cmd).await;
             }
             else => break,
-        }
-    }
-}
-
-async fn build_proxy(
-    conn: &Connection,
-) -> Option<(ShellProxy<'static>, BoxStream<'static, WindowsChanged>)> {
-    let proxy = match ShellProxy::new(conn).await {
-        Ok(proxy) => proxy,
-        Err(e) => {
-            tracing::warn!("[gnoblin] proxy build failed: {e}");
-            return None;
-        }
-    };
-    let windows_changed = match proxy.receive_windows_changed().await {
-        Ok(stream) => stream.boxed(),
-        Err(e) => {
-            tracing::warn!("[gnoblin] WindowsChanged subscribe failed: {e}");
-            return None;
-        }
-    };
-    Some((proxy, windows_changed))
-}
-
-async fn refresh_windows(proxy: &ShellProxy<'_>, windows: &mut Vec<GnoblinWindow>) {
-    match proxy.list_windows().await {
-        Ok(list) => {
-            let mut decoded = Vec::with_capacity(list.len());
-            let mut skipped = 0usize;
-            for entry in &list {
-                match decode_window(entry) {
-                    Some(win) => decoded.push(win),
-                    None => skipped += 1,
-                }
-            }
-            if skipped > 0 {
-                tracing::warn!("[gnoblin] ListWindows: skipped {skipped} malformed entries");
-            }
-            *windows = decoded;
-        }
-        Err(e) => {
-            // Stay on the last-known list; connected flag carries the truth.
-            tracing::debug!("[gnoblin] ListWindows failed: {e}");
         }
     }
 }
@@ -212,8 +162,6 @@ async fn handle_command(proxy: Option<&ShellProxy<'_>>, cmd: GnoblinCommand) {
     let result = match cmd {
         GnoblinCommand::Reload => proxy.reload().await,
         GnoblinCommand::SetFeature { name, on } => proxy.set_feature(&name, on).await,
-        GnoblinCommand::Activate(id) => proxy.activate_window(&id).await,
-        GnoblinCommand::Minimize(id) => proxy.minimize_window(&id).await,
         GnoblinCommand::ReloadScripts => proxy.reload_scripts().await,
         GnoblinCommand::ReloadExtension(uuid) => proxy.reload_extension(&uuid).await,
     };
@@ -222,47 +170,6 @@ async fn handle_command(proxy: Option<&ShellProxy<'_>>, cmd: GnoblinCommand) {
     }
 }
 
-fn emit(events: &UnboundedSender<ServiceEvent>, connected: bool, windows: &[GnoblinWindow]) {
-    let _ = events.send(ServiceEvent::Gnoblin(GnoblinSnapshot {
-        connected,
-        windows: windows.to_vec(),
-    }));
-}
-
-/// Decode one aa{sv} window entry. Required identity fields (`id`, `appId`) must
-/// be present and non-empty; otherwise the row is dropped rather than targeting "".
-fn decode_window(map: &HashMap<String, OwnedValue>) -> Option<GnoblinWindow> {
-    let id = str_field(map, "id")?;
-    let app_id = str_field(map, "appId")?;
-    Some(GnoblinWindow {
-        id,
-        app_id,
-        title: str_field(map, "title").unwrap_or_default(),
-        focused: bool_field(map, "focused"),
-        minimized: bool_field(map, "minimized"),
-    })
-}
-
-fn str_field(map: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
-    let value = map.get(key)?;
-    let s = <&str>::try_from(value).ok()?;
-    if s.is_empty() { None } else { Some(s.to_owned()) }
-}
-
-fn bool_field(map: &HashMap<String, OwnedValue>, key: &str) -> bool {
-    map.get(key)
-        .and_then(|value| bool::try_from(value).ok())
-        .unwrap_or(false)
-}
-
-/// `Stream::next` over an `Option<Stream>`: pends forever when `None`, so a
-/// missing signal stream simply never fires in a `select!`.
-async fn opt_next<S>(stream: &mut Option<S>) -> Option<S::Item>
-where
-    S: Stream + Unpin,
-{
-    match stream {
-        Some(stream) => stream.next().await,
-        None => std::future::pending().await,
-    }
+fn emit(events: &UnboundedSender<ServiceEvent>, connected: bool) {
+    let _ = events.send(ServiceEvent::Gnoblin(GnoblinSnapshot { connected, windows: Vec::new() }));
 }
