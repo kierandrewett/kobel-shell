@@ -2521,6 +2521,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kobel-theme"
+version = "0.1.0"
+
+[[package]]
 name = "kobel-wayland"
 version = "0.1.0"
 dependencies = [

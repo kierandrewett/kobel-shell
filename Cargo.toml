@@ -8,6 +8,7 @@ members = [
     "crates/kobel-wayland",
     "crates/kobel-services",
     "crates/kobel-shell",
+    "crates/kobel-theme",
     "crates/kobel-bar",
     "crates/kobel-dock",
     "third_party/freya-devtools",
@@ -78,6 +79,7 @@ kobel-ipc = { path = "crates/kobel-ipc" }
 kobel-wayland = { path = "crates/kobel-wayland" }
 kobel-services = { path = "crates/kobel-services" }
 kobel-shell = { path = "crates/kobel-shell" }
+kobel-theme = { path = "crates/kobel-theme" }
 
 [patch."https://github.com/marc2332/freya"]
 freya-devtools = { path = "third_party/freya-devtools" }

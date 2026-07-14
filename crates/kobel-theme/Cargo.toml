@@ -1,0 +1,8 @@
+[package]
+name = "kobel-theme"
+description = "Renderer-neutral design tokens and presentation assets for kobel-shell UI crates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
