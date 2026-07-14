@@ -55,6 +55,10 @@ Environment flags:
 - `KOBEL_REDUCED_MOTION=1` -- every spring settles instantly.
 - `KOBEL_PROFILE_ANIM=1` -- reveal-spring traces (`KOBEL_MOTION` lines).
 - `KOBEL_SHELL_SOCKET=/path` -- control-socket override (used by the devkit gates).
+- `KOBEL_TEST_DOCK_HITTEST=1` -- zeroes the dock's exclusive zone (never resizes or
+  moves it) so the gate's work-area-confined RemoteDesktop pointer injector can
+  reach a dock tile to exercise the right-click context menu. Set automatically by
+  `scripts/_shell_session.sh`; never set outside the gate.
 
 ## Verification
 
