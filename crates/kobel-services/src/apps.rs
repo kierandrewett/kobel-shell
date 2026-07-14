@@ -360,3 +360,70 @@ fn launch(paths: &HashMap<String, PathBuf>, id: &str) {
         Err(e) => tracing::warn!("[apps] launch '{id}' failed to spawn gio: {e}"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app(id: &str, name: &str) -> AppEntry {
+        AppEntry { id: id.to_string(), name: name.to_string(), icon: None, keywords: Vec::new() }
+    }
+
+    #[test]
+    fn add_keyword_trims_lowercases_and_skips_blanks() {
+        let mut keywords = Vec::new();
+        add_keyword(&mut keywords, "  Firefox  ");
+        add_keyword(&mut keywords, "");
+        add_keyword(&mut keywords, "   ");
+        assert_eq!(keywords, vec!["firefox".to_string()]);
+    }
+
+    #[test]
+    fn add_keyword_deduplicates_case_insensitively() {
+        let mut keywords = Vec::new();
+        add_keyword(&mut keywords, "Web Browser");
+        add_keyword(&mut keywords, "web browser");
+        add_keyword(&mut keywords, "WEB BROWSER");
+        assert_eq!(keywords, vec!["web browser".to_string()]);
+    }
+
+    #[test]
+    fn add_keyword_keeps_distinct_terms_in_insertion_order() {
+        let mut keywords = Vec::new();
+        add_keyword(&mut keywords, "Firefox");
+        add_keyword(&mut keywords, "Web Browser");
+        add_keyword(&mut keywords, "Internet");
+        assert_eq!(keywords, vec!["firefox", "web browser", "internet"]);
+    }
+
+    #[test]
+    fn by_id_matches_exact_desktop_id_first() {
+        let snap = AppsSnapshot {
+            apps: vec![app("org.gnome.Nautilus", "Files"), app("org.mozilla.firefox", "Firefox")],
+        };
+        assert_eq!(snap.by_id("org.gnome.Nautilus").map(|a| a.name.as_str()), Some("Files"));
+    }
+
+    #[test]
+    fn by_id_falls_back_to_last_dot_component_case_insensitively() {
+        // A loose pin (e.g. "Firefox" or "firefox") matches the desktop id's
+        // last dot-component the way the AGS dock's pin resolution did.
+        let snap = AppsSnapshot { apps: vec![app("org.mozilla.firefox", "Firefox")] };
+        assert_eq!(snap.by_id("firefox").map(|a| a.name.as_str()), Some("Firefox"));
+        assert_eq!(snap.by_id("Firefox").map(|a| a.name.as_str()), Some("Firefox"));
+        assert_eq!(snap.by_id("FIREFOX").map(|a| a.name.as_str()), Some("Firefox"));
+    }
+
+    #[test]
+    fn by_id_returns_none_when_nothing_matches() {
+        let snap = AppsSnapshot { apps: vec![app("org.mozilla.firefox", "Firefox")] };
+        assert!(snap.by_id("org.gnome.Nautilus").is_none());
+        assert!(snap.by_id("nautilus").is_none());
+    }
+
+    #[test]
+    fn by_id_on_an_empty_snapshot_never_panics() {
+        let snap = AppsSnapshot::default();
+        assert!(snap.by_id("anything").is_none());
+    }
+}
