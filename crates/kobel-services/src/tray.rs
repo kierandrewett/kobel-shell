@@ -34,6 +34,17 @@ const ICON_SIZE: u16 = 64;
 /// dependent, so it can still return a PNG that shadows the scalable SVG).
 const SCALABLE_ICON_SIZE: u16 = 512;
 
+/// Hard cap on `icon_cache`'s entry count. Real usage never comes close (a
+/// handful of long-running tray apps x icon-name/theme variations); this only
+/// guards against a misbehaving/malicious SNI item that cycles its
+/// `icon_name` on every update, which would otherwise grow the cache without
+/// bound for the shell's entire (multi-day) runtime -- the same threat model
+/// [`scan_theme_tree`] already bounds for a single walk. On overflow the whole
+/// cache is cleared (simplest correct eviction for a HashMap with no
+/// insertion-order tracking); this only degrades to "re-walk the theme once
+/// more" under attack, never anything worse.
+const ICON_CACHE_CAP: usize = 512;
+
 /// One StatusNotifierItem as the bar renders it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrayItem {
@@ -301,6 +312,10 @@ where
 {
     if let Some(hit) = cache.get(&key) {
         return hit.clone();
+    }
+    if cache.len() >= ICON_CACHE_CAP {
+        tracing::debug!("[tray] icon cache hit its {ICON_CACHE_CAP}-entry cap; clearing");
+        cache.clear();
     }
     let found = tokio::task::spawn_blocking(resolve).await.unwrap_or(None);
     cache.insert(key, found.clone());
@@ -617,6 +632,25 @@ mod tests {
         })
         .await;
         assert_eq!(calls.load(Ordering::SeqCst), 2, "a cached miss is not re-resolved");
+    }
+
+    #[tokio::test]
+    async fn icon_cache_never_exceeds_its_cap() {
+        // Simulate a misbehaving tray item cycling a unique icon_name on every
+        // update: far more distinct keys than ICON_CACHE_CAP. The cache must
+        // never grow past its bound (it clears-and-restarts on overflow
+        // instead), proving a hostile/buggy SNI item cannot leak memory over
+        // this shell's multi-day runtime.
+        let mut cache: HashMap<IconKey, Option<PathBuf>> = HashMap::new();
+        for i in 0..(ICON_CACHE_CAP * 3) {
+            let key = (format!("icon-{i}"), None, None);
+            let _ = cached_or_resolve(&mut cache, key, || Some(PathBuf::from("/icons/x.svg"))).await;
+            assert!(
+                cache.len() <= ICON_CACHE_CAP,
+                "cache grew to {} entries past its {ICON_CACHE_CAP}-entry cap at i={i}",
+                cache.len()
+            );
+        }
     }
 
     /// Build a standard, enabled, visible fixture menu item.
