@@ -538,6 +538,19 @@ impl Manager {
             tracing::warn!("[manager] toggle {}: surface not registered", key.as_str());
             return;
         }
+        // A live tray/dock-tile context-menu popup is tracked entirely outside this
+        // registry (main.rs's popup_stack, not `self.open`), so it survives an
+        // on-demand surface opening right past it otherwise -- e.g. right-click a
+        // dock tile, then toggle Quick Settings via a keybind (not Escape/CloseAll):
+        // toggle() routes straight to open_key since QuickSettings != None, never
+        // touching the popup. Left open, that popup's still-active xdg_popup grab
+        // then fights the newly-revealed surface for pointer/keyboard focus (worse
+        // for an Exclusive one -- launcher/session). close_all already dismisses
+        // popups alongside the panels; opening a NEW surface needs the same "nothing
+        // else stays interactive" guarantee, so do it here too.
+        if let Some(close_popups) = &self.close_popups {
+            close_popups();
+        }
         // One-open-at-a-time: close whatever else is open first.
         if let Some(cur) = self.open
             && cur != key
@@ -1115,5 +1128,88 @@ mod tests {
             "no toasts -> empty (click-through) region"
         );
         assert!(host.rects.contains(&(t1, Vec::new())));
+    }
+
+    #[test]
+    fn opening_a_new_surface_dismisses_a_stray_popup() {
+        // The bug this guards: a tray/dock-tile context-menu popup is tracked
+        // entirely outside `self.open` (main.rs's popup_stack), so nothing closed
+        // it when a DIFFERENT on-demand surface opened straight past it -- e.g.
+        // right-click a dock tile, then toggle Quick Settings via a keybind
+        // (never touching Escape/CloseAll). Left open, that popup's still-active
+        // grab would fight the newly-revealed surface for focus.
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        let qs = SurfaceId::new(2);
+        manager.register_reveal(
+            SurfaceKey::QuickSettings,
+            qs,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
+        manager.set_dismiss(SurfaceId::new(0));
+        let popup_closes = Rc::new(RefCell::new(0u32));
+        let counter = popup_closes.clone();
+        manager.set_close_popups(Box::new(move || {
+            *counter.borrow_mut() += 1;
+        }));
+        let mut host = FakeHost::default();
+
+        // Nothing is open yet, so this is the "opened past a stray popup with
+        // nothing else to displace" path, not the "one-open-at-a-time" path.
+        bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings));
+        manager.tick(&mut host);
+        assert_eq!(
+            *popup_closes.borrow(),
+            1,
+            "opening a surface must dismiss any stray popup, even with nothing else open"
+        );
+        assert!(host.region.contains(&(qs, false)), "QuickSettings still opens normally");
+    }
+
+    #[test]
+    fn close_all_dismisses_popups_alongside_the_panels() {
+        // The existing close_all contract (previously asserted only by inspection,
+        // never a test): CloseAll must dismiss a stray popup, whether or not a
+        // panel is currently open.
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        manager.set_dismiss(SurfaceId::new(0));
+        let popup_closes = Rc::new(RefCell::new(0u32));
+        let counter = popup_closes.clone();
+        manager.set_close_popups(Box::new(move || {
+            *counter.borrow_mut() += 1;
+        }));
+        let mut host = FakeHost::default();
+
+        bus.send(ShellMsg::CloseAll);
+        manager.tick(&mut host);
+        assert_eq!(
+            *popup_closes.borrow(),
+            1,
+            "CloseAll dismisses a popup with nothing else open"
+        );
+    }
+
+    #[test]
+    fn no_close_popups_hook_installed_is_a_harmless_no_op() {
+        // main.rs installs the hook once at startup; before that (and in every
+        // other test in this module), it is None. Neither open nor CloseAll may
+        // panic on the missing hook.
+        let (bus, rx) = ShellBus::new();
+        let mut manager = Manager::new(rx, RecordingSink::default());
+        let qs = SurfaceId::new(2);
+        manager.register_reveal(
+            SurfaceKey::QuickSettings,
+            qs,
+            KeyboardInteractivity::OnDemand,
+            Box::new(|_| {}),
+        );
+        manager.set_dismiss(SurfaceId::new(0));
+        let mut host = FakeHost::default();
+
+        bus.send(ShellMsg::Toggle(SurfaceKey::QuickSettings));
+        bus.send(ShellMsg::CloseAll);
+        manager.tick(&mut host); // must not panic
     }
 }
