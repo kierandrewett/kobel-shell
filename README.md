@@ -1,173 +1,106 @@
 # kobel-shell
 
-The chrome suite for **[gnoblin](https://github.com/kierandrewett/gnoblin)** (Kieran's
-patched GNOME Shell + Mutter), written in Rust with
-[Freya](https://github.com/marc2332/freya) as the UI framework, rendered by our own
-wlr-layer-shell host -- no winit, no GTK.
+Rust shell infrastructure for [gnoblin](https://github.com/kierandrewett/gnoblin), with a custom wlr-layer-shell host that embeds [Freya](https://github.com/marc2332/freya) without winit.
 
-gnoblin is *just GNOME + mutter*: it strips its own top bar, overview and dash, and
-exposes `wlr-layer-shell` plus the `org.gnoblin.Shell` control protocol. It draws no
-chrome itself -- that's bring-your-own. **kobel-shell is that chrome**: bar, dock,
-launcher, quick settings, calendar, notifications (kobel owns
-`org.freedesktop.Notifications`), OSD, session overlay, tray.
+The concrete UI has been reset. The active workspace now separates reusable shell infrastructure from the human-owned UI crate, which intentionally starts empty.
 
-The design language is "sakura pop" (DESIGN.md): opaque panels, one leaf accent as
-solid fill with ink text, interruptible velocity-preserving springs everywhere. The
-architecture and the full migration story live in `docs/FREYA-PLAN.md`.
+## Workspace
 
-## Layout
-
-```
+```text
 crates/
-|-- kobel-wayland     the host: sctk + calloop + EGL/Skia, embeds freya-core per
-|                     layer surface (no winit); input, frame scheduling, regions
-|-- kobel-services    system state, zero UI: gnoblin, audio (pipewire-pulse),
-|                     battery, network, bluetooth, apps, mpris, notifd (owns the
-|                     o.fd.Notifications bus name), tray (SNI), exec, sysctl
-|-- kobel-ipc         control-socket path resolution, shared by kobel-shell and
-|                     kobelctl (zero deps, so kobelctl stays independent of Freya)
-`-- kobel-shell       the bin: theme tokens, spring engine, surface manager,
-                      IPC (kobelctl), every surface under src/ui/, icon assets
-scripts/              devkit gates: headless gnoblin + injected-input assertions
-docs/FREYA-PLAN.md    the rewrite plan (phases 0-7, all landed)
-archive/              the previous AGS/TypeScript shell + the QML sketch (incl. its
-                      qml-PLAN.md design doc), frozen as reference (self-contained,
-                      including an icons copy)
+|-- kobel-ipc       zero-dependency socket path library and kobelctl binary
+|-- kobel-wayland   layer-shell host, EGL/Skia renderer and embedded Freya runtime
+|-- kobel-services  UI-free system snapshots and typed commands
+|-- kobel-shell     UI-neutral manager, IPC server and spring primitives
+`-- kobel-ui        empty concrete UI crate, preview and human development guide
 ```
 
-## Build and run
+`archive/freya-ui-v1` contains the removed bar, dock, launcher, panels, theme and icons as read-only reference. It is not a workspace member. The last runnable version of that UI is Git commit `da3a7ec`.
 
-Rust 1.95+, clang/ninja (skia ships prebuilt), wayland/egl/xkbcommon headers.
+## Current state
+
+- `kobel-wayland`, `kobel-services`, `kobel-ipc` and the `kobel-shell` core library remain active.
+- `kobel-ui::app()` returns one unstyled Freya `rect`.
+- The `kobel-ui` production binary creates no layer surfaces until a human chooses the first surface and its behaviour.
+- No theme, icons, panel names or concrete surface geometry live in the core crates.
+- `kobelctl toggle <surface>` accepts UI-owned names made from lowercase ASCII letters, digits, `-` and `_`.
+
+Start with [`crates/kobel-ui/README.md`](crates/kobel-ui/README.md). It covers the first layer surface, service snapshots, the optional reveal manager, headless component tests and Freya devtools.
+
+## Requirements
+
+- Rust 1.95 or newer
+- clang and ninja for Skia
+- Wayland, EGL and xkbcommon development libraries
+- `just` for the documented developer commands
+- a gnoblin session for real layer-shell surfaces
+
+Freya dependencies are pinned to revision `5810dc4a2304ee1a653eb63b5cbb40d41bbff4d6`. Upgrade the complete set together.
+
+## Build and test
 
 ```sh
-cargo build --release --bins
-# In a gnoblin session:
-./target/release/kobel-shell
-# Or in a visible nested devkit window (from any session), until Ctrl-C:
-INTERACTIVE=1 ./scripts/run-shell-in-gnoblin.sh
-# Control a running shell:
-./target/release/kobelctl ping
-./target/release/kobelctl toggle launcher   # launcher|quicksettings|calendar|drawer|session
-./target/release/kobelctl quit
+just check
+just test
 ```
 
-Environment flags:
-
-- `KOBEL_REDUCED_MOTION=1` -- every spring settles instantly.
-- `KOBEL_PROFILE_ANIM=1` -- reveal-spring traces (`KOBEL_MOTION` lines).
-- `KOBEL_SHELL_SOCKET=/path` -- control-socket override (used by the devkit gates).
-- `KOBEL_TEST_DOCK_HITTEST=1` -- zeroes the dock's exclusive zone (never resizes or
-  moves it) so the gate's work-area-confined RemoteDesktop pointer injector can
-  reach a dock tile to exercise the right-click context menu. Set automatically by
-  `scripts/_shell_session.sh`; never set outside the gate.
-
-## Verification
-
-Everything is verified headlessly against a real gnoblin session (no visible
-compositor needed):
+The equivalent Cargo commands are:
 
 ```sh
-./scripts/run-spike-in-gnoblin.sh            # host render gate
-INPUT_TEST=1 ./scripts/run-spike-in-gnoblin.sh   # host input gate (injected HID)
-./scripts/run-shell-in-gnoblin.sh            # full shell gate: 29 assertions incl.
-                                             # notify-send round-trip, injected
-                                             # keyboard/click paths, screenshots
-VIRTUAL_MONITORS="1280x800 1024x768" ./scripts/run-shell-in-gnoblin.sh  # multi-monitor
-KOBEL_TEST_HOTPLUG=1 ./scripts/run-shell-in-gnoblin.sh  # runtime output plug/unplug/replug
-KOBEL_TEST_SCALE=1.5 ./scripts/run-shell-in-gnoblin.sh  # fractional-scale buffers + viewport
-cargo run -p kobel-shell --example render-panel -- quicksettings /tmp/qs.png  # headless panel PNG
+cargo check --workspace --all-targets
+cargo check -p kobel-ui --bin preview --features devtools
+cargo test --workspace --all-targets
 ```
 
-`scripts/devkit_input.py` injects real pointer/keyboard events through Mutter's
-RemoteDesktop API -- devkit sessions only.
-
-### Rendering debug (RenderDoc)
-
-For *rendering* bugs -- wrong colours, clipping, blend/overdraw, a surface that
-paints wrong -- capture the actual GPU frame instead of a screenshot. RenderDoc
-injects into the kobel-shell binary (an EGL/GLES3 client) and records every
-Freya/Skia GL draw call for one present:
+Build the independent control client with:
 
 ```sh
-./scripts/capture-frame-in-gnoblin.sh quicksettings /tmp/kobel-shell.rdc  # capture a surface
-./scripts/capture-frame-in-gnoblin.sh                                     # default: launcher/bar chrome
+cargo build -p kobel-ipc --bin kobelctl
 ```
 
-This boots the same headless gnoblin session as the gates, runs kobel-shell under
-`renderdoccmd` injection (NOT gnome-shell -- we want Freya/Skia draws, not
-mutter's), drives a present with a `kobelctl` toggle so the trigger lands on a real
-surface, records which present/swapchain it caught, and writes the `.rdc`. It then
-opens the capture and exports one render target to `/tmp/kobel-rt.png`. Inspect
-further with `rdc` (the `renderdoc-gpu-debug` skill; run `rdc doctor` first):
+## UI development
+
+Run the empty root and future components in Freya's normal desktop host:
 
 ```sh
-# Scope every call to a session so you never disturb another open rdc session:
-S="--session kobel-debug"
-rdc $S open /tmp/kobel-shell.rdc
-rdc $S info --json                   # API, GPU, resolution, frame number
-rdc $S stats --json                  # per-pass breakdown, top draws
-rdc $S draws --limit 10              # first draw calls (EIDs)
-rdc $S rt <EID> -o /tmp/kobel-rt.png # export a draw's render target to PNG
-rdc $S close
+just ui-preview
 ```
 
-GLES capture *replay* needs an `rdc` python module built with the GL replay driver.
-Where the local module is Vulkan-only (`rdc open` -> "local replay not supported"),
-the script still writes a valid `.rdc` and exports the frame's embedded backbuffer
-thumbnail via `renderdoccmd thumb`; open the `.rdc` in the RenderDoc GUI or on a
-GL-replay-capable box for the full pipeline.
+Install the matching Freya inspector once, then run it beside the preview:
 
-The screenshot gates above stay the CI correctness assertions (IPC/input/notify
-round-trips, reveal machinery); RenderDoc is the tool for diagnosing *how* a frame
-was drawn, not a replacement for them.
+```sh
+just install-freya-devtools
+just freya-devtools
+```
 
-## gnoblin integration
+`ui-preview` enables the optional `devtools` feature, which pulls in winit only for this development binary. The production layer-shell path and `kobel-wayland` remain winit-free.
 
-- All surfaces are `kobel-*` namespaced layer surfaces (window rules key on these).
-- `kobel-services` talks `org.gnoblin.Shell`: soft reload and feature toggles only --
-  that interface has never had window methods (`ListWindows`/`ActivateWindow`/
-  `MinimizeWindow`/`WindowsChanged` all return `UnknownMethod`; an earlier version
-  of this crate called them anyway, silently failing every session, debug-logged
-  and never crashing). The window list that drives the dock and bar title comes
-  from `kobel-wayland` speaking the real `zwlr_foreign_toplevel_manager_v1`
-  **Wayland protocol** directly (gnoblin's mutter already implements it and gates
-  it on by default; no gnoblin-repo change was needed). See
-  `crates/kobel-services/src/gnoblin.rs`'s module doc and
-  `crates/kobel-wayland/src/toplevel.rs`.
-- The notification daemon negotiates bus-name ownership itself: it asks gnoblin to
-  release `notifications`, claims `org.freedesktop.Notifications`, and hands the
-  feature back on exit.
-- The bar's status pill goes amber when the gnoblin bus name vanishes; quick
-  settings grows a reconnect banner.
-- The launcher's text field speaks `zwp_text_input_v3` directly (mutter implements
-  it as a core input-method surface, not gated like the wlr-* extensions -- no
-  gnoblin-repo change needed). `kobel-wayland` binds the manager, creates one
-  per-seat text-input object, and enables/disables it as IME focus enters/leaves
-  the launcher (`crates/kobel-wayland/src/ime.rs` + `conn.rs`); commit/preedit
-  payloads route into the launcher's `Editor` and an inline composing-text overlay
-  (`crates/kobel-shell/src/ui/launcher.rs`). Verified live against a real gnoblin
-  session: enable/cursor-rectangle/commit/disable correctly fire across repeated
-  launcher open/close cycles and other surfaces gaining focus. **Not verified**:
-  an actual composing CJK input method round-trip (real preedit/commit_string from
-  ibus) -- this devkit's gnoblin build has no `gsettings-desktop-schemas`
-  (`org.gnome.desktop.input-sources` is missing), so GNOME's own input-source
-  switching can never activate an ibus engine here. That is an environment gap,
-  not a kobel-shell one; the client-side protocol implementation is complete and
-  exercised -- confirm the actual compose round-trip on a real desktop session.
-- Ctrl+C/X/V in the launcher's text field use a real Wayland clipboard: kobel-
-  wayland constructs it via `freya_clipboard::copypasta::wayland_clipboard::
-  create_clipboards_from_external`, handed the SAME `wl_display` raw pointer
-  `Egl::new` uses (smithay-clipboard runs its own dedicated thread + wl event
-  queue wrapping it, so it never competes with the host's own calloop queue).
-  Opt-in per surface (`SurfaceConfig::clipboard`) -- only the launcher has a
-  text field, so it is the only surface with a real provider; every other
-  surface keeps the inert `None` stub. **Not verified**: an actual `wl-copy`/
-  `wl-paste` round-trip in THIS devkit -- confirmed via an independent baseline
-  (`wl-copy | wl-paste` with zero kobel-shell involvement fails identically)
-  that this headless virtual-monitor gnoblin session's seat has no keyboard
-  capability for freshly-spawned clients at all ("This seat has no keyboard"),
-  which is what both `wl-clipboard` tools need to bind a data device. kobel-
-  shell itself is unaffected (it binds its keyboard early via sctk's seat
-  state, before whatever gates this) -- its own `Clipboard::set`/`get` calls
-  complete with no error logged. An environment gap, not a kobel-shell one;
-  confirm the actual system-clipboard round-trip on a real desktop session.
+Upstream Freya 0.4.0-rc.24 couples its devtools plugin to `freya-winit`, so the stock inspector cannot attach directly to the custom layer-shell host. Use the preview for component-tree inspection and the real host gates for compositor behaviour. The detailed limitation and source links are in `crates/kobel-ui/README.md`.
+
+## Embedded host gates
+
+Verify the real renderer and input path under headless gnoblin:
+
+```sh
+just host-spike
+just host-input
+```
+
+These gates exercise `kobel-wayland`; they do not require a completed shell UI.
+
+## Core interfaces
+
+- `kobel_wayland::Shell` owns the calloop loop and embedded Freya surfaces.
+- `kobel_wayland::SurfaceConfig` owns layer, anchor, margins, size, keyboard and input-region configuration.
+- `kobel_services::Services` emits plain snapshots and accepts typed commands.
+- `kobel_shell::ShellBus` connects Freya handlers or IPC threads to the shell loop.
+- `kobel_shell::Manager` is an optional one-open-at-a-time reveal coordinator with UI-owned `SurfaceKey` names and configurable motion.
+- `kobel_shell::motion` exposes spring primitives without a named design motion table.
+
+A UI may use the manager or drive `kobel_wayland::Control` directly. Presentation policy belongs in `kobel-ui`, not in the core crates.
+
+## Historical documentation
+
+- `docs/FREYA-PLAN.md` records the original embedded-host migration and remains useful for renderer internals.
+- `DESIGN.md` and `PRODUCT.md` describe the previous product direction; they do not configure the new UI.
+- `archive/` contains previous AGS, QML and Freya implementations.
