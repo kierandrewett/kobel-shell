@@ -182,7 +182,9 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
             SurfaceSize::ContentSized { width: t.launcher_w as u32, max_height: 700 },
         )
         .anchor(Anchor::TOP)
-        .margins(Margins { top: 56, right: 0, bottom: 0, left: 0 }),
+        .margins(Margins { top: 56, right: 0, bottom: 0, left: 0 })
+        // The only surface with a real text field -- Ctrl+C/X/V (ui/launcher.rs).
+        .clipboard(true),
         // TOP+RIGHT.
         SurfaceKey::QuickSettings => base(
             "kobel-qs",
@@ -201,9 +203,15 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
         )
         .anchor(Anchor::TOP)
         .margins(Margins { top: panel_top, right: 0, bottom: 0, left: 0 }),
-        // TOP+RIGHT+BOTTOM full-height right rail (ags marginRight=12 only): the top
-        // and bottom anchors fill the height axis (size 0), and the compositor already
-        // seats it below the bar's exclusive zone, so only the right inset is set.
+        // TOP+RIGHT+BOTTOM full-height right rail (ags marginRight=12 only): the
+        // bottom anchor fills the height axis from `top` down to the screen edge, so
+        // only the top/right insets are set. `top: panel_top` (not 0) is deliberate:
+        // this used to rely on the bar's exclusive zone auto-pushing the drawer's
+        // origin below it, but wlr-layer-shell exclusive-zone accounting does not
+        // actually offset a SIBLING Layer::Top surface's own anchor origin (only the
+        // desktop work-area/toplevel geometry) -- the drawer's top content (the
+        // MediaCard) was rendering under the bar, partially hidden by it. An explicit
+        // top margin (matching every other panel's `panel_top`) is the correct fix.
         // Deliberately NOT content-sized: top+bottom anchoring already pins it to the
         // full screen height, so the height axis is compositor-filled (size 0) and
         // content sizing would fight that anchoring. It stays a fixed full-height rail.
@@ -212,7 +220,7 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
             SurfaceSize::Exact { width: t.panel_w as u32, height: 0 },
         )
         .anchor(Anchor::TOP | Anchor::RIGHT | Anchor::BOTTOM)
-        .margins(Margins { top: 0, right: 12, bottom: 0, left: 0 }),
+        .margins(Margins { top: panel_top, right: 12, bottom: 0, left: 0 }),
         // All edges: full-screen (both axes filled, so size is 0x0).
         SurfaceKey::Session => base("kobel-session", SurfaceSize::Exact { width: 0, height: 0 })
             .anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT),

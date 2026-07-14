@@ -12,6 +12,9 @@ freya-core = { workspace = true }
 freya-engine = { workspace = true }
 freya-animation = { workspace = true }
 freya-components = { workspace = true }
+# Ctrl+C/X/V in the launcher's text field (real Wayland clipboard, wired via
+# kobel-wayland's SurfaceConfig::clipboard opt-in -- see ui/launcher.rs).
+freya-clipboard = { workspace = true }
 torin = { workspace = true }
 async-io = { workspace = true }
 chrono = { workspace = true }

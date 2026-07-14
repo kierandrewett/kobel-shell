@@ -111,13 +111,25 @@ pub(crate) enum Stroke {
     End { shift: bool },
     /// Enter (run the selected row).
     Enter,
+    /// Ctrl+C: copy the current selection to the system clipboard (no-op if
+    /// nothing is selected). Doesn't mutate the query -- the component reads
+    /// [`Editor::selected_text`] itself and performs the IO.
+    Copy,
+    /// Ctrl+X: cut the current selection (copy + delete). Same no-op rule as
+    /// [`Stroke::Copy`]; [`Editor::apply`] performs the deletion.
+    Cut,
+    /// Ctrl+V: paste. The classifier can't fetch clipboard content itself (pure,
+    /// no IO) -- the component fetches it and calls [`Editor::paste`] directly,
+    /// short-circuiting `apply` for this one stroke; this variant only exists so
+    /// `classify_key` can signal "a paste was requested" to that short-circuit.
+    Paste,
     /// A key the launcher ignores.
     Ignore,
 }
 
 /// Classify a host key into a [`Stroke`]. Named keys win first (layout
-/// independent); Ctrl+n/p match the physical code because the key value under
-/// Ctrl is usually a control char or Unidentified; plain characters become
+/// independent); Ctrl+n/p/c/x/v match the physical code because the key value
+/// under Ctrl is usually a control char or Unidentified; plain characters become
 /// text unless a ctrl/alt/super chord is held.
 pub(crate) fn classify_key(key: &Key, code: &Code, mods: Modifiers) -> Stroke {
     if let Key::Named(named) = key {
@@ -144,6 +156,9 @@ pub(crate) fn classify_key(key: &Key, code: &Code, mods: Modifiers) -> Stroke {
         match code {
             Code::KeyN => return Stroke::Down,
             Code::KeyP => return Stroke::Up,
+            Code::KeyC => return Stroke::Copy,
+            Code::KeyX => return Stroke::Cut,
+            Code::KeyV => return Stroke::Paste,
             _ => {}
         }
     }
@@ -293,6 +308,17 @@ impl Editor {
                 Outcome::Redraw
             }
             Stroke::Enter => Outcome::Run,
+            Stroke::Copy => Outcome::Redraw,
+            Stroke::Cut => {
+                self.delete_selection();
+                self.selected = 0;
+                Outcome::Redraw
+            }
+            // Paste never reaches apply(): the component fetches clipboard text
+            // (IO) and calls Editor::paste directly, short-circuiting before
+            // classify_key's stroke would otherwise get here. Treat it as inert
+            // rather than panicking if that invariant is ever violated.
+            Stroke::Paste => Outcome::Redraw,
             Stroke::Ignore => Outcome::Redraw,
         }
     }
@@ -373,6 +399,22 @@ impl Editor {
         if let Some(text) = commit {
             self.insert(text);
         }
+        self.selected = 0;
+    }
+
+    /// The currently selected text, if any (a collapsed selection doesn't count --
+    /// matches [`Editor::selection_range`]). Read by the component for Ctrl+C
+    /// (copy) and Ctrl+X (cut, which reads this BEFORE `apply` deletes it).
+    pub(crate) fn selected_text(&self) -> Option<&str> {
+        self.selection_range().map(|(start, end)| &self.query[start..end])
+    }
+
+    /// Paste: replace the active selection (if any) with `text`, else insert it at
+    /// the cursor. Thin, documented alias over [`Editor::insert`] for the Ctrl+V
+    /// call site -- the component fetches `text` from the system clipboard (IO)
+    /// before calling this, since `Editor` never performs IO itself.
+    pub(crate) fn paste(&mut self, text: &str) {
+        self.insert(text);
         self.selected = 0;
     }
 }
@@ -1141,6 +1183,31 @@ impl Component for Launcher {
                 };
                 let stroke =
                     classify_key(&event.press.key, &event.press.code, event.press.modifiers);
+
+                // Paste needs the clipboard fetched (IO) before Editor can apply it --
+                // Editor never performs IO itself, so this short-circuits before the
+                // normal apply()-driven path below (whose Stroke::Paste arm is an inert
+                // fallback that should never actually run).
+                if stroke == Stroke::Paste {
+                    let text = freya_clipboard::prelude::Clipboard::get().unwrap_or_else(|e| {
+                        tracing::warn!("[launcher] clipboard read failed: {e:?}");
+                        String::new()
+                    });
+                    let mut editor = Editor {
+                        query: query.peek().clone(),
+                        selected: *selected.peek(),
+                        cursor: *cursor.peek(),
+                        anchor: *anchor.peek(),
+                    };
+                    editor.paste(&text);
+                    sync_ime_surrounding_text(&bus, &editor);
+                    query.set(editor.query);
+                    selected.set(editor.selected);
+                    cursor.set(editor.cursor);
+                    anchor.set(editor.anchor);
+                    return;
+                }
+
                 let q = query.peek().clone();
                 let sections = {
                     let snap = apps.peek();
@@ -1155,8 +1222,21 @@ impl Component for Launcher {
                     cursor: *cursor.peek(),
                     anchor: *anchor.peek(),
                 };
+                // Copy/Cut read the selection BEFORE apply() (Cut deletes it); a
+                // collapsed/absent selection means nothing to copy, matching ordinary
+                // Ctrl+C-with-nothing-selected = no-op convention.
+                let copy_text = if matches!(stroke, Stroke::Copy | Stroke::Cut) {
+                    editor.selected_text().map(str::to_string)
+                } else {
+                    None
+                };
                 match editor.apply(&stroke, ghost.as_deref(), rows) {
                     Outcome::Redraw => {
+                        if let Some(text) = copy_text
+                            && let Err(e) = freya_clipboard::prelude::Clipboard::set(text)
+                        {
+                            tracing::warn!("[launcher] clipboard write failed: {e:?}");
+                        }
                         sync_ime_surrounding_text(&bus, &editor);
                         query.set(editor.query);
                         selected.set(editor.selected);
@@ -1952,6 +2032,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn classify_ctrl_cxv_matches_physical_code() {
+        assert_eq!(
+            classify_key(&Key::Named(NamedKey::Unidentified), &Code::KeyC, Modifiers::CONTROL),
+            Stroke::Copy
+        );
+        assert_eq!(
+            classify_key(&Key::Named(NamedKey::Unidentified), &Code::KeyX, Modifiers::CONTROL),
+            Stroke::Cut
+        );
+        assert_eq!(
+            classify_key(&Key::Named(NamedKey::Unidentified), &Code::KeyV, Modifiers::CONTROL),
+            Stroke::Paste
+        );
+    }
+
     // ----- editor ----------------------------------------------------------
 
     #[test]
@@ -2195,6 +2291,64 @@ mod tests {
         let mut e = Editor { query: String::new(), selected: 3, cursor: 0, anchor: None };
         e.apply_ime_commit(0, 0, Some("x"));
         assert_eq!(e.selected, 0);
+    }
+
+    #[test]
+    fn selected_text_none_without_a_real_selection() {
+        let e = Editor { query: "hello".into(), selected: 0, cursor: 2, anchor: None };
+        assert_eq!(e.selected_text(), None);
+        // A collapsed anchor==cursor is not a selection either.
+        let e = Editor { query: "hello".into(), selected: 0, cursor: 2, anchor: Some(2) };
+        assert_eq!(e.selected_text(), None);
+    }
+
+    #[test]
+    fn selected_text_returns_the_selected_range() {
+        let e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        assert_eq!(e.selected_text(), Some("hello"));
+    }
+
+    #[test]
+    fn cut_returns_text_and_deletes_it() {
+        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        assert_eq!(e.selected_text().map(str::to_string), Some("hello".to_string()));
+        assert!(e.apply(&Stroke::Cut, None, 0) == Outcome::Redraw);
+        assert_eq!(e.query, " world");
+        assert_eq!(e.cursor, 0);
+        assert_eq!(e.anchor, None);
+    }
+
+    #[test]
+    fn copy_never_mutates_the_query() {
+        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        e.apply(&Stroke::Copy, None, 0);
+        assert_eq!(e.query, "hello world");
+        assert_eq!(e.anchor, Some(0));
+    }
+
+    #[test]
+    fn cut_with_nothing_selected_is_a_no_op() {
+        let mut e = Editor { query: "hello".into(), selected: 0, cursor: 2, anchor: None };
+        e.apply(&Stroke::Cut, None, 0);
+        assert_eq!(e.query, "hello");
+        assert_eq!(e.cursor, 2);
+    }
+
+    #[test]
+    fn paste_inserts_at_cursor() {
+        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: None };
+        e.paste(",");
+        assert_eq!(e.query, "hello, world");
+        assert_eq!(e.cursor, 6);
+    }
+
+    #[test]
+    fn paste_replaces_a_selection() {
+        let mut e = Editor { query: "hello world".into(), selected: 0, cursor: 5, anchor: Some(0) };
+        e.paste("goodbye");
+        assert_eq!(e.query, "goodbye world");
+        assert_eq!(e.cursor, 7);
+        assert_eq!(e.anchor, None);
     }
 
     #[test]
