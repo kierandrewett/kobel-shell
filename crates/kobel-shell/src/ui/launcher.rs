@@ -44,8 +44,11 @@ use crate::theme::{self, Rgb};
 const FIELD_FONT: f32 = 14.5;
 /// Row / section text size.
 const ROW_FONT: f32 = 13.0;
-/// Block caret geometry: a filled LEAF block a glyph wide at the cursor.
-const CARET_W: f32 = 8.0;
+/// Caret geometry: a thin LEAF line at the cursor (docs/prototype.html's
+/// `.lsearch input` uses a native `caret-color` -- a real OS text-cursor line,
+/// not a block -- so this matches that shape rather than a terminal-style
+/// block cursor).
+const CARET_W: f32 = 2.0;
 const CARET_H: f32 = 18.0;
 /// Result-row icon frame (`.ri` 28x28 with a 24px glyph inside).
 const RI_FRAME: f32 = 28.0;
@@ -55,8 +58,16 @@ const TILE_W: f32 = 72.0;
 const TILE_GLYPH: f32 = 30.0;
 /// Sheet outer padding (`impl Component for Launcher`'s `.padding(SHEET_PAD)`).
 const SHEET_PAD: f32 = 8.0;
-/// Field row vertical padding (`field_row`'s `.padding((FIELD_PAD_V, 12.0))`).
+/// Field row vertical padding (`field_row`'s `.padding((FIELD_PAD_V, 12.0))`);
+/// docs/prototype.html `.lsearch { padding: 3px 12px }`.
 const FIELD_PAD_V: f32 = 3.0;
+/// The query text row's OWN vertical padding, inside `FIELD_PAD_V` -- ports
+/// docs/prototype.html `.lsearch input { padding: 8px 0 }`. Two padding layers
+/// (this one plus `FIELD_PAD_V`) give the ~39px total field height the
+/// prototype renders; using only `FIELD_PAD_V` (as an earlier port did)
+/// squashed the field to ~28px, visibly disproportionate against its 584px
+/// width.
+const FIELD_TEXT_PAD_V: f32 = 8.0;
 
 /// Faux placeholder shown when the query is empty.
 const PLACEHOLDER: &str = "Search apps, actions...";
@@ -73,7 +84,7 @@ const PLACEHOLDER: &str = "Search apps, actions...";
 pub(crate) fn ime_cursor_rect(launcher_w: f32) -> (i32, i32, i32, i32) {
     let pad = SHEET_PAD as i32;
     let w = (launcher_w - 2.0 * SHEET_PAD).round() as i32;
-    let h = (2.0 * FIELD_PAD_V + CARET_H + 4.0).round() as i32;
+    let h = (2.0 * FIELD_PAD_V + 2.0 * FIELD_TEXT_PAD_V + CARET_H).round() as i32;
     (pad, pad, w, h)
 }
 
@@ -417,6 +428,19 @@ impl Editor {
         self.insert(text);
         self.selected = 0;
     }
+
+    /// Place the cursor at `byte_offset` (clamped to the query length and
+    /// snapped to the nearest char boundary), clearing any selection --
+    /// ordinary single-click text-field convention. Bypasses [`Stroke`]/
+    /// [`Editor::apply`] like [`Editor::paste`]: a pointer click isn't a
+    /// keystroke. `byte_offset` comes from hit-testing the rendered field
+    /// (see [`field_row`]'s hidden measurement paragraph); it should already
+    /// land on a char boundary, but `clamp_boundary_back` is cheap insurance
+    /// against a UTF-16-to-byte conversion landing mid-codepoint.
+    pub(crate) fn click_at(&mut self, byte_offset: usize) {
+        let target = clamp_boundary_back(&self.query, byte_offset);
+        self.move_cursor(target, false);
+    }
 }
 
 /// Clamp `pos` (a byte offset that may land mid-codepoint -- e.g. a possibly-
@@ -438,6 +462,24 @@ fn clamp_boundary_fwd(s: &str, pos: usize) -> usize {
         i += 1;
     }
     i
+}
+
+/// Convert a Skia paragraph hit-test's UTF-16 code-unit offset into a byte
+/// offset into `s`. Skia's `Paragraph::get_glyph_position_at_coordinate`
+/// reports positions in UTF-16 code units (confirmed empirically against the
+/// pinned Freya rev: a BMP char costs 1 unit, an astral char -- e.g. an emoji
+/// -- costs 2, matching `str::encode_utf16`), but [`Editor::cursor`] is a Rust
+/// byte offset. Walks `char_indices` so the result always lands on a char
+/// boundary; `utf16_offset` past the string's end clamps to `s.len()`.
+fn utf16_offset_to_byte(s: &str, utf16_offset: usize) -> usize {
+    let mut units = 0usize;
+    for (byte_idx, ch) in s.char_indices() {
+        if units >= utf16_offset {
+            return byte_idx;
+        }
+        units += ch.len_utf16();
+    }
+    s.len()
 }
 
 /// The previous char boundary strictly before `pos`, or `None` at the string
@@ -1296,8 +1338,32 @@ impl Component for Launcher {
         let sections = results(&q, &snap, &frecency.peek());
         let ghost = ghost_for(&q, &sections);
 
-        let field =
-            field_row(&q, ghost.as_deref(), *cursor.read(), *anchor.read(), preedit.read().as_ref());
+        // Click-to-position: reassemble/apply/write-back mirrors the key-
+        // routing effect above, but through Editor::click_at (a pointer click
+        // isn't a keystroke -- see its doc comment).
+        let on_field_click = {
+            let bus = bus.clone();
+            EventHandler::new(move |byte_offset: usize| {
+                let mut editor = Editor {
+                    query: query.peek().clone(),
+                    selected: *selected.peek(),
+                    cursor: *cursor.peek(),
+                    anchor: *anchor.peek(),
+                };
+                editor.click_at(byte_offset);
+                sync_ime_surrounding_text(&bus, &editor);
+                cursor.set(editor.cursor);
+                anchor.set(editor.anchor);
+            })
+        };
+        let field = field_row(
+            &q,
+            ghost.as_deref(),
+            *cursor.read(),
+            *anchor.read(),
+            preedit.read().as_ref(),
+            on_field_click,
+        );
 
         let body: Element = if q.trim().is_empty() {
             empty_state(&snap, frecency)
@@ -1346,6 +1412,7 @@ fn field_row(
     cursor: usize,
     anchor: Option<usize>,
     preedit: Option<&Preedit>,
+    on_click: EventHandler<usize>,
 ) -> Element {
     let selection = anchor.and_then(|a| {
         let (start, end) = (a.min(cursor), a.max(cursor));
@@ -1357,7 +1424,7 @@ fn field_row(
         rect()
             .width(Size::px(CARET_W))
             .height(Size::px(CARET_H))
-            .corner_radius(2.0)
+            .corner_radius(1.0)
             .background(theme::LEAF.rgb())
     };
 
@@ -1369,8 +1436,47 @@ fn field_row(
         .horizontal()
         .width(Size::flex(1.0))
         .cross_align(Alignment::Center)
-        .height(Size::px(CARET_H + 4.0))
+        .height(Size::px(2.0 * FIELD_TEXT_PAD_V + CARET_H))
         .overflow(Overflow::Clip);
+
+    // Click-to-position. While composing (preedit active) a click is a no-op:
+    // repositioning mid-composition isn't verified against a real IME in this
+    // environment (see README's IME gap), so the safest behavior is to leave
+    // the cursor alone rather than risk desyncing the compositor's notion of
+    // the surrounding text. Otherwise, a hidden 0x0-clipped paragraph mirrors
+    // `query` at the SAME font/size as the visible text; Skia's
+    // `get_glyph_position_at_coordinate` needs a real, laid-out paragraph
+    // (FontCollection is never exposed to component code, confirmed against
+    // freya-core's element/render context types -- there's no way to build one
+    // outside the render tree), so this is attached via `paragraph().holder(_)`
+    // and hit-tested on click. Zero visible/layout footprint: width(0) takes no
+    // flex space, and it's the FIRST child so its own origin sits at the same
+    // x=0 the visible text starts at, matching `element_location.x` from a
+    // click on `text` itself. `get_glyph_position_at_coordinate` reports UTF-16
+    // code-unit offsets (verified empirically), hence `utf16_offset_to_byte`.
+    if preedit.is_none() {
+        let owned_query = query.to_string();
+        let hit_query = owned_query.clone();
+        let holder = ParagraphHolder::default();
+        text = text.child(
+            rect().width(Size::px(0.0)).height(Size::px(0.0)).overflow(Overflow::Clip).child(
+                paragraph()
+                    .width(Size::px(2000.0))
+                    .max_lines(Some(1usize))
+                    .holder(holder.clone())
+                    .span(Span::new(owned_query).font_size(FIELD_FONT)),
+            ),
+        );
+        text = text.on_mouse_down(move |e: Event<MouseEventData>| {
+            let Some(sk_paragraph) = holder.0.borrow().as_ref().map(|h| h.paragraph.clone())
+            else {
+                return;
+            };
+            let x = e.element_location.x as f32;
+            let pos = sk_paragraph.get_glyph_position_at_coordinate((x, 1.0));
+            on_click.call(utf16_offset_to_byte(&hit_query, pos.position as usize));
+        });
+    }
 
     if let Some(pe) = preedit {
         // Composing: before-cursor text, the preedit span (CHIP background --
@@ -1781,6 +1887,68 @@ mod tests {
         }
     }
 
+    /// End-to-end integration test (via `freya_testing::TestingRunner`) for the
+    /// ACTUAL Freya wiring in [`field_row`] -- the hidden hit-test paragraph,
+    /// its `on_mouse_down` handler, and the UTF-16-to-byte conversion -- as
+    /// opposed to the [`Editor::click_at`]/[`utf16_offset_to_byte`] unit tests
+    /// above, which only exercise the pure post-hit-test logic. Renders
+    /// `field_row` for real, sends real mouse-down events at real screen
+    /// coordinates, and reads back what `on_click` was actually called with.
+    #[test]
+    fn field_row_click_hit_tests_the_real_rendered_paragraph() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        use freya_core::elements::paragraph::Paragraph;
+        use freya_testing::launch_test;
+
+        let query = "hello world";
+        let reported: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
+        let reported_for_app = reported.clone();
+        let app = move || {
+            let reported = reported_for_app.clone();
+            field_row(
+                query,
+                None,
+                query.len(),
+                None,
+                None,
+                EventHandler::new(move |offset: usize| reported.set(Some(offset))),
+            )
+        };
+
+        let mut test = launch_test(app);
+        test.sync_and_update();
+
+        // Locate the hidden hit-test paragraph's own rendered area directly
+        // (rather than guessing the field's icon/padding/spacing offsets), so
+        // the click coordinates below are exact regardless of field_row's
+        // surrounding layout. `field_row` renders exactly one `paragraph()`
+        // element -- the hidden one -- in this minimal test app.
+        let area = test
+            .find(|node, element| Paragraph::try_downcast(element).map(|_| node.layout().area))
+            .expect("field_row renders a hidden hit-test paragraph");
+        let y = area.min_y() + 5.0;
+
+        // A click right at the paragraph's own left edge hits the very first
+        // glyph.
+        test.press_cursor((area.min_x() as f64 + 1.0, y as f64));
+        let near_start = reported.get().expect("on_click fired for a click near the start");
+        assert!(near_start <= 2, "click near x=0 should land at/near byte 0, got {near_start}");
+
+        // A click within the field but past the rendered text's ~74px extent
+        // (the paragraph's own clip-parent `text` is ~396px wide here, well
+        // past "hello world" at 14.5px -- see the layout dump this offset was
+        // chosen against) clamps to the end of the query, never panics.
+        reported.set(None);
+        test.press_cursor((area.min_x() as f64 + 150.0, y as f64));
+        assert_eq!(
+            reported.get(),
+            Some(query.len()),
+            "click far past the text should clamp to the query's byte length"
+        );
+    }
+
     fn snapshot() -> AppsSnapshot {
         AppsSnapshot {
             apps: vec![
@@ -2156,6 +2324,61 @@ mod tests {
         assert_eq!(e.cursor, 0);
         e.apply(&Stroke::End { shift: false }, None, 0);
         assert_eq!(e.cursor, 5);
+    }
+
+    #[test]
+    fn editor_click_at_places_cursor_and_clears_selection() {
+        let mut e = Editor { query: "hello world".into(), selected: 3, cursor: 11, anchor: Some(0) };
+        e.click_at(5);
+        assert_eq!(e.cursor, 5);
+        assert_eq!(e.anchor, None);
+        assert_eq!(e.selection_range(), None);
+        // Selected (result-row index) is untouched -- a text click never
+        // changes which row is highlighted.
+        assert_eq!(e.selected, 3);
+    }
+
+    #[test]
+    fn editor_click_at_clamps_past_end_and_snaps_mid_codepoint() {
+        let mut e = Editor { query: "café".into(), selected: 0, cursor: 0, anchor: None };
+        // Past the end of the (5-byte) string clamps to the length.
+        e.click_at(999);
+        assert_eq!(e.cursor, e.query.len());
+        // 'é' is a 2-byte UTF-8 char starting at byte 3; landing on byte 4
+        // (mid-codepoint) snaps back to the char boundary at 3.
+        e.click_at(4);
+        assert_eq!(e.cursor, 3);
+        assert!(e.query.is_char_boundary(e.cursor));
+    }
+
+    #[test]
+    fn utf16_offset_to_byte_matches_ascii_identity() {
+        // Pure ASCII: UTF-16 units, chars, and bytes all coincide.
+        assert_eq!(utf16_offset_to_byte("hello", 0), 0);
+        assert_eq!(utf16_offset_to_byte("hello", 3), 3);
+        assert_eq!(utf16_offset_to_byte("hello", 999), 5);
+    }
+
+    #[test]
+    fn utf16_offset_to_byte_handles_astral_and_bmp_multibyte_chars() {
+        // "café " (BMP 'é', 1 UTF-16 unit / 2 UTF-8 bytes) + an emoji (astral,
+        // 2 UTF-16 units / 4 UTF-8 bytes, i.e. a surrogate pair).
+        let s = "café \u{1f600}!";
+        // Before 'é': 3 UTF-16 units in == byte 3 (matches char count so far).
+        assert_eq!(utf16_offset_to_byte(s, 3), 3);
+        // After 'é' (1 unit) and the space (1 unit): unit 5 == byte 6 ('é' is
+        // 2 bytes, so "caf" (3) + "é" (2) + " " (1) = byte 6).
+        assert_eq!(utf16_offset_to_byte(s, 5), 6);
+        // Landing inside the emoji's surrogate pair (unit 6, the low
+        // surrogate): the loop only returns a `char_indices` boundary, so a
+        // target strictly inside a multi-unit char rounds FORWARD to the next
+        // char's start (byte 10, the '!'), never splitting the glyph.
+        let emoji_end_byte = "café ".len() + "\u{1f600}".len();
+        assert_eq!(utf16_offset_to_byte(s, 6), emoji_end_byte);
+        // Past the emoji (unit 7, its 2 units consumed): the '!' starts there.
+        assert_eq!(utf16_offset_to_byte(s, 7), emoji_end_byte);
+        // Past the whole string clamps to its byte length.
+        assert_eq!(utf16_offset_to_byte(s, 999), s.len());
     }
 
     #[test]
