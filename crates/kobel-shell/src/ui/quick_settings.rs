@@ -363,9 +363,14 @@ fn root_view(
     let (bt_active, bt_sub) = bt_chip(bt);
     let ps_active = power_saver_active(power);
 
+    // Always fill both grid slots per row -- an unavailable chip becomes an
+    // invisible placeholder (not omitted), so the row stays a proper 2-column
+    // grid instead of collapsing its lone chip to full width. The row itself is
+    // only skipped when EVERY chip in it is unavailable (row1: no net AND no
+    // bt); row2 always renders since Dark Style has no availability gate.
     let mut row1: Vec<Element> = Vec::new();
-    if net.available {
-        row1.push(
+    if net.available || bt.available {
+        row1.push(if net.available {
             Chip {
                 icon: ICON_WIFI,
                 label: "Wi-Fi".to_string(),
@@ -374,11 +379,11 @@ fn root_view(
                 on_toggle: cmd(bus, Command::SetWifiEnabled(!net.enabled)),
                 on_drill: Some(open_drill(DrillKind::Wifi)),
             }
-            .into_element(),
-        );
-    }
-    if bt.available {
-        row1.push(
+            .into_element()
+        } else {
+            empty_chip_slot()
+        });
+        row1.push(if bt.available {
             Chip {
                 icon: ICON_BLUETOOTH,
                 label: "Bluetooth".to_string(),
@@ -387,16 +392,15 @@ fn root_view(
                 on_toggle: cmd(bus, Command::SetBluetoothPowered(!bt.powered)),
                 on_drill: Some(open_drill(DrillKind::Bt)),
             }
-            .into_element(),
-        );
-    }
-    if !row1.is_empty() {
+            .into_element()
+        } else {
+            empty_chip_slot()
+        });
         col = col.child(chip_row(tokens.tile_h, row1));
     }
 
-    let mut row2: Vec<Element> = Vec::new();
-    if power.available {
-        row2.push(
+    let row2: Vec<Element> = vec![
+        if power.available {
             Chip {
                 icon: ICON_BOLT,
                 label: "Power Saver".to_string(),
@@ -405,10 +409,10 @@ fn root_view(
                 on_toggle: cmd(bus, Command::SetPowerProfile(next_power_profile(ps_active))),
                 on_drill: None,
             }
-            .into_element(),
-        );
-    }
-    row2.push(
+            .into_element()
+        } else {
+            empty_chip_slot()
+        },
         Chip {
             icon: ICON_MOON,
             label: "Dark Style".to_string(),
@@ -418,7 +422,7 @@ fn root_view(
             on_drill: None,
         }
         .into_element(),
-    );
+    ];
     col = col.child(chip_row(tokens.tile_h, row2));
 
     let muted = audio.muted;
@@ -566,6 +570,14 @@ impl Component for ReconnectButton {
             .on_press(move |_| bus.send(ShellMsg::Service(Command::Reload)))
             .child(label().text("Reconnect").color(theme::TX.rgb()).font_size(11.5))
     }
+}
+
+/// An invisible placeholder for an unavailable chip's grid slot -- keeps a
+/// row's 2-column rhythm intact instead of letting a lone available chip
+/// collapse to full width (see the "Always fill both grid slots" comment in
+/// `root_view`).
+fn empty_chip_slot() -> Element {
+    rect().into_element()
 }
 
 /// One 2-column chip row: each chip flexes to an equal half and is a fixed
