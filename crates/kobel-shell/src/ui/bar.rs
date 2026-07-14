@@ -1,10 +1,10 @@
 //! The bar: one opaque PANEL slab (ags/widget/Bar.tsx).
 //!
 //! Layout ports the AGS `centerbox.bar`:
-//!   - Left:  launcher icon button -> Launcher, then the focused-window title.
-//!   - Center: clock+date button -> Calendar.
-//!   - Right: status pill (wifi/speaker/battery) -> QuickSettings, bell -> Drawer,
-//!            power -> Session.
+//! - Left: launcher icon button -> Launcher, then the focused-window title.
+//! - Center: clock+date button -> Calendar.
+//! - Right: status pill (wifi/speaker/battery) -> QuickSettings, bell ->
+//!   Drawer, power -> Session.
 //!
 //! Sizing/colors come from [`crate::theme`]; surface toggles go through the
 //! [`ShellBus`]. The status pill's Wi-Fi glyph is the anomaly segment (ags

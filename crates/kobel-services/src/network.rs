@@ -323,11 +323,11 @@ async fn scan(
     };
     let mut active_ssid: Option<String> = None;
     let mut active_strength: u8 = 0;
-    if let Some(path) = &active_ap_path {
-        if let Some(ap) = ap_proxy(conn, path).await {
-            active_ssid = ssid_string(&ap).await;
-            active_strength = ap.strength().await.unwrap_or(0);
-        }
+    if let Some(path) = &active_ap_path
+        && let Some(ap) = ap_proxy(conn, path).await
+    {
+        active_ssid = ssid_string(&ap).await;
+        active_strength = ap.strength().await.unwrap_or(0);
     }
 
     let mut best: HashMap<String, ApRow> = HashMap::new();

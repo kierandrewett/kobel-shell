@@ -241,7 +241,7 @@ fn scan() -> (AppsSnapshot, HashMap<String, PathBuf>) {
     }
     // Stable, case-insensitive display order (fuzzy/frecency ranking is a later
     // phase); dedup already guarantees unique ids so ordering is cosmetic.
-    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps.sort_by_key(|a| a.name.to_lowercase());
 
     (AppsSnapshot { apps }, paths)
 }

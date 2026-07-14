@@ -286,9 +286,9 @@ impl RevealTrace {
 }
 
 /// One on-demand surface's reveal state. The surface is created once and stays
-/// mapped forever (the AGS warm-open trick): closed = opacity 0 + empty input region
-/// + keyboard None; open = opacity springs to 1 + full input region + its keyboard
-/// mode. The spring integrates manager-side (see [`Manager::tick`]).
+/// mapped forever (the AGS warm-open trick): closed = opacity 0, empty input
+/// region, keyboard None; open = opacity springs to 1, full input region, its
+/// keyboard mode. The spring integrates manager-side (see [`Manager::tick`]).
 struct Reveal {
     id: SurfaceId,
     /// Keyboard mode applied while open (Exclusive for launcher/session, OnDemand
@@ -533,10 +533,10 @@ impl Manager {
             return;
         }
         // One-open-at-a-time: close whatever else is open first.
-        if let Some(cur) = self.open {
-            if cur != key {
-                self.close(cur, host);
-            }
+        if let Some(cur) = self.open
+            && cur != key
+        {
+            self.close(cur, host);
         }
         let reduced = self.reduced_motion;
         let profile = self.profile;
@@ -666,16 +666,16 @@ impl Manager {
             let x = r.sim.x.clamp(0.0, 1.0);
             (r.write_progress)(x);
             if profile {
-                if let Some(t) = r.trace.as_mut() {
-                    if t.record(now) {
-                        Self::log_trace_event(*key, t, "first_tick", now);
-                    }
+                if let Some(t) = r.trace.as_mut()
+                    && t.record(now)
+                {
+                    Self::log_trace_event(*key, t, "first_tick", now);
                 }
-                if settled {
-                    if let Some(t) = r.trace.take() {
-                        Self::log_trace_event(*key, &t, "settled", now);
-                        Self::emit_motion(*key, &t, now);
-                    }
+                if settled
+                    && let Some(t) = r.trace.take()
+                {
+                    Self::log_trace_event(*key, &t, "settled", now);
+                    Self::emit_motion(*key, &t, now);
                 }
             }
             if settled && !r.target_open {

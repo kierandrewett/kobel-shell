@@ -124,11 +124,10 @@ pub(crate) async fn run(events: UnboundedSender<ServiceEvent>) {
 
     while let Some(signal) = changes.next().await {
         // Only react to the Device interface's changes.
-        if let Ok(args) = signal.args() {
-            if args.interface_name != iface {
+        if let Ok(args) = signal.args()
+            && args.interface_name != iface {
                 continue;
             }
-        }
         let snapshot = read_snapshot(&device).await;
         if snapshot != last {
             last = snapshot.clone();

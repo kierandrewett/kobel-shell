@@ -341,11 +341,11 @@ impl Control<'_> {
     /// Change a surface's keyboard-interactivity mode at runtime. No-op for a popup
     /// (popups take input via their grab, not layer-shell keyboard-interactivity).
     pub fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
-        if let Some(s) = self.host.surfaces.iter().find(|s| s.id == id) {
-            if let Some(layer) = s.layer_surface() {
-                layer.set_keyboard_interactivity(mode);
-                s.commit();
-            }
+        if let Some(s) = self.host.surfaces.iter().find(|s| s.id == id)
+            && let Some(layer) = s.layer_surface()
+        {
+            layer.set_keyboard_interactivity(mode);
+            s.commit();
         }
     }
 
@@ -748,12 +748,11 @@ impl Host {
                 "[host] surface {id:?} fractional scaling enabled (wp_viewport + wp_fractional_scale_v1)"
             );
         }
-        if surface.is_content_sized() {
-            if let Some((w, h)) = surface.measure_if_dirty() {
-                if let Some(layer) = surface.layer_surface() {
-                    layer.set_size(w, h);
-                }
-            }
+        if surface.is_content_sized()
+            && let Some((w, h)) = surface.measure_if_dirty()
+            && let Some(layer) = surface.layer_surface()
+        {
+            layer.set_size(w, h);
         }
 
         // Initial commit with no buffer -> compositor replies with a configure.
@@ -1221,11 +1220,11 @@ impl Host {
         // commit that eglSwapBuffers performs.
         s.wl_surface().frame(qh, s.wl_surface().clone());
 
-        if let Some(es) = s.egl_surface.as_ref() {
-            if let Err(e) = egl.swap(es) {
-                tracing::error!("[egl] swap failed: {e:#}");
-                return;
-            }
+        if let Some(es) = s.egl_surface.as_ref()
+            && let Err(e) = egl.swap(es)
+        {
+            tracing::error!("[egl] swap failed: {e:#}");
+            return;
         }
         s.frame_pending = true;
         s.after_present();
@@ -1525,10 +1524,10 @@ impl SeatHandler for Host {
             }
             self.kb_focus = None;
         }
-        if capability == Capability::Pointer {
-            if let Some(pointer) = self.pointer.take() {
-                pointer.release();
-            }
+        if capability == Capability::Pointer
+            && let Some(pointer) = self.pointer.take()
+        {
+            pointer.release();
         }
     }
 

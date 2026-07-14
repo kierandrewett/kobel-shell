@@ -63,14 +63,13 @@ fn spawn_detached(label: &'static str, argv: &[&str], stdin_payload: Option<Stri
             tracing::info!("[exec] {label}: spawned '{bin}'");
             let bin = bin.to_string();
             tokio::spawn(async move {
-                if let Some(text) = stdin_payload {
-                    if let Some(mut stdin) = child.stdin.take() {
-                        if let Err(e) = stdin.write_all(text.as_bytes()).await {
-                            tracing::warn!("[exec] {label}: stdin write failed: {e}");
-                        }
-                        // `stdin` drops here, closing the pipe so the child sees EOF.
-                    }
+                if let Some(text) = stdin_payload
+                    && let Some(mut stdin) = child.stdin.take()
+                    && let Err(e) = stdin.write_all(text.as_bytes()).await
+                {
+                    tracing::warn!("[exec] {label}: stdin write failed: {e}");
                 }
+                // `stdin` drops here, closing the pipe so the child sees EOF.
                 match child.wait().await {
                     Ok(status) if !status.success() => {
                         tracing::warn!("[exec] {label}: '{bin}' exited: {status}");

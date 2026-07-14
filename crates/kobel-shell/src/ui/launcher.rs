@@ -8,11 +8,11 @@
 //! dock pins) or the ranked results list.
 //!
 //! Providers (recomputed per keystroke, all pure -- see the unit tests):
-//!   - `:` prefix  -> typed gnoblin command rows ([`command_rows`]).
-//!   - `=`/math    -> a calculator row backed by a tiny recursive-descent
-//!                    parser ([`calc`]), never `eval`, no new deps.
-//!   - otherwise   -> best-match slot + Apps (fuzzy + frecency) + Actions +
-//!                    Web ([`results`]).
+//! - `:` prefix -> typed gnoblin command rows ([`command_rows`]).
+//! - `=`/math -> a calculator row backed by a tiny recursive-descent parser
+//!   ([`calc`]), never `eval`, no new deps.
+//! - otherwise -> best-match slot + Apps (fuzzy + frecency) + Actions + Web
+//!   ([`results`]).
 //!
 //! Key editing is factored into [`classify_key`] (host key -> [`Stroke`]) and
 //! [`Editor::apply`] (pure text/selection edits), so the whole edit path is
@@ -176,12 +176,13 @@ pub(crate) fn classify_key(key: &Key, code: &Code, mods: Modifiers) -> Stroke {
             _ => {}
         }
     }
-    if !mods.ctrl() && !mods.alt() && !mods.meta() {
-        if let Key::Character(s) = key {
-            if !s.is_empty() {
-                return Stroke::Text(s.clone());
-            }
-        }
+    if !mods.ctrl()
+        && !mods.alt()
+        && !mods.meta()
+        && let Key::Character(s) = key
+        && !s.is_empty()
+    {
+        return Stroke::Text(s.clone());
     }
     Stroke::Ignore
 }
@@ -196,15 +197,12 @@ pub(crate) fn classify_key(key: &Key, code: &Code, mods: Modifiers) -> Stroke {
 /// cursor, `Some` is a range selection between `anchor` and `cursor`). Kept
 /// free of Freya types so the whole edit path is unit-testable.
 ///
-/// KNOWN LIMITATION: click-to-position and drag-to-select are not implemented
-/// -- only keyboard navigation moves the cursor/selection (arrows, Home/End,
-/// word-jump, shift-select). Freya's `freya-edit` crate (rope_editor.rs /
-/// use_editable.rs / event.rs in the pinned Freya rev) has the primitives for
-/// pointer-driven positioning via `EditableEvent::Down`/`Move` and a
-/// `ParagraphHolder` attached to a `paragraph()` element via `.holder(...)`
-/// (see `freya-core::elements::paragraph`), but no component anywhere in this
-/// Freya revision uses it yet, so wiring it is greenfield work left for a
-/// follow-up rather than risked in this pass.
+/// Click-to-position ([`Editor::click_at`]) and drag-to-select
+/// ([`Editor::drag_to`]) are wired via a hidden hit-test paragraph in
+/// [`field_row`] (see its module doc), alongside the keyboard path (arrows,
+/// Home/End, word-jump, shift-select) that flows through [`Editor::apply`].
+/// Both pointer paths bypass [`Stroke`]/[`Editor::apply`] entirely -- a
+/// pointer event is not a keystroke.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Editor {
     pub query: String,
@@ -301,14 +299,14 @@ impl Editor {
                 }
             }
             Stroke::Tab { back } => {
-                if !*back {
-                    if let Some(g) = ghost {
-                        self.query = g.to_string();
-                        self.cursor = self.query.len();
-                        self.anchor = None;
-                        self.selected = 0;
-                        return Outcome::Redraw;
-                    }
+                if !*back
+                    && let Some(g) = ghost
+                {
+                    self.query = g.to_string();
+                    self.cursor = self.query.len();
+                    self.anchor = None;
+                    self.selected = 0;
+                    return Outcome::Redraw;
                 }
                 self.cycle(if *back { -1 } else { 1 }, rows);
                 Outcome::Redraw

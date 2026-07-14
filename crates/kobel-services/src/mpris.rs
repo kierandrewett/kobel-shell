@@ -304,11 +304,10 @@ async fn player_task(
     loop {
         tokio::select! {
             Some(signal) = changes.next() => {
-                if let Ok(args) = signal.args() {
-                    if args.interface_name != player_iface {
+                if let Ok(args) = signal.args()
+                    && args.interface_name != player_iface {
                         continue;
                     }
-                }
                 let next = read_player_info(&proxy, &bus_name).await;
                 if next != info {
                     info = next;
@@ -399,12 +398,11 @@ fn decode_metadata(mut meta: HashMap<String, OwnedValue>) -> (String, String, Op
 /// `xesam:artist` is normally an array of strings; take the first non-empty
 /// entry. Some players send a plain string instead, so fall back to that.
 fn first_artist(value: OwnedValue) -> Option<String> {
-    if let Ok(clone) = value.try_clone() {
-        if let Ok(list) = Vec::<String>::try_from(clone) {
-            if let Some(first) = list.into_iter().find(|s| !s.is_empty()) {
-                return Some(first);
-            }
-        }
+    if let Ok(clone) = value.try_clone()
+        && let Ok(list) = Vec::<String>::try_from(clone)
+        && let Some(first) = list.into_iter().find(|s| !s.is_empty())
+    {
+        return Some(first);
     }
     String::try_from(value).ok().filter(|s| !s.is_empty())
 }

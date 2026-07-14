@@ -52,12 +52,11 @@ impl FrameClock {
         let now = Instant::now();
         let dt = self.last_present.map(|t| now.duration_since(t).as_secs_f32() * 1000.0);
         self.last_present = Some(now);
-        if let Some(ms) = dt {
-            if ms > 0.0 {
+        if let Some(ms) = dt
+            && ms > 0.0 {
                 let inst = 1000.0 / ms;
                 self.fps_ema = if self.fps_ema == 0.0 { inst } else { self.fps_ema * 0.9 + inst * 0.1 };
             }
-        }
         dt.unwrap_or(0.0)
     }
 

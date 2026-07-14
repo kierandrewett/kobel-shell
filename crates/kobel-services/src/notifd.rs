@@ -270,11 +270,11 @@ impl Store {
 /// never fatal. Callers run this on a `spawn_blocking` thread (see
 /// [`flush_store`]) so the runtime worker is never blocked on the filesystem.
 fn write_persisted(path: &Path, persisted: &Persisted) {
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            tracing::warn!("[notifd] cannot create state dir {}: {e}", parent.display());
-            return;
-        }
+    if let Some(parent) = path.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        tracing::warn!("[notifd] cannot create state dir {}: {e}", parent.display());
+        return;
     }
     // Crash-safe: write a sibling temp file then rename over the target, so a
     // crash or full disk can never truncate the sole store (same pattern as the
@@ -532,14 +532,13 @@ pub(crate) async fn run(
     // Quiesce mutations before the final flush: pull our interface off the bus so
     // no late Notify can dirty the store after the persist writer has exited (UI
     // commands already stopped when the loop above broke).
-    if let Some(conn) = conn.as_ref() {
-        if let Err(e) = conn
+    if let Some(conn) = conn.as_ref()
+        && let Err(e) = conn
             .object_server()
             .remove::<NotificationsServer, _>(PATH)
             .await
-        {
-            tracing::debug!("[notifd] interface remove on shutdown failed: {e}");
-        }
+    {
+        tracing::debug!("[notifd] interface remove on shutdown failed: {e}");
     }
 
     // Stop the debounce writer: signal it, let it flush the latest snapshot, and

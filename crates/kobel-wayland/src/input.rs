@@ -102,11 +102,10 @@ pub fn map_key(keysym: Keysym, utf8: Option<&str>) -> Key {
     if let Some(named) = named_key(keysym) {
         return Key::Named(named);
     }
-    if let Some(text) = utf8 {
-        if !text.is_empty() && !text.chars().all(char::is_control) {
+    if let Some(text) = utf8
+        && !text.is_empty() && !text.chars().all(char::is_control) {
             return Key::Character(text.to_owned());
         }
-    }
     Key::Named(NamedKey::Unidentified)
 }
 

@@ -167,12 +167,11 @@ fn main() -> anyhow::Result<()> {
     {
         let shared = shared.clone();
         shell.on_output(move |event, _control| {
-            if let OutputEvent::SurfaceClosed { surface, .. } = event {
-                if shared.popup.get() == Some(surface) {
+            if let OutputEvent::SurfaceClosed { surface, .. } = event
+                && shared.popup.get() == Some(surface) {
                     shared.popup.set(None);
                     tracing::info!("[popup-demo] app notified: popup {surface:?} closed");
                 }
-            }
         });
     }
 
