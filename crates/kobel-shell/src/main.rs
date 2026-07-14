@@ -228,11 +228,16 @@ fn panel_config(key: SurfaceKey, t: &theme::Tokens) -> SurfaceConfig {
 }
 
 /// Bar layer config: per-output, top layer, anchored TOP|LEFT|RIGHT. Margins are the
-/// FLOATING gap (top) and edge (sides); the exclusive zone reserves gap + bar_h so
-/// tiled windows sit below it; height is bar_h.
+/// FLOATING gap (top) and edge (sides); the exclusive zone reserves gap + VISUAL bar_h
+/// so tiled windows sit below it, deliberately not the taller surface height below,
+/// which is a paint-only allowance for the tray's tile tooltips (see
+/// ui::bar::bar_surface_height / chip::TOOLTIP_HEADROOM) and must never affect window
+/// tiling. bar()'s own root stays TOP-aligned within the taller surface (no explicit
+/// alignment needed, matching the surface's TOP-only anchor), so the extra headroom
+/// sits below the visible bar with no on-screen position change.
 fn bar_config(t: &theme::Tokens) -> SurfaceConfig {
     let bar_h = t.bar_h as u32;
-    SurfaceConfig::new("kobel-bar", SurfaceSize::Exact { width: 0, height: bar_h })
+    SurfaceConfig::new("kobel-bar", SurfaceSize::Exact { width: 0, height: ui::bar::bar_surface_height(t) })
         .layer(Layer::Top)
         .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
         .margins(Margins { top: t.gap as i32, right: t.edge as i32, bottom: 0, left: t.edge as i32 })

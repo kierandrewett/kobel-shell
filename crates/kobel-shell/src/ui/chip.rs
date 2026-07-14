@@ -35,8 +35,11 @@
 //! non-interactive absolute-badge wrapper around `IconButton`) hand-roll
 //! nothing and were left alone. Dock tile shells stay out of scope here too.
 
+use std::time::Duration;
+
+use async_io::Timer;
 use freya_core::prelude::*;
-use torin::prelude::{Alignment, Area, Content, Size};
+use torin::prelude::{Alignment, Area, Content, Position, Size};
 
 use super::icon;
 use crate::theme::{self, Rgb};
@@ -68,6 +71,14 @@ impl Hover {
     pub fn pick<T>(self, rest: T, over: T) -> T {
         if self.on() { over } else { rest }
     }
+
+    /// Set the hover state directly -- for a call site that needs extra logic
+    /// in its own enter/leave handlers instead of the plain [`HoverExt::hover`]
+    /// wiring (e.g. also driving a [`TooltipHover`]; see [`hover_button_with_tooltip`]).
+    pub fn set(self, value: bool) {
+        let mut state = self.0;
+        state.set(value);
+    }
 }
 
 /// Attach a [`Hover`]'s pointer-enter/leave handlers to a rect. The one place
@@ -85,12 +96,129 @@ impl HoverExt for Rect {
     }
 }
 
+// -------------------------------------------------------------------------
+// Hover-delayed tooltip
+// -------------------------------------------------------------------------
+
+/// Hover-open delay for a tooltip (ms) -- a plausible "don't flash on every
+/// pass-through" tooltip UX. Matches menu.rs's submenu hover-open delay
+/// (`SUBMENU_DELAY_MS`).
+pub const TOOLTIP_DELAY_MS: u64 = 500;
+/// Gap between a hovered element's edge and the tooltip bubble's facing edge.
+pub const TOOLTIP_GAP: f32 = 6.0;
+/// Extra SURFACE headroom a [`tooltip_bubble`] needs beyond the hovered
+/// element's own edge to render without being clipped to the surface bounds:
+/// [`TOOLTIP_GAP`] plus the bubble's own paint footprint (padding + up to 2
+/// text lines + shadow blur). Purely a buffer/paint concern for whichever
+/// surface renders a tooltip -- window tiling/exclusive-zone math must keep
+/// using the VISUAL size of that surface's content, never this headroom (see
+/// `dock_surface_height` in dock.rs and `bar_surface_height` in main.rs).
+pub const TOOLTIP_HEADROOM: u32 = 56;
+
+/// Delayed-show/immediate-hide tooltip visibility, generation-guarded so a
+/// quick pass-through (leave before the show timer fires) never flashes a
+/// stale tooltip. Wraps the `State<bool>` + `State<u64>` pair every
+/// hover-tooltip site would otherwise re-declare; pair with [`use_hover`] for
+/// the tile's own hover-lit background, and [`tooltip_bubble`] to render it.
+#[derive(Clone, Copy, PartialEq)]
+pub struct TooltipHover {
+    show: State<bool>,
+    generation: State<u64>,
+}
+
+/// Track a hover-delayed tooltip's visibility in the current component scope.
+pub fn use_tooltip_hover() -> TooltipHover {
+    TooltipHover { show: use_state(|| false), generation: use_state(|| 0u64) }
+}
+
+impl TooltipHover {
+    /// Whether the tooltip should currently render (subscribes the caller).
+    pub fn visible(self) -> bool {
+        *self.show.read()
+    }
+
+    /// Call from `on_pointer_enter`: arms a [`TOOLTIP_DELAY_MS`] show-timer,
+    /// generation-guarded so a leave-before-fire never shows a stale tooltip.
+    pub fn on_enter(self) {
+        let mut generation = self.generation;
+        let this_gen = {
+            *generation.write() += 1;
+            *generation.peek()
+        };
+        let mut show = self.show;
+        let platform = Platform::get();
+        spawn(async move {
+            Timer::after(Duration::from_millis(TOOLTIP_DELAY_MS)).await;
+            if *generation.peek() == this_gen {
+                show.set(true);
+                platform.send(UserEvent::RequestRedraw);
+            }
+        });
+    }
+
+    /// Call from `on_pointer_leave`: hides immediately and invalidates any
+    /// still-pending show-timer from this hover.
+    pub fn on_leave(self) {
+        let mut generation = self.generation;
+        *generation.write() += 1;
+        let mut show = self.show;
+        show.set(false);
+    }
+}
+
+/// A small floating, non-interactive tooltip bubble showing `text`, absolute-
+/// positioned by the caller via `position` (e.g. `Position::new_absolute()
+/// .bottom(host_height + TOOLTIP_GAP).left(0.0)` to sit above a host of
+/// `host_height`). Zero layout footprint. Up to 2 lines (a tray item's SNI
+/// tooltip is often `title\ndescription`; dock's single app-name tooltips
+/// never contain a newline, so they render as one line regardless). The
+/// tooltip's ancestor chain up to (but not including) the surface root MUST
+/// be non-clipping -- most interactive tiles clip their own bounds (icon
+/// corner radii etc.), which would cut this off since it renders outside the
+/// hovered element's bounds.
+pub fn tooltip_bubble(text: &str, position: Position) -> Element {
+    rect()
+        .position(position)
+        .interactive(false)
+        .background(theme::PANEL.rgb())
+        .corner_radius(10.0)
+        .padding((6.0, 11.0))
+        .shadow((0.0, 6.0, 18.0, 0.0, (0u8, 0u8, 0u8, 76u8)))
+        .child(
+            label()
+                .text(text.to_string())
+                .color(theme::TX.rgb())
+                .font_size(11.5)
+                .font_weight(theme::FONT_WEIGHT_SEMIBOLD as i32)
+                .max_lines(2usize),
+        )
+        .into_element()
+}
+
 /// Layout shape for [`hover_button`]'s shell: a centered square (icon
 /// buttons, tray items) or a horizontal row (clock button, status pill).
 /// Every dimension is the caller's own exact number -- no shared defaults.
 pub enum HoverShape {
     Square { side: f32 },
     Row { min_height: f32, padding: (f32, f32), spacing: f32 },
+}
+
+/// Build the [`HoverShape`]-laid-out shell with its hover-picked background,
+/// shared by [`hover_button`] and [`hover_button_with_tooltip`] -- the part
+/// every caller wants identical; only the pointer/press wiring differs.
+fn hover_shell(hover: Hover, shape: HoverShape, radius: f32, rest_bg: Color, hover_bg: Color) -> Rect {
+    let shell = match shape {
+        HoverShape::Square { side } => {
+            rect().width(Size::px(side)).height(Size::px(side)).center()
+        }
+        HoverShape::Row { min_height, padding, spacing } => rect()
+            .horizontal()
+            .min_height(Size::px(min_height))
+            .padding(padding)
+            .spacing(spacing)
+            .cross_align(Alignment::Center),
+    };
+    shell.corner_radius(radius).background(hover.pick(rest_bg, hover_bg))
 }
 
 /// THE hover-lit button shell every bar icon/pill/tile hand-rolls: a fresh
@@ -108,21 +236,33 @@ pub fn hover_button(
     hover_bg: Color,
     on_press: impl Into<EventHandler<Event<PressEventData>>>,
 ) -> Rect {
-    let shell = match shape {
-        HoverShape::Square { side } => {
-            rect().width(Size::px(side)).height(Size::px(side)).center()
-        }
-        HoverShape::Row { min_height, padding, spacing } => rect()
-            .horizontal()
-            .min_height(Size::px(min_height))
-            .padding(padding)
-            .spacing(spacing)
-            .cross_align(Alignment::Center),
-    };
-    shell
-        .corner_radius(radius)
-        .background(hover.pick(rest_bg, hover_bg))
-        .hover(hover)
+    hover_shell(hover, shape, radius, rest_bg, hover_bg).hover(hover).on_press(on_press)
+}
+
+/// [`hover_button`], but the enter/leave pair also drives a [`TooltipHover`]
+/// (a tray item's title, say) instead of only the hover-lit background --
+/// `HoverExt::hover`'s single pointer-enter/leave handler pair can't be
+/// layered twice on the same element (each `on_pointer_*` call replaces the
+/// last), so this writes both effects into one combined handler instead of
+/// composing two separate wirings.
+pub fn hover_button_with_tooltip(
+    hover: Hover,
+    tooltip: TooltipHover,
+    shape: HoverShape,
+    radius: f32,
+    rest_bg: Color,
+    hover_bg: Color,
+    on_press: impl Into<EventHandler<Event<PressEventData>>>,
+) -> Rect {
+    hover_shell(hover, shape, radius, rest_bg, hover_bg)
+        .on_pointer_enter(move |_| {
+            hover.set(true);
+            tooltip.on_enter();
+        })
+        .on_pointer_leave(move |_| {
+            hover.set(false);
+            tooltip.on_leave();
+        })
         .on_press(on_press)
 }
 

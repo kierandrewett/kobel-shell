@@ -24,7 +24,10 @@ use kobel_services::{
     TrayIcon, TrayItem, TrayMenu, TrayMenuItem, TrayMenuItemKind, TraySnapshot, TrayToggleKind,
 };
 
-use super::chip::{HoverShape, hover_button, use_hover};
+use super::chip::{
+    HoverShape, TOOLTIP_GAP, TOOLTIP_HEADROOM, hover_button, hover_button_with_tooltip,
+    tooltip_bubble, use_hover, use_tooltip_hover,
+};
 use super::menu::{MenuGlyph, MenuModel, MenuRow, PopupHost, PopupPlacement};
 use super::notifications::badge_text;
 use super::{
@@ -33,6 +36,19 @@ use super::{
 };
 use crate::manager::{ShellBus, ShellMsg, SurfaceKey};
 use crate::theme;
+
+/// The bar SURFACE's total height: `Tokens.bar_h` plus [`super::chip::
+/// TOOLTIP_HEADROOM`] below it, reserved so a hovered tray item's tooltip can
+/// render without being clipped to the surface bounds (see [`TrayButton`]'s
+/// tooltip wiring). The extra space is invisible (no background, no
+/// hit-testing) except when a tray tooltip is showing. `bar()`'s own root is
+/// TOP-aligned by default (matching the surface's TOP-only anchor), so the
+/// headroom naturally sits below the visible bar with no layout changes here
+/// -- window tiling still reserves only `bar_h` (main.rs's `bar_config`
+/// exclusive zone), never this headroom.
+pub fn bar_surface_height(tokens: &theme::Tokens) -> u32 {
+    tokens.bar_h as u32 + TOOLTIP_HEADROOM
+}
 
 /// The bar. One opaque slab, `Tokens.bar_h` tall with `Tokens.bar_r` corners and
 /// 7px horizontal padding; three flex zones so the clock stays centered.
@@ -365,6 +381,7 @@ impl Component for TrayButton {
         let bus = use_consume::<ShellBus>();
         let popup = use_consume::<PopupHost>();
         let hover = use_hover();
+        let tooltip_hover = use_tooltip_hover();
 
         let address = self.item.address.clone();
         let mid_bus = bus.clone();
@@ -376,8 +393,15 @@ impl Component for TrayButton {
         let menu_address = address.clone();
         let menu = self.item.menu.clone();
 
-        hover_button(
+        // The real StatusNotifierItem ToolTip property (title + description),
+        // falling back to the item's title -- both already resolved by the
+        // tray service (kobel-services::tray::tooltip_text), just never
+        // rendered until now.
+        let tooltip_text = self.item.tooltip.clone().unwrap_or_else(|| self.item.title.clone());
+
+        let button = hover_button_with_tooltip(
             hover,
+            tooltip_hover,
             HoverShape::Square { side: 28.0 },
             theme::RADIUS_BUTTON,
             Color::TRANSPARENT,
@@ -406,7 +430,25 @@ impl Component for TrayButton {
                 // The bar sits at the top, so the menu grows downward from the click.
                 popup.open(anchor, PopupPlacement::below(), model);
             })
-            .child(tray_glyph(&self.item.icon))
+            .child(tray_glyph(&self.item.icon));
+
+        // The tooltip must escape the button's own clip (Overflow::Clip above is
+        // for the icon), so it is a sibling in a NON-clipping wrapper, not a
+        // child of `button` -- same shape as dock.rs's DockTile tooltip wrapper.
+        // The bar sits at the TOP of the screen, so the tooltip grows DOWNWARD
+        // from the icon's bottom edge (dock's tooltip grows upward instead).
+        let mut wrapper = rect().child(button);
+        if tooltip_hover.visible() {
+            // Left-anchored (matching dock's tiles): a tray icon can sit
+            // close to the bar's right edge, so a very long two-line tooltip
+            // could still clip against the screen edge in the worst case --
+            // acceptable for now (see main.rs's `bar_config` TOOLTIP_HEADROOM
+            // comment); a right-growing xdg_popup-style edge flip would need
+            // real popup infrastructure, out of scope here.
+            let position = Position::new_absolute().top(28.0 + TOOLTIP_GAP).left(0.0);
+            wrapper = wrapper.child(tooltip_bubble(&tooltip_text, position));
+        }
+        wrapper
     }
 }
 
@@ -528,5 +570,16 @@ mod tests {
         // A 2x2 opaque-white ARGB32 buffer decodes into a real Skia image.
         let buf = vec![0xFFu8; 2 * 2 * 4];
         assert!(pixmap_handle(2, 2, &buf).is_some());
+    }
+
+    #[test]
+    fn bar_surface_height_adds_tooltip_headroom_never_changing_visual_height() {
+        // Surface height adds chip::TOOLTIP_HEADROOM below the visual bar
+        // height, but never changes bar_h itself -- callers still read
+        // Tokens.bar_h directly for the visual/exclusive-zone math.
+        assert_eq!(
+            bar_surface_height(&theme::FLOATING),
+            theme::FLOATING.bar_h as u32 + TOOLTIP_HEADROOM
+        );
     }
 }

@@ -21,9 +21,6 @@
 
 use std::path::PathBuf;
 use std::sync::LazyLock;
-use std::time::Duration;
-
-use async_io::Timer;
 
 use freya_components::image_viewer::ImageViewer;
 use freya_core::prelude::*;
@@ -31,6 +28,7 @@ use torin::prelude::{Alignment, Position, Size};
 
 use kobel_services::{AppsSnapshot, Command, GnoblinSnapshot, GnoblinWindow, MediaSnapshot};
 
+use super::chip::{TOOLTIP_GAP, TOOLTIP_HEADROOM, TooltipHover, tooltip_bubble, use_tooltip_hover};
 use super::menu::{MenuGlyph, MenuModel, MenuRow, PopupHost, PopupPlacement};
 use super::{AppIcon, ICON_APP, ICON_MUSIC, icon};
 use crate::manager::{ShellBus, ShellMsg};
@@ -57,19 +55,6 @@ const DOTS_SPACING: f32 = 3.0;
 const DOT_REST: f32 = 4.0;
 const DOT_PILL: f32 = 12.0;
 const DOT_MINI: f32 = 3.0;
-
-/// Hover-open delay for a tile tooltip (ms) -- matches the submenu hover-open
-/// delay (menu.rs `SUBMENU_DELAY_MS`), a plausible "don't flash on every
-/// pass-through" tooltip UX.
-const TOOLTIP_DELAY_MS: u64 = 500;
-/// Gap between a tile's top edge and the tooltip's bottom edge (px).
-const TOOLTIP_GAP: f32 = 6.0;
-/// Extra dock SURFACE headroom above the visual tile row, reserved so a
-/// tooltip can render without being clipped to the surface bounds (see
-/// [`dock_surface_height`] and the tooltip wiring in [`DockTile`]). Purely a
-/// buffer/paint concern -- window tiling still reserves only the visual dock
-/// height ([`dock_height`]), not this headroom.
-pub const TOOLTIP_HEADROOM: u32 = 34;
 
 /// Default dock pins (ags/widget/Dock.tsx `PINNED`).
 pub const DEFAULT_PINS: [&str; 6] = [
@@ -326,31 +311,6 @@ fn dots_overlay(total: usize, focused: Option<usize>, tokens: Tokens) -> Element
 // DockTile
 // ---------------------------------------------------------------------------
 
-/// A small floating tooltip anchored above a tile, showing `text`. Absolute,
-/// zero layout footprint, non-interactive (never eats the tile's own pointer
-/// events). Must be a child of a NON-clipping ancestor (see the wrapper in
-/// [`DockTile`]) -- the icon tile itself clips (for its icon's corner
-/// radius), which would otherwise cut this off since it renders above the
-/// tile's own bounds.
-fn tile_tooltip(text: &str, tokens: Tokens) -> Element {
-    rect()
-        .position(Position::new_absolute().bottom(tokens.icon + TOOLTIP_GAP).left(0.0))
-        .interactive(false)
-        .background(theme::PANEL.rgb())
-        .corner_radius(10.0)
-        .padding((6.0, 11.0))
-        .shadow((0.0, 6.0, 18.0, 0.0, (0u8, 0u8, 0u8, 76u8)))
-        .child(
-            label()
-                .text(text.to_string())
-                .color(theme::TX.rgb())
-                .font_size(11.5)
-                .font_weight(theme::FONT_WEIGHT_SEMIBOLD as i32)
-                .max_lines(1usize),
-        )
-        .into_element()
-}
-
 /// One pinned dock slot: the app icon on a hover-CHIP tile, the absolute dots
 /// overlay, a hover-delayed name tooltip, and the full click model. Unresolved
 /// pins render a labelled PANEL2 placeholder but keep their slot and behaviour.
@@ -368,8 +328,7 @@ impl Component for DockTile {
         let popup = use_consume::<PopupHost>();
         let dock_pins = use_consume::<DockPins>();
         let mut hovered = use_state(|| false);
-        let mut show_tooltip = use_state(|| false);
-        let mut tooltip_gen = use_state(|| 0u64);
+        let tooltip_hover: TooltipHover = use_tooltip_hover();
 
         let pin_id = self.pin_id.clone();
 
@@ -438,29 +397,11 @@ impl Component for DockTile {
             .overflow(Overflow::Clip)
             .on_pointer_enter(move |_| {
                 hovered.set(true);
-                // Show the tooltip after a short delay, guarded by a generation
-                // counter so a quick pass-through (leave before the timer fires)
-                // never shows a stale tooltip -- mirrors menu.rs's submenu
-                // hover-open delay (SUBMENU_DELAY_MS).
-                let this_gen = {
-                    *tooltip_gen.write() += 1;
-                    *tooltip_gen.peek()
-                };
-                let platform = Platform::get();
-                spawn(async move {
-                    Timer::after(Duration::from_millis(TOOLTIP_DELAY_MS)).await;
-                    if *tooltip_gen.peek() == this_gen {
-                        show_tooltip.set(true);
-                        platform.send(UserEvent::RequestRedraw);
-                    }
-                });
+                tooltip_hover.on_enter();
             })
             .on_pointer_leave(move |_| {
                 hovered.set(false);
-                // Hide is always immediate (no delay), and bumping the generation
-                // invalidates any still-pending show-timer from this hover.
-                *tooltip_gen.write() += 1;
-                show_tooltip.set(false);
+                tooltip_hover.on_leave();
             })
             .on_press(move |_| {
                 click_bus.send(click_command(&click_ids, focused_idx, &click_launch));
@@ -503,8 +444,9 @@ impl Component for DockTile {
         // tile (its only in-flow child); the tooltip is absolute and takes no
         // layout space either way.
         let mut wrapper = rect().child(icon_tile);
-        if *show_tooltip.read() {
-            wrapper = wrapper.child(tile_tooltip(&tooltip_name, tokens));
+        if tooltip_hover.visible() {
+            let position = Position::new_absolute().bottom(tokens.icon + TOOLTIP_GAP).left(0.0);
+            wrapper = wrapper.child(tooltip_bubble(&tooltip_name, position));
         }
         wrapper
     }
