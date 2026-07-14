@@ -354,3 +354,55 @@ fn str_prop(props: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
     let value = props.get(key)?;
     <&str>::try_from(value).ok().map(str::to_owned)
 }
+
+#[cfg(test)]
+mod tests {
+    use zbus::names::OwnedInterfaceName;
+    use zbus::zvariant::Value;
+
+    use super::*;
+
+    fn owned(v: impl Into<Value<'static>>) -> OwnedValue {
+        OwnedValue::try_from(v.into()).expect("value converts")
+    }
+
+    #[test]
+    fn iface_props_finds_the_named_interface() {
+        let mut ifaces: HashMap<OwnedInterfaceName, HashMap<String, OwnedValue>> = HashMap::new();
+        let mut dev_props = HashMap::new();
+        dev_props.insert("Connected".to_string(), owned(true));
+        ifaces.insert(OwnedInterfaceName::try_from("org.bluez.Device1").unwrap(), dev_props);
+
+        let found = iface_props(&ifaces, "org.bluez.Device1");
+        assert!(found.is_some());
+        assert!(bool_prop(found.unwrap(), "Connected"));
+    }
+
+    #[test]
+    fn iface_props_none_for_an_absent_interface() {
+        let ifaces: HashMap<OwnedInterfaceName, HashMap<String, OwnedValue>> = HashMap::new();
+        assert!(iface_props(&ifaces, "org.bluez.Device1").is_none());
+    }
+
+    #[test]
+    fn bool_prop_defaults_to_false_when_missing_or_wrong_type() {
+        let mut props = HashMap::new();
+        props.insert("Paired".to_string(), owned(true));
+        props.insert("Name".to_string(), owned("headset"));
+        assert!(bool_prop(&props, "Paired"));
+        assert!(!bool_prop(&props, "Missing"));
+        // Wrong type (a string where a bool is expected) also defaults false
+        // rather than panicking.
+        assert!(!bool_prop(&props, "Name"));
+    }
+
+    #[test]
+    fn str_prop_returns_none_when_missing_or_wrong_type() {
+        let mut props = HashMap::new();
+        props.insert("Name".to_string(), owned("Pixel Buds"));
+        props.insert("Connected".to_string(), owned(true));
+        assert_eq!(str_prop(&props, "Name"), Some("Pixel Buds".to_string()));
+        assert_eq!(str_prop(&props, "Missing"), None);
+        assert_eq!(str_prop(&props, "Connected"), None);
+    }
+}

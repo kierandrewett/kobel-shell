@@ -567,3 +567,55 @@ where
         None => std::future::pending().await,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn owned(v: impl Into<Value<'static>>) -> OwnedValue {
+        OwnedValue::try_from(v.into()).expect("value converts")
+    }
+
+    fn wireless_map(ssid_bytes: Vec<u8>) -> HashMap<String, HashMap<String, OwnedValue>> {
+        let mut wireless = HashMap::new();
+        wireless.insert("ssid".to_string(), owned(ssid_bytes));
+        let mut map = HashMap::new();
+        map.insert("802-11-wireless".to_string(), wireless);
+        map
+    }
+
+    #[test]
+    fn connection_ssid_decodes_the_byte_array() {
+        // NetworkManager stores ssid as a raw byte array (ay), not a string.
+        let map = wireless_map(b"HomeNet".to_vec());
+        assert_eq!(connection_ssid(&map), Some("HomeNet".to_string()));
+    }
+
+    #[test]
+    fn connection_ssid_none_for_an_empty_ssid() {
+        let map = wireless_map(Vec::new());
+        assert_eq!(connection_ssid(&map), None);
+    }
+
+    #[test]
+    fn connection_ssid_none_without_a_wireless_settings_group() {
+        let map: HashMap<String, HashMap<String, OwnedValue>> = HashMap::new();
+        assert_eq!(connection_ssid(&map), None);
+    }
+
+    #[test]
+    fn connection_ssid_none_without_an_ssid_key() {
+        let mut map = HashMap::new();
+        map.insert("802-11-wireless".to_string(), HashMap::new());
+        assert_eq!(connection_ssid(&map), None);
+    }
+
+    #[test]
+    fn connection_ssid_lossy_decodes_non_utf8_bytes() {
+        // Real-world but unusual: a non-UTF8 SSID should degrade gracefully
+        // (replacement chars) instead of panicking.
+        let map = wireless_map(vec![0xff, 0xfe, b'X']);
+        let ssid = connection_ssid(&map).expect("some ssid decoded");
+        assert!(ssid.contains('X'));
+    }
+}
