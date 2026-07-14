@@ -238,15 +238,16 @@ fn handle_conn(stream: UnixStream, bus: &ShellBus, timeout: std::time::Duration)
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn key(name: &str) -> SurfaceKey {
+        name.parse().expect("valid test surface key")
+    }
 
     #[test]
-    fn parses_toggle_for_every_surface() {
-        for key in SurfaceKey::ALL {
-            let line = format!("toggle {}", key.as_str());
-            match parse_line(&line) {
-                Ok(Request::Forward(ShellMsg::Toggle(k))) => assert_eq!(k, key),
-                other => panic!("expected toggle {key:?}, got {other:?}"),
-            }
+    fn parses_ui_owned_surface_name() {
+        let expected = key("status-panel_2");
+        match parse_line("toggle status-panel_2") {
+            Ok(Request::Forward(ShellMsg::Toggle(actual))) => assert_eq!(actual, expected),
+            other => panic!("expected toggle request, got {other:?}"),
         }
     }
 
@@ -264,7 +265,7 @@ mod tests {
     fn tolerates_surrounding_whitespace() {
         assert!(matches!(
             parse_line("   toggle   launcher   "),
-            Ok(Request::Forward(ShellMsg::Toggle(SurfaceKey::Launcher)))
+            Ok(Request::Forward(ShellMsg::Toggle(key))) if key == self::key("launcher")
         ));
     }
 
@@ -283,12 +284,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_empty_and_bad_surface() {
+    fn rejects_unknown_empty_and_invalid_surface() {
         assert_eq!(parse_line("bogus").unwrap_err(), "unknown command: bogus");
         assert_eq!(parse_line("").unwrap_err(), "empty command");
         assert_eq!(parse_line("   ").unwrap_err(), "empty command");
         assert!(parse_line("toggle").is_err());
-        assert!(parse_line("toggle nope").is_err());
+        assert!(parse_line("toggle InvalidName").is_err());
     }
 
     #[test]
@@ -311,14 +312,17 @@ mod tests {
         assert_eq!(send("toggle launcher"), "ok");
         assert_eq!(send("close-all"), "ok");
         assert_eq!(send("bogus"), "err unknown command: bogus");
-        assert_eq!(send("toggle nope"), "err unknown surface: nope");
+        assert!(send("toggle InvalidName").starts_with("err invalid surface name"));
 
         // Forwarded requests actually reached the bus (order preserved).
         let mut got = Vec::new();
         while let Ok(msg) = rx.try_recv() {
             got.push(msg);
         }
-        assert!(got.iter().any(|m| matches!(m, ShellMsg::Toggle(SurfaceKey::Launcher))));
+        assert!(
+            got.iter()
+                .any(|message| matches!(message, ShellMsg::Toggle(surface) if surface == &key("launcher")))
+        );
         assert!(got.iter().any(|m| matches!(m, ShellMsg::CloseAll)));
         let _ = std::fs::remove_file(&path);
     }

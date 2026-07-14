@@ -1,11 +1,8 @@
-// Spring engine + MOTION table + use_spring hook. Owned by the motion task.
-// Springs are interruptible and velocity-preserving; see docs/FREYA-PLAN.md section 4.
-//
-// The math core (SpringSpec, SpringSim, the MOTION table) has NO freya dependency:
-// it is the closed-form damped harmonic oscillator, mass = 1, matching
-// Adw.SpringParams.new_full(damping, 1, stiffness) semantics ported from
-// ags/lib/spring.ts. The freya hook (use_spring) drives a SpringSim from a freya
-// task the same way freya-animation's own hook drives its animated values.
+//! Interruptible spring simulation and a Freya hook built on it.
+//!
+//! The closed-form damped harmonic oscillator is independent of Freya. [`use_spring`]
+//! adapts it to a component scope without prescribing a theme or named motion table.
+//! UI crates choose their own [`SpringSpec`] values.
 
 use std::{
     ops::Deref,
@@ -15,16 +12,9 @@ use std::{
 
 use freya_core::prelude::*;
 
-// -------------------------------------------------------------------------
-// Reduced motion (accessibility)
-// -------------------------------------------------------------------------
-//
-// Read once at startup from KOBEL_REDUCED_MOTION and installed by main.rs. The
-// use_spring hook consults this so EVERY UI spring settles instantly instead of
-// animating (dock cycle, toast slide, osd opacity, QS drill). The manager reveal
-// springs take their own injected flag (they integrate SpringSim directly, off the
-// hook path). DESIGN.md: ambient motion pauses under prefers-reduced-motion and
-// springs settle instantly.
+// Reduced motion is process-wide so every UI-owned spring can share the same
+// accessibility setting. The reveal manager has its own matching switch because it
+// integrates [`SpringSim`] directly rather than using the hook.
 
 static REDUCED_MOTION: AtomicBool = AtomicBool::new(false);
 
@@ -152,25 +142,6 @@ impl SpringSim {
         self.target = value;
     }
 }
-
-// -------------------------------------------------------------------------
-// MOTION table -- ported verbatim from ags/lib/spring.ts. Do not invent new
-// ones casually; every surface picks one of these.
-// -------------------------------------------------------------------------
-
-pub const PANEL_OPEN: SpringSpec = SpringSpec { k: 420.0, d: 26.0 }; // slight overshoot
-pub const PANEL_OPACITY: SpringSpec = SpringSpec { k: 360.0, d: 32.0 };
-pub const PANEL_CLOSE: SpringSpec = SpringSpec { k: 640.0, d: 48.0 }; // fast, no bounce
-pub const DRILL: SpringSpec = SpringSpec { k: 400.0, d: 27.0 };
-pub const DRILL_BACK: SpringSpec = SpringSpec { k: 440.0, d: 29.0 };
-pub const HEIGHT: SpringSpec = SpringSpec { k: 440.0, d: 32.0 };
-pub const TOAST_IN: SpringSpec = SpringSpec { k: 360.0, d: 23.0 };
-pub const TOAST_OUT: SpringSpec = SpringSpec { k: 440.0, d: 36.0 };
-pub const BADGE_POP: SpringSpec = SpringSpec { k: 400.0, d: 17.0 };
-pub const BELL_SHAKE: SpringSpec = SpringSpec { k: 330.0, d: 7.0 };
-pub const FLING: SpringSpec = SpringSpec { k: 280.0, d: 27.0 };
-pub const DOCK_CYCLE: SpringSpec = SpringSpec { k: 430.0, d: 24.0 };
-pub const SNAP: SpringSpec = SpringSpec { k: 430.0, d: 28.0 };
 
 // -------------------------------------------------------------------------
 // Freya hook: use_spring
@@ -312,13 +283,15 @@ impl UseSpring {
     }
 }
 
+const DEFAULT_SPRING: SpringSpec = SpringSpec { k: 430.0, d: 28.0 };
+
 /// Create a spring at rest at `initial`. Idle until the first `to`/`kick`, so a
 /// quiescent shell spawns no tasks and burns no CPU.
 pub fn use_spring(initial: f32) -> UseSpring {
     use_hook(|| UseSpring {
         value: State::create(initial),
         sim: State::create(SpringSim::new(initial)),
-        spec: State::create(SNAP),
+        spec: State::create(DEFAULT_SPRING),
         task: State::create(None),
     })
 }
@@ -333,14 +306,17 @@ mod tests {
 
     // Fixed simulation frame for deterministic tests (~60 fps).
     const FRAME: f32 = 1.0 / 60.0;
+    const TEST_UNDERDAMPED: SpringSpec = SpringSpec { k: 420.0, d: 26.0 };
+    const TEST_RETARGET: SpringSpec = SpringSpec { k: 400.0, d: 27.0 };
+    const TEST_FLING: SpringSpec = SpringSpec { k: 280.0, d: 27.0 };
 
     #[test]
     fn converges_to_target() {
         let mut s = SpringSim::new(0.0);
         s.target = 1.0;
-        // ~3 seconds is far past every spec's settling time.
+        // Three seconds is far beyond this test spring's settling time.
         for _ in 0..180 {
-            s.step(FRAME, PANEL_OPEN);
+            s.step(FRAME, TEST_UNDERDAMPED);
         }
         assert!(s.settled(SETTLE_EPS), "expected settled, got {s:?}");
         assert!((s.x - s.target).abs() < SETTLE_EPS);
@@ -349,13 +325,12 @@ mod tests {
 
     #[test]
     fn underdamped_overshoots() {
-        // panelOpen (420/26) is underdamped, so the step response must cross the
-        // target at least once.
+        // This test spring is underdamped, so the response must cross the target.
         let mut s = SpringSim::new(0.0);
         s.target = 1.0;
         let mut peak = f32::MIN;
         for _ in 0..240 {
-            s.step(FRAME, PANEL_OPEN);
+            s.step(FRAME, TEST_UNDERDAMPED);
             peak = peak.max(s.x);
         }
         assert!(peak > 1.0 + 1e-3, "expected overshoot past target, peak was {peak}");
@@ -366,7 +341,7 @@ mod tests {
         let mut s = SpringSim::new(0.0);
         s.target = 1.0;
         for _ in 0..6 {
-            s.step(FRAME, PANEL_OPEN);
+            s.step(FRAME, TEST_UNDERDAMPED);
         }
         let x_before = s.x;
         let v_before = s.v;
@@ -383,8 +358,8 @@ mod tests {
         // acceleration -k*y - d*v); neither jumps. Compare against those analytic
         // first-order terms, even with a different spec than before the retarget.
         let dt = 1e-4_f32;
-        let accel = -DRILL.k * (x_before - s.target) - DRILL.d * v_before;
-        s.step(dt, DRILL);
+        let accel = -TEST_RETARGET.k * (x_before - s.target) - TEST_RETARGET.d * v_before;
+        s.step(dt, TEST_RETARGET);
         let dx = s.x - x_before;
         let dv = s.v - v_before;
         assert!(
@@ -413,7 +388,7 @@ mod tests {
 
         let x_before = s.x;
         let v_before = s.v;
-        s.step(FRAME, FLING);
+        s.step(FRAME, TEST_FLING);
         assert!(s.x > x_before, "impulse should carry the value forward");
         assert!(s.v < v_before, "spring + damping should bleed the kicked velocity");
     }
@@ -423,7 +398,7 @@ mod tests {
         // Put a spring mid-flight, then jump() -> instant settle at a new value.
         let mut s = SpringSim::new(0.0);
         s.target = 1.0;
-        s.step(0.05, PANEL_OPEN);
+        s.step(0.05, TEST_UNDERDAMPED);
         assert!(!s.settled(SETTLE_EPS));
 
         // jump(): x = target = value, v = 0.
@@ -446,11 +421,11 @@ mod tests {
         };
 
         let mut one = start;
-        one.step(0.032, PANEL_OPEN);
+        one.step(0.032, TEST_UNDERDAMPED);
 
         let mut two = start;
-        two.step(0.016, PANEL_OPEN);
-        two.step(0.016, PANEL_OPEN);
+        two.step(0.016, TEST_UNDERDAMPED);
+        two.step(0.016, TEST_UNDERDAMPED);
 
         assert!(
             (one.x - two.x).abs() < 1e-3,
@@ -473,7 +448,7 @@ mod tests {
         // and the manager reveal snap both go through it).
         let mut s = SpringSim::new(0.0);
         s.target = 1.0;
-        s.step(0.05, PANEL_OPEN);
+        s.step(0.05, TEST_UNDERDAMPED);
         assert!(!s.settled(SETTLE_EPS), "sanity: spring is mid-flight");
 
         s.snap(0.7);
@@ -483,7 +458,7 @@ mod tests {
         assert_eq!(s.target, 0.7);
 
         // And it stays put: the next integration step produces no motion.
-        s.step(FRAME, PANEL_OPEN);
+        s.step(FRAME, TEST_UNDERDAMPED);
         assert_eq!(s.x, 0.7, "snapped spring must not drift");
         assert_eq!(s.v, 0.0);
     }
