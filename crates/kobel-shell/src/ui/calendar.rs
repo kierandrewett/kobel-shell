@@ -766,6 +766,33 @@ mod tests {
     }
 
     #[test]
+    fn month_grid_january_2027_backfills_from_december_previous_year() {
+        // 2027-01-01 is a Friday -> the grid's first row starts Monday
+        // 2026-12-28 (a DIFFERENT year from the viewed 2027), so in_month must
+        // key on year AND month, not month alone -- a month-only check would
+        // wrongly treat these as unrelated (December != January) but this
+        // specifically locks down that the year half of the check is exercised
+        // at a real year-crossing boundary, not just within one calendar year.
+        let g = month_grid(2027, 1);
+        assert_eq!(g[0].days[0].date, d(2026, 12, 28));
+        assert!(!g[0].days[0].in_month, "Dec 28 2026 is not in the viewed January 2027");
+        assert_eq!(g[0].days[3].date, d(2026, 12, 31));
+        assert!(!g[0].days[3].in_month);
+        assert_eq!(g[0].days[4].date, d(2027, 1, 1));
+        assert!(g[0].days[4].in_month, "Jan 1 2027 is the viewed month");
+        // The grid's last row spills forward into February 2027 (same year).
+        assert_eq!(g[5].days[0].date, d(2027, 2, 1));
+        assert!(!g[5].days[0].in_month);
+        // Every day strictly within January (rows 1..=4, all seven columns) is
+        // in_month.
+        for row in &g[1..=4] {
+            for cell in &row.days {
+                assert!(cell.in_month, "{:?} should be in-month for January 2027 view", cell.date);
+            }
+        }
+    }
+
+    #[test]
     fn step_month_wraps_year() {
         assert_eq!(step_month(2026, 12, true), (2027, 1));
         assert_eq!(step_month(2026, 1, false), (2025, 12));
