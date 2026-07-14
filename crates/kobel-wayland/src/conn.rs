@@ -645,26 +645,33 @@ impl Host {
             .collect()
     }
 
+    /// Look up a tracked toplevel by its host-minted id, published or not (see
+    /// [`ToplevelState::id`]). Shared by every id-addressed toplevel request below
+    /// so the lookup logic exists exactly once.
+    fn find_toplevel(&self, id: &str) -> Option<&TrackedToplevel> {
+        self.toplevels.iter().find(|t| t.state.id() == id)
+    }
+
     fn activate_toplevel(&mut self, id: &str) {
         let Some(seat) = self.seat.clone() else {
             tracing::warn!("[host] activate_toplevel({id}): no seat bound yet");
             return;
         };
-        match self.toplevels.iter().find(|t| t.state.id() == id) {
+        match self.find_toplevel(id) {
             Some(t) => t.handle.activate(&seat),
             None => tracing::debug!("[host] activate_toplevel({id}): unknown toplevel"),
         }
     }
 
     fn minimize_toplevel(&mut self, id: &str) {
-        match self.toplevels.iter().find(|t| t.state.id() == id) {
+        match self.find_toplevel(id) {
             Some(t) => t.handle.set_minimized(),
             None => tracing::debug!("[host] minimize_toplevel({id}): unknown toplevel"),
         }
     }
 
     fn close_toplevel(&mut self, id: &str) {
-        match self.toplevels.iter().find(|t| t.state.id() == id) {
+        match self.find_toplevel(id) {
             Some(t) => t.handle.close(),
             None => tracing::debug!("[host] close_toplevel({id}): unknown toplevel"),
         }
