@@ -70,6 +70,15 @@ set +e
 dbus-run-session --config-file="$CONF" -- bash "$ROOT/scripts/_bar_dock_session.sh"
 rc=$?
 set -e
+if [ -e "$DK/devtools-owned" ]; then
+    listeners="$(ss -Htnlp 'sport = :7354 or sport = :7355')"
+    if [ -n "$listeners" ]; then
+        echo "FAIL: smoke left a devtools listener behind"
+        echo "$listeners"
+        rc=1
+    fi
+fi
+
 
 for log in shell bar dock bar-preview dock-preview bar-inspector dock-inspector; do
     cp "$DK/$log.log" "/tmp/kobel-$log.log" 2>/dev/null || true

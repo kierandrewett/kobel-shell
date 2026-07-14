@@ -10,13 +10,13 @@ cleanup() {
     local index
 
     for ((index = ${#pids[@]} - 1; index > 0; index--)); do
-        kill "${pids[$index]}" 2>/dev/null || true
+        kill -- "-${pids[$index]}" 2>/dev/null || true
     done
     for ((index = ${#pids[@]} - 1; index > 0; index--)); do
         wait "${pids[$index]}" 2>/dev/null || true
     done
     if ((${#pids[@]} > 0)); then
-        kill "${pids[0]}" 2>/dev/null || true
+        kill -- "-${pids[0]}" 2>/dev/null || true
         wait "${pids[0]}" 2>/dev/null || true
     fi
 }
@@ -34,7 +34,7 @@ if [ "$expected_outputs" -eq 0 ]; then
     exit 1
 fi
 
-"$PREFIX/bin/gnome-shell" --headless --wayland --no-x11 --mode=gnoblin \
+setsid "$PREFIX/bin/gnome-shell" --headless --wayland --no-x11 --mode=gnoblin \
     "${monitor_args[@]}" --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
 shell_pid=$!
 pids+=("$shell_pid")
@@ -56,10 +56,10 @@ done
 
 export WAYLAND_DISPLAY="$DISP"
 
-stdbuf -oL -eL "$BAR_BIN" >"$DK/bar.log" 2>&1 &
+setsid stdbuf -oL -eL "$BAR_BIN" >"$DK/bar.log" 2>&1 &
 bar_pid=$!
 pids+=("$bar_pid")
-stdbuf -oL -eL "$DOCK_BIN" >"$DK/dock.log" 2>&1 &
+setsid stdbuf -oL -eL "$DOCK_BIN" >"$DK/dock.log" 2>&1 &
 dock_pid=$!
 pids+=("$dock_pid")
 
@@ -96,61 +96,72 @@ for process in "$bar_pid:$DK/bar.log" "$dock_pid:$DK/dock.log"; do
     fi
 done
 
+for port in 7354 7355; do
+    if [ -n "$(ss -Htnl "sport = :$port")" ]; then
+        echo "FAIL: devtools port $port is already in use"
+        exit 1
+    fi
+done
+touch "$DK/devtools-owned"
+
 FREYA_DEVTOOLS_ADDR=127.0.0.1:7354 \
-    stdbuf -oL -eL "$BAR_PREVIEW_BIN" >"$DK/bar-preview.log" 2>&1 &
+    setsid stdbuf -oL -eL "$BAR_PREVIEW_BIN" >"$DK/bar-preview.log" 2>&1 &
 bar_preview_pid=$!
 pids+=("$bar_preview_pid")
 FREYA_DEVTOOLS_ADDR=127.0.0.1:7355 \
-    stdbuf -oL -eL "$DOCK_PREVIEW_BIN" >"$DK/dock-preview.log" 2>&1 &
+    setsid stdbuf -oL -eL "$DOCK_PREVIEW_BIN" >"$DK/dock-preview.log" 2>&1 &
 dock_preview_pid=$!
 pids+=("$dock_preview_pid")
 
 wait_for_server() {
     local log="$1"
     local port="$2"
+    local pid="$3"
 
     for _ in $(seq 1 40); do
-        grep -q "Running the Devtools Server on 127.0.0.1:$port" "$log" && return 0
+        grep -q "Devtools server error" "$log" && return 1
+        ss -Htnlp "sport = :$port" | grep -q "pid=$pid," && return 0
         sleep 0.5
     done
     return 1
 }
 
-if ! wait_for_server "$DK/bar-preview.log" 7354; then
+if ! wait_for_server "$DK/bar-preview.log" 7354 "$bar_preview_pid"; then
     echo "FAIL: bar preview devtools server did not start"
     fail=1
 fi
-if ! wait_for_server "$DK/dock-preview.log" 7355; then
+if ! wait_for_server "$DK/dock-preview.log" 7355 "$dock_preview_pid"; then
     echo "FAIL: dock preview devtools server did not start"
     fail=1
 fi
 
 FREYA_DEVTOOLS_ADDR=127.0.0.1:7354 \
-    stdbuf -oL -eL "$INSPECTOR_BIN" >"$DK/bar-inspector.log" 2>&1 &
+    setsid stdbuf -oL -eL "$INSPECTOR_BIN" >"$DK/bar-inspector.log" 2>&1 &
 bar_inspector_pid=$!
 pids+=("$bar_inspector_pid")
 FREYA_DEVTOOLS_ADDR=127.0.0.1:7355 \
-    stdbuf -oL -eL "$INSPECTOR_BIN" >"$DK/dock-inspector.log" 2>&1 &
+    setsid stdbuf -oL -eL "$INSPECTOR_BIN" >"$DK/dock-inspector.log" 2>&1 &
 dock_inspector_pid=$!
 pids+=("$dock_inspector_pid")
 
 wait_for_connection() {
     local port="$1"
+    local pid="$2"
 
     for _ in $(seq 1 40); do
-        ss -Htn state established | grep -q "127.0.0.1:$port" && return 0
+        ss -Htnp "dport = :$port" | grep -q "pid=$pid," && return 0
         sleep 0.5
     done
     return 1
 }
 
-if wait_for_connection 7354; then
+if wait_for_connection 7354 "$bar_inspector_pid"; then
     echo "PASS: bar inspector connected on 127.0.0.1:7354"
 else
     echo "FAIL: bar inspector did not connect"
     fail=1
 fi
-if wait_for_connection 7355; then
+if wait_for_connection 7355 "$dock_inspector_pid"; then
     echo "PASS: dock inspector connected on 127.0.0.1:7355"
 else
     echo "FAIL: dock inspector did not connect"
@@ -166,6 +177,13 @@ for process in \
     log="${process#*:}"
     if ! kill -0 "$pid" 2>/dev/null; then
         echo "FAIL: preview or inspector process exited"
+        tail -30 "$log"
+        fail=1
+    fi
+done
+for log in "$DK/bar-preview.log" "$DK/dock-preview.log"; do
+    if grep -q "Devtools server error" "$log"; then
+        echo "FAIL: preview reported a devtools server error"
         tail -30 "$log"
         fail=1
     fi
