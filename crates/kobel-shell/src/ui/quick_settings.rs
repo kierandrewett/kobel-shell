@@ -43,10 +43,13 @@ const SHEET_PAD: f32 = 12.0;
 /// Rising-edge threshold on the reveal opacity (mirrors ui/session.rs): reset to
 /// root at the first positive frame, before any key could be delivered.
 const OPEN_EPS: f32 = 1e-4;
-/// Drill-header / row / slider control sizes.
+/// Drill-header / row / slider control sizes. Row padding is DrillRow's
+/// (wifi/bt device rows): docs/prototype.html `.xrow{gap:10px;padding:9px 11px}`
+/// -- the 10px gap already matched (`DrillRow`'s `.spacing(10.0)`), only the
+/// padding pair was off.
 const HEADER_H: f32 = 40.0;
-const ROW_PAD_V: f32 = 7.0;
-const ROW_PAD_H: f32 = 10.0;
+const ROW_PAD_V: f32 = 9.0;
+const ROW_PAD_H: f32 = 11.0;
 const CHEV_W: f32 = 26.0;
 
 // ===========================================================================

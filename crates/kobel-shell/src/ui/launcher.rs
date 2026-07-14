@@ -50,11 +50,14 @@ const ROW_FONT: f32 = 13.0;
 /// block cursor).
 const CARET_W: f32 = 2.0;
 const CARET_H: f32 = 18.0;
-/// Result-row icon frame (`.ri` 28x28 with a 24px glyph inside).
+/// Result-row icon frame; docs/prototype.html `.crow .ri{width:28px;height:28px}`
+/// with `.crow .ri img{width:24px;height:24px}` (2px inset) for the glyph.
 const RI_FRAME: f32 = 28.0;
-const RI_GLYPH: f32 = 20.0;
-/// Empty-state tile geometry (`.tile` min-width 64, icon chip 42, glyph 30).
-const TILE_W: f32 = 72.0;
+const RI_GLYPH: f32 = 24.0;
+/// Empty-state tile geometry; docs/prototype.html `.tile{width:calc(var(--icon) + 20px)}`
+/// -- at the reference `--icon` value (theme::Tokens::icon, 44px) that's 64px.
+/// Icon chip 42 (`TILE_GLYPH + 12.0`), glyph 30.
+const TILE_W: f32 = 64.0;
 const TILE_GLYPH: f32 = 30.0;
 /// Sheet outer padding (`impl Component for Launcher`'s `.padding(SHEET_PAD)`).
 const SHEET_PAD: f32 = 8.0;
