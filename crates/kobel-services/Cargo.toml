@@ -20,6 +20,10 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 # Desktop-entry scan (apps.rs): XDG_DATA_HOME + XDG_DATA_DIRS applications dirs.
 freedesktop-desktop-entry = "0.8"
+# Watch XDG applications dirs for install/uninstall/edit so the launcher/dock
+# see new apps without a restart (apps.rs). Linux-only, matching this shell's
+# scope entirely; default features (tokio + stream) give an async EventStream.
+inotify = "0.11"
 # Icon theme lookup (apps.rs): theme -> Inherits -> hicolor -> /usr/share/pixmaps.
 freedesktop-icons = "0.4"
 # SNI tray host (tray.rs): async StatusNotifierWatcher/host + item cache. The

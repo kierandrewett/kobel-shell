@@ -5,8 +5,11 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 
-use freedesktop_desktop_entry::{DesktopEntry, desktop_entries, get_languages_from_env};
+use freedesktop_desktop_entry::{DesktopEntry, default_paths, desktop_entries, get_languages_from_env};
+use futures_util::StreamExt;
+use inotify::{Inotify, WatchMask};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::ServiceEvent;
@@ -63,15 +66,24 @@ pub(crate) enum AppsCommand {
     Launch(String),
 }
 
+/// A burst of filesystem events (a package manager writing several files, or an
+/// app installer copying icon + .desktop + mimeinfo) coalesces into ONE rescan
+/// fired this long after the LAST event in the burst -- mirrors notifd.rs's
+/// `PERSIST_DEBOUNCE` dirty-flag pattern, just longer: install/uninstall is a
+/// multi-file filesystem operation that can legitimately take a couple of
+/// seconds, and rescanning mid-write risks reading a half-written .desktop file.
+const RESCAN_DEBOUNCE: Duration = Duration::from_secs(2);
+
 /// Apps service task: scan desktop entries once at startup, emit the snapshot,
-/// then service launch commands. Directory watching is a later phase.
+/// then watch the XDG applications dirs (inotify) and re-emit on any install/
+/// uninstall/edit, alongside servicing launch commands.
 pub(crate) async fn run(
     events: UnboundedSender<ServiceEvent>,
     mut cmd_rx: UnboundedReceiver<AppsCommand>,
 ) {
     // Scanning hits the filesystem (hundreds of .desktop files) plus one
     // gsettings subprocess; keep it off the single tokio worker thread.
-    let (snapshot, paths) = match tokio::task::spawn_blocking(scan).await {
+    let (snapshot, mut paths) = match tokio::task::spawn_blocking(scan).await {
         Ok(result) => result,
         Err(e) => {
             tracing::warn!("[apps] scan task failed: {e}");
@@ -81,11 +93,112 @@ pub(crate) async fn run(
     tracing::info!("[apps] scanned {} visible entries", snapshot.apps.len());
     let _ = events.send(ServiceEvent::Apps(snapshot));
 
-    // TODO: watch the XDG applications dirs (inotify) and re-emit AppsSnapshot on
-    // change. This phase emits the startup snapshot only.
-    while let Some(cmd) = cmd_rx.recv().await {
-        match cmd {
-            AppsCommand::Launch(id) => launch(&paths, &id),
+    let mut watch_stream = init_watcher();
+    let mut dirty = false;
+    let debounce = tokio::time::sleep(RESCAN_DEBOUNCE);
+    tokio::pin!(debounce);
+
+    loop {
+        tokio::select! {
+            // `Option<EventStream>::next()` via a match on the Option itself
+            // (not `Some(...) =`) so a missing watcher (init failed entirely)
+            // makes this arm permanently pending rather than looping hot on
+            // `None` -- the command branch below still works either way.
+            maybe_event = async {
+                match watch_stream.as_mut() {
+                    Some(s) => s.next().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                match maybe_event {
+                    Some(Ok(event)) => {
+                        tracing::debug!("[apps] fs change: {:?} {:?}", event.mask, event.name);
+                        dirty = true;
+                        debounce.as_mut().reset(tokio::time::Instant::now() + RESCAN_DEBOUNCE);
+                    }
+                    Some(Err(e)) => tracing::warn!("[apps] inotify read failed: {e}"),
+                    None => {
+                        tracing::warn!("[apps] inotify stream ended; app list will not auto-refresh");
+                        watch_stream = None;
+                    }
+                }
+            }
+            () = &mut debounce, if dirty => {
+                dirty = false;
+                match tokio::task::spawn_blocking(scan).await {
+                    Ok((snapshot, new_paths)) => {
+                        tracing::info!(
+                            "[apps] directory change -> rescanned {} entries",
+                            snapshot.apps.len()
+                        );
+                        paths = new_paths;
+                        let _ = events.send(ServiceEvent::Apps(snapshot));
+                    }
+                    Err(e) => tracing::warn!("[apps] rescan task failed: {e}"),
+                }
+            }
+            cmd = cmd_rx.recv() => {
+                match cmd {
+                    Some(AppsCommand::Launch(id)) => launch(&paths, &id),
+                    None => break,
+                }
+            }
+        }
+    }
+}
+
+/// Bind an inotify watch to every XDG applications directory that currently
+/// exists (`freedesktop_desktop_entry::default_paths()` -- the SAME directory
+/// list [`scan`] reads, so the watch can never drift from what is actually
+/// scanned). A directory that doesn't exist yet (e.g. `~/.local/share/
+/// applications` before the user has ever installed a user-local app) is
+/// skipped, not fatal -- inotify can't watch a path that isn't there, and one
+/// missing dir shouldn't cost watching the rest. Returns `None` only if the
+/// inotify instance itself couldn't be created (e.g. fd/resource exhaustion) or
+/// not a single directory could be watched -- the app list still works, it just
+/// won't auto-refresh until next process start.
+///
+/// Only the top-level `applications/` directories are watched (not a recursive
+/// walk of subdirectories, unlike the scanner's own `Iter`, which does recurse)
+/// -- real-world package-installed desktop entries are essentially always flat;
+/// a custom vendor layout nesting entries in subdirectories is a known, accepted
+/// gap (a rescan still happens on any change to the top-level directory itself,
+/// e.g. a subdirectory being created, just not to files written deeper inside).
+fn init_watcher() -> Option<inotify::EventStream<[u8; 1024]>> {
+    let inotify = match Inotify::init() {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::warn!("[apps] inotify init failed: {e}; app list will not auto-refresh");
+            return None;
+        }
+    };
+    let mask = WatchMask::CREATE
+        | WatchMask::DELETE
+        | WatchMask::MODIFY
+        | WatchMask::MOVED_FROM
+        | WatchMask::MOVED_TO;
+    let mut watched = 0usize;
+    for dir in default_paths() {
+        if !dir.is_dir() {
+            continue;
+        }
+        match inotify.watches().add(&dir, mask) {
+            Ok(_) => {
+                watched += 1;
+                tracing::debug!("[apps] watching {}", dir.display());
+            }
+            Err(e) => tracing::warn!("[apps] failed to watch {}: {e}", dir.display()),
+        }
+    }
+    if watched == 0 {
+        tracing::warn!("[apps] no applications directories could be watched; app list will not auto-refresh");
+        return None;
+    }
+    match inotify.into_event_stream([0; 1024]) {
+        Ok(stream) => Some(stream),
+        Err(e) => {
+            tracing::warn!("[apps] failed to create inotify event stream: {e}");
+            None
         }
     }
 }
