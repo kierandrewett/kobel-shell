@@ -448,6 +448,22 @@ so every merge keeps a usable shell.
   dependency) or drop the unused constant (accept system-sans as the real,
   intentional choice) is a product call, not an engineering one -- left
   unresolved here rather than decided unilaterally.
+- **`UseSpring::kick()` (impulse animation: badge pop, bell shake) is implemented
+  and reduced-motion-aware, but has zero call sites in the UI.** So are its two
+  named specs, `motion::BADGE_POP`/`motion::BELL_SHAKE`. The underlying spring
+  math for an impulse IS unit-tested (`motion.rs`'s `kick_changes_velocity`,
+  against `SpringSim` directly), but `UseSpring::kick()` itself -- the public
+  method with the `reduced_motion()` guard -- has no test of its own; testing it
+  now would only protect dead code, not something reachable from the UI.
+  Discovered while correcting PRODUCT.md's accessibility claim, which used to
+  say reduced-motion "freezes ambient animation (visualizer, petals)" -- neither
+  of those ever existed anywhere in this codebase or the AGS port it replaced,
+  and the actually-named kick targets (badge pop on a new notification, bell
+  shake to draw attention) are built but never triggered. PRODUCT.md now claims
+  only what fires today (springs settle instantly). Same shape as the
+  `FONT_FAMILY_UI` note above: a real capability sitting unused, left as an open
+  decision (wire badge pop/bell shake to their triggers, or drop the dead
+  constants) rather than resolved unilaterally.
 
 ## 9. Open questions (carry-overs, unchanged by this plan)
 

@@ -58,8 +58,8 @@ decoration for its own sake.
 
 ## Accessibility & Inclusion
 
-- `prefers-reduced-motion` honored everywhere: springs settle instantly, ambient
-  animation (visualizer, petals) freezes.
+- `prefers-reduced-motion` honored everywhere: every UI spring settles instantly
+  on its target instead of animating.
 - Text contrast ≥ 4.5:1 on all surfaces, including muted/secondary text.
 - Full keyboard path: launcher is keyboard-first (type, arrows, Enter, Escape),
   every interactive element has a visible :focus-visible ring.
