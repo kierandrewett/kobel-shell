@@ -863,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn show_applications_uses_the_shared_phosphor_chrome_size() {
+    fn show_applications_uses_the_shared_chrome_size() {
         let mut runner = launch_test(dock_preview_app);
         runner.sync_and_update();
         runner.sync_and_update();
@@ -876,7 +876,7 @@ mod tests {
                     })
                 })
                 .is_some(),
-            "show-applications Phosphor icon did not render at the shared chrome size",
+            "show-applications icon did not render at the shared chrome size",
         );
     }
 

@@ -1,22 +1,24 @@
-//! Phosphor Bold SVG sources used by the shell chrome.
+//! Adwaita symbolic SVG sources used by the shell chrome.
 //!
-//! Assets are copied verbatim from phosphor-icons/core v2.0.8. Render the
-//! byte slices at 16 logical pixels with Freya's `SvgViewer::color(...)`.
+//! Vendored from adwaita-icon-theme (GNOME 49) and normalised to
+//! `fill="currentColor"` so Freya's `SvgViewer::color(...)` tints them. Constant
+//! names are bar/dock roles; the file each points at is the matching stock GNOME
+//! symbolic glyph. Render the byte slices at 16 logical pixels.
 
-pub const ARROW_CLOCKWISE: &[u8] = include_bytes!("../assets/icons/arrow-clockwise.svg");
-pub const BATTERY_HIGH: &[u8] = include_bytes!("../assets/icons/battery-high.svg");
-pub const BELL: &[u8] = include_bytes!("../assets/icons/bell.svg");
-pub const CARET_LEFT: &[u8] = include_bytes!("../assets/icons/caret-left.svg");
-pub const CARET_RIGHT: &[u8] = include_bytes!("../assets/icons/caret-right.svg");
-pub const CALENDAR_BLANK: &[u8] = include_bytes!("../assets/icons/calendar-blank.svg");
-pub const DOTS_NINE: &[u8] = include_bytes!("../assets/icons/dots-nine.svg");
-pub const CARET_DOWN: &[u8] = include_bytes!("../assets/icons/caret-down.svg");
-pub const LOCK: &[u8] = include_bytes!("../assets/icons/lock.svg");
-pub const SPEAKER_HIGH: &[u8] = include_bytes!("../assets/icons/speaker-high.svg");
-pub const WIFI_HIGH: &[u8] = include_bytes!("../assets/icons/wifi-high.svg");
-pub const POWER: &[u8] = include_bytes!("../assets/icons/power.svg");
-pub const SIGN_OUT: &[u8] = include_bytes!("../assets/icons/sign-out.svg");
-pub const X: &[u8] = include_bytes!("../assets/icons/x.svg");
+pub const ARROW_CLOCKWISE: &[u8] = include_bytes!("../assets/icons/view-refresh-symbolic.svg");
+pub const BATTERY_HIGH: &[u8] = include_bytes!("../assets/icons/battery-level-100-symbolic.svg");
+pub const BELL: &[u8] = include_bytes!("../assets/icons/bell-symbolic.svg");
+pub const CARET_LEFT: &[u8] = include_bytes!("../assets/icons/go-previous-symbolic.svg");
+pub const CARET_RIGHT: &[u8] = include_bytes!("../assets/icons/go-next-symbolic.svg");
+pub const CALENDAR_BLANK: &[u8] = include_bytes!("../assets/icons/x-office-calendar-symbolic.svg");
+pub const DOTS_NINE: &[u8] = include_bytes!("../assets/icons/view-app-grid-symbolic.svg");
+pub const CARET_DOWN: &[u8] = include_bytes!("../assets/icons/pan-down-symbolic.svg");
+pub const LOCK: &[u8] = include_bytes!("../assets/icons/system-lock-screen-symbolic.svg");
+pub const SPEAKER_HIGH: &[u8] = include_bytes!("../assets/icons/audio-volume-high-symbolic.svg");
+pub const WIFI_HIGH: &[u8] = include_bytes!("../assets/icons/network-wireless-signal-excellent-symbolic.svg");
+pub const POWER: &[u8] = include_bytes!("../assets/icons/system-shutdown-symbolic.svg");
+pub const SIGN_OUT: &[u8] = include_bytes!("../assets/icons/system-log-out-symbolic.svg");
+pub const X: &[u8] = include_bytes!("../assets/icons/window-close-symbolic.svg");
 
 #[cfg(test)]
 mod tests {
@@ -43,9 +45,9 @@ mod tests {
             WIFI_HIGH,
             X,
         ] {
-            let icon = std::str::from_utf8(icon).expect("Phosphor SVG must be UTF-8");
+            let icon = std::str::from_utf8(icon).expect("symbolic SVG must be UTF-8");
             assert!(icon.starts_with("<svg "));
-            assert!(icon.contains("viewBox=\"0 0 256 256\""));
+            assert!(icon.contains("viewBox=\"0 0 16 16\""));
             assert!(icon.contains("fill=\"currentColor\""));
         }
     }

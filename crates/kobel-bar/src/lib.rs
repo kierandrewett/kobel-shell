@@ -1125,12 +1125,12 @@ mod tests {
     }
 
     #[test]
-    fn bar_phosphor_icons_render_at_the_shared_chrome_size() {
+    fn bar_icons_render_at_the_shared_chrome_size() {
         let mut runner = launch_test(bar_preview_app);
         runner.sync_and_update();
         runner.sync_and_update();
         let icon_areas = runner.find_many(|node, element| Image::try_downcast(element).map(|_| node.layout().area));
-        assert!(!icon_areas.is_empty(), "bar preview did not render any Phosphor icons");
+        assert!(!icon_areas.is_empty(), "bar preview did not render any chrome icons");
         for area in icon_areas {
             assert_eq!(area.width(), TOKENS.chrome_icon_size);
             assert_eq!(area.height(), TOKENS.chrome_icon_size);

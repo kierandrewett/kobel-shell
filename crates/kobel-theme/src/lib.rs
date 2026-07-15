@@ -27,7 +27,7 @@ impl Rgba {
 pub struct Tokens {
     pub colours: ColourTokens,
     pub typography: TypeTokens,
-    /// Phosphor Bold chrome glyph size. Application artwork uses `dock.icon_size`.
+    /// Chrome glyph size (Adwaita symbolic). Application artwork uses `dock.icon_size`.
     pub chrome_icon_size: f32,
     pub bar: BarTokens,
     pub dock: DockTokens,
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn phosphor_chrome_icons_use_sixteen_logical_pixels() {
+    fn chrome_icons_use_sixteen_logical_pixels() {
         assert_eq!(TOKENS.chrome_icon_size, 16.0);
     }
 
