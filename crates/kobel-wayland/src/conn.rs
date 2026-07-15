@@ -357,6 +357,18 @@ impl Control<'_> {
         }
     }
 
+    /// Replace the measurement viewport for a content-sized surface.
+    ///
+    /// Exact surfaces and unchanged bounds are no-ops. Popups use this when their
+    /// output geometry changes so the next measurement repositions the xdg popup
+    /// within the new screen bounds rather than retaining stale dimensions.
+    pub fn set_content_bounds(&mut self, id: SurfaceId, width: u32, max_height: u32) {
+        let Some(surface) = self.host.surfaces.iter_mut().find(|surface| surface.id == id) else {
+            return;
+        };
+        surface.set_content_bounds(width, max_height);
+    }
+
     /// Open an xdg popup anchored to `parent` (a layer surface, or another popup for a
     /// submenu), rendering `app` with the same embedded-Freya machinery as a layer
     /// surface. `setup` registers the popup's app-level root contexts (ShellBus,
@@ -540,6 +552,13 @@ impl OutputControl<'_> {
     /// [`Control::set_keyboard_interactivity`].
     pub fn set_keyboard_interactivity(&mut self, id: SurfaceId, mode: KeyboardInteractivity) {
         Control { host: &mut *self.host }.set_keyboard_interactivity(id, mode);
+    }
+
+    /// Replace a content-sized surface's measurement viewport while handling output
+    /// lifecycle events. This is the [`OutputControl`] counterpart to
+    /// [`Control::set_content_bounds`].
+    pub fn set_content_bounds(&mut self, id: SurfaceId, width: u32, max_height: u32) {
+        Control { host: &mut *self.host }.set_content_bounds(id, width, max_height);
     }
 
     /// Change click-through state while handling output lifecycle events. This is

@@ -134,6 +134,22 @@ struct ContentSized {
     last_requested_h: u32,
 }
 
+impl ContentSized {
+    fn set_bounds(&mut self, width: u32, max_height: u32) -> bool {
+        let (width, max_height) = floor_content_size(width, max_height);
+        if (self.width, self.max_height) == (width, max_height) {
+            return false;
+        }
+
+        self.width = width;
+        self.max_height = max_height;
+        // Force the next measurement to request both axes even when the resolved
+        // content height happens to match the previous viewport.
+        self.last_requested_h = 0;
+        true
+    }
+}
+
 /// The wl role object(s) backing a [`FreyaLayerSurface`]. A wlr layer surface is a
 /// top-level shell surface; a popup is an `xdg_surface` + `xdg_popup` parented to
 /// another surface (a layer surface via `zwlr_layer_surface_v1.get_popup`, or another
@@ -585,6 +601,22 @@ impl FreyaLayerSurface {
         ready
     }
 
+    /// Replace the fixed viewport used to measure a content-sized surface.
+    ///
+    /// Returns `false` for exact surfaces and unchanged bounds. A changed viewport
+    /// invalidates layout and forces the next content request to carry the new width.
+    pub(crate) fn set_content_bounds(&mut self, width: u32, max_height: u32) -> bool {
+        let Some(content) = self.content.as_mut() else {
+            return false;
+        };
+        if !content.set_bounds(width, max_height) {
+            return false;
+        }
+
+        self.layout_dirty = true;
+        self.redraw.set(true);
+        true
+    }
     /// Run Torin layout if dirty (a cheap no-op otherwise), then, for a content-sized
     /// surface, read the root content height and return the surface size to request
     /// when it differs from the last requested one (the caller does the
@@ -789,7 +821,7 @@ fn content_logical_height(content_phys: f32, scale: f64, max_height: u32) -> u32
 
 #[cfg(test)]
 mod tests {
-    use super::{SCALE_DENOM, content_logical_height, floor_content_size, physical_dim, sane_axis};
+    use super::{ContentSized, SCALE_DENOM, content_logical_height, floor_content_size, physical_dim, sane_axis};
 
     #[test]
     fn sane_axis_maps_out_of_i32_range_to_zero() {
@@ -910,6 +942,33 @@ mod tests {
             floor_content_size(i32::MAX as u32, i32::MAX as u32),
             (i32::MAX as u32, i32::MAX as u32)
         );
+    }
+
+    #[test]
+    fn content_bounds_changes_force_a_fresh_size_request() {
+        let mut content = ContentSized {
+            width: 384,
+            max_height: 620,
+            last_requested_h: 400,
+        };
+
+        assert!(content.set_bounds(320, 500));
+        assert_eq!(content.width, 320);
+        assert_eq!(content.max_height, 500);
+        assert_eq!(content.last_requested_h, 0);
+        assert!(!content.set_bounds(320, 500));
+    }
+
+    #[test]
+    fn content_bounds_apply_the_positioner_safety_floor() {
+        let mut content = ContentSized {
+            width: 384,
+            max_height: 620,
+            last_requested_h: 400,
+        };
+
+        assert!(content.set_bounds(0, 0));
+        assert_eq!((content.width, content.max_height), (1, 1));
     }
 
     #[test]
