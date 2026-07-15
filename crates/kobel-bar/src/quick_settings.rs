@@ -822,15 +822,30 @@ fn session_row(
     } else {
         action.label().to_string()
     };
-    let glyph_colour = if action.destructive() || armed {
+    let highlighted = selected || armed;
+    let glyph_colour = if highlighted {
+        TOKENS.colours.accent_text.rgba()
+    } else if action.destructive() {
         TOKENS.colours.danger.rgba()
     } else {
         TOKENS.colours.text.rgba()
     };
-    let text_colour = if armed {
-        TOKENS.colours.danger.rgba()
+    let text_colour = if highlighted {
+        TOKENS.colours.accent_text.rgba()
     } else {
         TOKENS.colours.text.rgba()
+    };
+    // Armed destructive rows use a danger background with white ink (GNOME's
+    // confirm styling); a plain accent-blue highlight would leave red-on-blue.
+    let row_colours = if armed {
+        ButtonColorsThemePartial::new()
+            .background(TOKENS.colours.danger.rgba())
+            .hover_background(TOKENS.colours.danger.rgba())
+            .border_fill(Color::TRANSPARENT)
+            .focus_border_fill(TOKENS.colours.accent.rgba())
+            .color(TOKENS.colours.accent_text.rgba())
+    } else {
+        button_colours(selected)
     };
     rect()
         .width(Size::fill())
@@ -838,7 +853,7 @@ fn session_row(
         .child(
             Button::new()
                 .flat()
-                .theme_colors(button_colours(selected || armed))
+                .theme_colors(row_colours)
                 .theme_layout(button_layout(
                     Size::fill(),
                     TOKENS.popover.control_height,
