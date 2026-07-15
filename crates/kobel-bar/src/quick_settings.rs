@@ -524,7 +524,7 @@ fn wifi_drill(network: &NetworkSnapshot, sink: &BarActionSink, view: State<Quick
             let detail = if access_point.active {
                 "Connected".to_string()
             } else if access_point.secured {
-                format!("Secured · {}%", access_point.strength)
+                format!("Secured - {}%", access_point.strength)
             } else {
                 format!("{}%", access_point.strength)
             };
