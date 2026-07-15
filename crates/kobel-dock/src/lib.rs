@@ -790,14 +790,40 @@ pub fn dock_app() -> impl IntoElement {
 
 pub fn dock_preview_app() -> impl IntoElement {
     use_provide_context(|| {
-        DockContext::create(
+        let context = DockContext::create(
             vec![
                 "org.gnome.Nautilus".to_string(),
                 "org.mozilla.firefox".to_string(),
                 "com.mitchellh.ghostty".to_string(),
             ],
             960,
-        )
+        );
+        // Sample running windows so the preview exercises the running-dot indicators:
+        // Nautilus focused with one window, Firefox with two, ghostty idle.
+        context.set_windows(vec![
+            ToplevelInfo {
+                id: "nautilus-1".to_string(),
+                app_id: "org.gnome.Nautilus".to_string(),
+                title: "Files".to_string(),
+                focused: true,
+                minimized: false,
+            },
+            ToplevelInfo {
+                id: "firefox-1".to_string(),
+                app_id: "org.mozilla.firefox".to_string(),
+                title: "Mozilla Firefox".to_string(),
+                focused: false,
+                minimized: false,
+            },
+            ToplevelInfo {
+                id: "firefox-2".to_string(),
+                app_id: "org.mozilla.firefox".to_string(),
+                title: "Mozilla Firefox".to_string(),
+                focused: false,
+                minimized: false,
+            },
+        ]);
+        context
     });
     use_provide_context(DockActionSink::inert);
     dock_app()
@@ -877,6 +903,22 @@ mod tests {
                 })
                 .is_some(),
             "show-applications icon did not render at the shared chrome size",
+        );
+    }
+
+    #[test]
+    fn running_apps_render_window_dots() {
+        let mut runner = launch_test(dock_preview_app);
+        runner.sync_and_update();
+        runner.sync_and_update();
+        let dots = runner.find_many(|node, _| {
+            let area = node.layout().area;
+            (area.width() == TOKENS.dock.indicator_size && area.height() == TOKENS.dock.indicator_size).then_some(())
+        });
+        assert!(
+            dots.len() >= 3,
+            "preview should render running-app window dots, found {}",
+            dots.len()
         );
     }
 
