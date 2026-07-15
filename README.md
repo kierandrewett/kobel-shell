@@ -27,10 +27,10 @@ tools/freya-devtools-app     matching standalone Freya inspector
 - `kobel-wayland`, `kobel-services`, `kobel-ipc` and `kobel-shell` remain reusable infrastructure.
 - `kobel-bar` and `kobel-dock` are independent processes with no dependency on each other.
 - Each UI crate exposes the exact component used by its layer-shell process and native preview.
-- The bar is a service-backed, full-width top-layer surface with Activities, a live clock, network/audio state and optional battery state.
+- The bar is a service-backed, full-width top-layer surface with Activities, a live clock, network/audio state and optional battery state. The clock opens an anchored calendar popup with month navigation, GNOME calendar events and keyboard focus; Escape or an outside click closes it.
 - The dock is still a basic transparent bottom-layer starting point with an exclusive zone and outer margin.
 - `kobel-theme` centralises the restyleable presentation contract: plain RGBA/geometry tokens, vendored Geist Sans and vendored Phosphor Bold SVG bytes.
-- Larger shell surfaces and popouts remain in `archive/freya-ui-v1` only as implementation reference while the new UI is rebuilt.
+- The remaining shell surfaces and popouts stay in `archive/freya-ui-v1` as implementation reference while the new UI is rebuilt.
 - `kobelctl toggle <surface>` accepts UI-owned names made from lowercase ASCII letters, digits, `-` and `_`.
 
 ## Requirements
@@ -117,9 +117,11 @@ Verify the real bar, dock and inspector paths under a two-output headless gnobli
 just host-bar-dock
 ```
 
-The gate mounts one bar and dock per output, launches both native previews and
-both inspectors on their independent ports, verifies the WebSocket connections
-and captures `/tmp/kobel-bar-dock.png`.
+The gate mounts one bar and dock per output, opens the calendar popup through
+Mutter's remote-desktop input path, captures `/tmp/kobel-bar-calendar.png`,
+dismisses the popup with Escape, then launches both native previews and inspectors.
+It verifies the popup lifecycle, per-output mount counts, devtools WebSocket
+connections and the final `/tmp/kobel-bar-dock.png` capture.
 
 The lower-level renderer and input gates remain available:
 
