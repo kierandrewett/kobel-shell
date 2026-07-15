@@ -77,8 +77,12 @@ Physics, not keyframes: an interruptible damped-spring engine drives every surfa
 
 ## Implementation status
 
-Landed: Adwaita dark palette + semantic roles, Adwaita Sans, Adwaita symbolic icons,
-pure-black panel, workspace dot, quick-settings pill toggles + Lock system row, opaque dash.
-Pending (tracked): merge notifications into the clock date menu (two-column) and drop the
-standalone notification button; relocate power/settings into the QS system row and drop the
-standalone panel power button; group the status-indicator cluster; dock running-dot polish.
+Landed (all core surfaces): Adwaita dark palette + semantic roles, Adwaita Sans, Adwaita
+symbolic icons, pure-black panel with workspace dot and centred clock, the two-column date
+menu (notifications + calendar, no standalone notification button), the grouped
+status-indicator cluster opening Quick Settings, QS pill toggles + sliders + a system row
+(settings / lock / power) whose power control opens a keyboard-navigable shutdown submenu
+(Suspend / Restart / Power Off / Log out), the drill submenus, and the opaque dash with
+running-dot indicators and GNOME rounding.
+Known limitation: Freya's pinned rev exposes no OpenType font-feature API, so the panel clock
+cannot use tabular figures (tnum) the way stock GNOME does.
