@@ -590,8 +590,9 @@ impl Component for DockTile {
                 Vec::new(),
                 SvgViewer::new(kobel_theme::icons::DOTS_NINE)
                     .color(TOKENS.colours.text.rgba())
-                    .width(Size::px(self.metrics.icon_size))
-                    .height(Size::px(self.metrics.icon_size))
+                    .a11y_builder(|node| node.set_hidden())
+                    .width(Size::px(TOKENS.chrome_icon_size))
+                    .height(Size::px(TOKENS.chrome_icon_size))
                     .into_element(),
             ),
             DockTileContent::App(item) => (
@@ -826,6 +827,7 @@ pub fn surface_config() -> SurfaceConfig {
 mod tests {
     use std::path::PathBuf;
 
+    use freya_core::elements::image::Image;
     use freya_testing::launch_test;
     use kobel_services::{AppEntry, AppsSnapshot};
     use kobel_wayland::{Anchor, KeyboardInteractivity, SurfaceSize, ToplevelInfo};
@@ -858,6 +860,24 @@ mod tests {
     fn component_mounts_in_the_headless_runner() {
         let mut runner = launch_test(dock_preview_app);
         runner.sync_and_update();
+    }
+
+    #[test]
+    fn show_applications_uses_the_shared_phosphor_chrome_size() {
+        let mut runner = launch_test(dock_preview_app);
+        runner.sync_and_update();
+        runner.sync_and_update();
+        assert!(
+            runner
+                .find(|node, element| {
+                    Image::try_downcast(element).filter(|_| {
+                        node.layout().area.width() == TOKENS.chrome_icon_size
+                            && node.layout().area.height() == TOKENS.chrome_icon_size
+                    })
+                })
+                .is_some(),
+            "show-applications Phosphor icon did not render at the shared chrome size",
+        );
     }
 
     #[test]

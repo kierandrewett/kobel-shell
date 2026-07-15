@@ -6,6 +6,8 @@
 pub const ARROW_CLOCKWISE: &[u8] = include_bytes!("../assets/icons/arrow-clockwise.svg");
 pub const BATTERY_HIGH: &[u8] = include_bytes!("../assets/icons/battery-high.svg");
 pub const BELL: &[u8] = include_bytes!("../assets/icons/bell.svg");
+pub const CARET_LEFT: &[u8] = include_bytes!("../assets/icons/caret-left.svg");
+pub const CARET_RIGHT: &[u8] = include_bytes!("../assets/icons/caret-right.svg");
 pub const CALENDAR_BLANK: &[u8] = include_bytes!("../assets/icons/calendar-blank.svg");
 pub const DOTS_NINE: &[u8] = include_bytes!("../assets/icons/dots-nine.svg");
 pub const CARET_DOWN: &[u8] = include_bytes!("../assets/icons/caret-down.svg");
@@ -14,12 +16,13 @@ pub const SPEAKER_HIGH: &[u8] = include_bytes!("../assets/icons/speaker-high.svg
 pub const WIFI_HIGH: &[u8] = include_bytes!("../assets/icons/wifi-high.svg");
 pub const POWER: &[u8] = include_bytes!("../assets/icons/power.svg");
 pub const SIGN_OUT: &[u8] = include_bytes!("../assets/icons/sign-out.svg");
+pub const X: &[u8] = include_bytes!("../assets/icons/x.svg");
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ARROW_CLOCKWISE, BATTERY_HIGH, BELL, CALENDAR_BLANK, CARET_DOWN, DOTS_NINE, LOCK, POWER, SIGN_OUT,
-        SPEAKER_HIGH, WIFI_HIGH,
+        ARROW_CLOCKWISE, BATTERY_HIGH, BELL, CALENDAR_BLANK, CARET_DOWN, CARET_LEFT, CARET_RIGHT, DOTS_NINE, LOCK,
+        POWER, SIGN_OUT, SPEAKER_HIGH, WIFI_HIGH, X,
     };
 
     #[test]
@@ -31,11 +34,14 @@ mod tests {
             CALENDAR_BLANK,
             DOTS_NINE,
             CARET_DOWN,
+            CARET_LEFT,
+            CARET_RIGHT,
             LOCK,
             POWER,
             SIGN_OUT,
             SPEAKER_HIGH,
             WIFI_HIGH,
+            X,
         ] {
             let icon = std::str::from_utf8(icon).expect("Phosphor SVG must be UTF-8");
             assert!(icon.starts_with("<svg "));

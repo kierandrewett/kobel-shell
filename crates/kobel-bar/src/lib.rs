@@ -337,11 +337,15 @@ impl BarContext {
     }
 }
 
-fn icon(bytes: &'static [u8]) -> SvgViewer {
+pub(crate) fn icon(bytes: &'static [u8]) -> SvgViewer {
     SvgViewer::new(bytes)
         .color(TOKENS.colours.text_muted.rgba())
-        .width(Size::px(TOKENS.bar.icon_size))
-        .height(Size::px(TOKENS.bar.icon_size))
+        .width(Size::px(TOKENS.chrome_icon_size))
+        .height(Size::px(TOKENS.chrome_icon_size))
+}
+
+pub(crate) fn decorative_icon(bytes: &'static [u8]) -> SvgViewer {
+    icon(bytes).a11y_builder(|node| node.set_hidden())
 }
 
 fn compact_bar_width(physical_width: f32, scale_factor: f64) -> bool {
@@ -558,11 +562,11 @@ impl Component for StatusPill {
             .cross_align(Alignment::Center)
             .spacing(TOKENS.bar.module_gap)
             .padding((0.0, TOKENS.bar.control_padding))
-            .child(icon(icons::WIFI_HIGH))
-            .child(icon(icons::SPEAKER_HIGH));
+            .child(decorative_icon(icons::WIFI_HIGH))
+            .child(decorative_icon(icons::SPEAKER_HIGH));
 
         if battery.present {
-            status = status.child(icon(icons::BATTERY_HIGH));
+            status = status.child(decorative_icon(icons::BATTERY_HIGH));
             if !self.compact {
                 status = status.child(
                     label()
@@ -620,7 +624,7 @@ impl Component for NotificationButton {
             .horizontal()
             .cross_align(Alignment::Center)
             .spacing(TOKENS.bar.notification_gap)
-            .child(icon(icons::BELL));
+            .child(decorative_icon(icons::BELL));
         if count > 0 {
             content = content.child(
                 label()
@@ -684,7 +688,7 @@ impl Component for SessionButton {
                         rect()
                             .horizontal()
                             .cross_align(Alignment::Center)
-                            .child(icon(icons::POWER))
+                            .child(decorative_icon(icons::POWER))
                             .child(label().text("").a11y_alt("Open session controls")),
                     ),
             )
@@ -956,10 +960,9 @@ impl Component for CalendarPanel {
                 request_month(&previous_sink, month);
             })
             .child(
-                label()
-                    .text("<")
-                    .a11y_alt("Previous month")
-                    .font_size(TOKENS.typography.title_size),
+                icon(icons::CARET_LEFT)
+                    .color(TOKENS.colours.text.rgba())
+                    .a11y_alt("Previous month"),
             );
 
         let next_sink = sink.clone();
@@ -986,10 +989,9 @@ impl Component for CalendarPanel {
                 request_month(&next_sink, month);
             })
             .child(
-                label()
-                    .text(">")
-                    .a11y_alt("Next month")
-                    .font_size(TOKENS.typography.title_size),
+                icon(icons::CARET_RIGHT)
+                    .color(TOKENS.colours.text.rgba())
+                    .a11y_alt("Next month"),
             );
 
         let content = rect()
@@ -1105,6 +1107,7 @@ pub fn surface_config() -> SurfaceConfig {
 #[cfg(test)]
 mod tests {
     use chrono::{Days, NaiveDate};
+    use freya_core::elements::image::Image;
     use freya_core::prelude::{IntoElement, Label, State, use_provide_context};
     use freya_testing::{TestingRunner, launch_test};
     use kobel_services::{
@@ -1114,7 +1117,7 @@ mod tests {
     use kobel_wayland::{Anchor, KeyboardInteractivity, PopupAnchor, PopupGravity, SurfaceSize};
 
     use super::{
-        BarActionSink, BarContext, BarPanel, BarSnapshots, MAX_VISIBLE_EVENTS, PopoverLayout, SURFACE_HEIGHT,
+        BarActionSink, BarContext, BarPanel, BarSnapshots, MAX_VISIBLE_EVENTS, PopoverLayout, SURFACE_HEIGHT, TOKENS,
         bar_preview_app, calendar_popup_app, event_occurs_on, event_time_label, local_midnight_epoch,
         notifications_popup_app, popup_config, session_popup_app, surface_config, visible_events_for_day,
     };
@@ -1123,6 +1126,19 @@ mod tests {
     fn component_mounts_in_the_headless_runner() {
         let mut runner = launch_test(bar_preview_app);
         runner.sync_and_update();
+    }
+
+    #[test]
+    fn bar_phosphor_icons_render_at_the_shared_chrome_size() {
+        let mut runner = launch_test(bar_preview_app);
+        runner.sync_and_update();
+        runner.sync_and_update();
+        let icon_areas = runner.find_many(|node, element| Image::try_downcast(element).map(|_| node.layout().area));
+        assert!(!icon_areas.is_empty(), "bar preview did not render any Phosphor icons");
+        for area in icon_areas {
+            assert_eq!(area.width(), TOKENS.chrome_icon_size);
+            assert_eq!(area.height(), TOKENS.chrome_icon_size);
+        }
     }
 
     #[test]
@@ -1496,8 +1512,8 @@ mod tests {
         ));
         let dismiss_area = runner
             .find(|node, element| {
-                Label::try_downcast(element)
-                    .filter(|label| label.accessibility.builder.label() == Some("Dismiss Notification"))
+                Image::try_downcast(element)
+                    .filter(|icon| icon.accessibility.builder.label() == Some("Dismiss Notification"))
                     .map(|_| node.layout().area)
             })
             .expect("notification dismiss control");
@@ -1523,7 +1539,15 @@ mod tests {
                 runner
                     .find(|_, element| Label::try_downcast(element).filter(|label| label.text.as_ref() == expected))
                     .is_some(),
-                "missing session action {expected}",
+                "missing session action text {expected}",
+            );
+            assert!(
+                runner
+                    .find(|_, element| {
+                        Image::try_downcast(element).filter(|icon| icon.accessibility.builder.label() == Some(expected))
+                    })
+                    .is_some(),
+                "session action button is not named {expected}",
             );
         }
     }
@@ -1539,8 +1563,8 @@ mod tests {
         runner.sync_and_update();
         let drill = runner
             .find(|node, element| {
-                Label::try_downcast(element)
-                    .filter(|label| label.accessibility.builder.label() == Some("Open Wi-Fi details"))
+                Image::try_downcast(element)
+                    .filter(|icon| icon.accessibility.builder.label() == Some("Open Wi-Fi details"))
                     .map(|_| node)
             })
             .expect("Wi-Fi drill button label");

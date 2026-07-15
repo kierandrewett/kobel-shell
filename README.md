@@ -29,7 +29,7 @@ tools/freya-devtools-app     matching standalone Freya inspector
 - Each UI crate exposes the exact component used by its layer-shell process and native preview.
 - The bar is a service-backed, full-width top-layer surface with Activities, a live clock, network/audio state and optional battery state. The clock opens an anchored calendar popup with month navigation, GNOME calendar events and keyboard focus; Escape or an outside click closes it.
 - The dock is still a basic transparent bottom-layer starting point with an exclusive zone and outer margin.
-- `kobel-theme` centralises the restyleable presentation contract: plain RGBA/geometry tokens, vendored Geist Sans and vendored Phosphor Bold SVG bytes.
+- `kobel-theme` centralises the restyleable presentation contract: plain RGBA/geometry tokens, vendored Geist Sans and vendored Phosphor Bold SVG bytes. Shell chrome glyphs share one 16 logical pixel token; application artwork keeps its independent dock sizing.
 - The remaining shell surfaces and popouts stay in `archive/freya-ui-v1` as implementation reference while the new UI is rebuilt.
 - `kobelctl toggle <surface>` accepts UI-owned names made from lowercase ASCII letters, digits, `-` and `_`.
 

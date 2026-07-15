@@ -152,13 +152,12 @@
 <header>
   <h1>kobel-shell &mdash; Phosphor icon picker</h1>
   <div class="sub">
-    For every kobel-shell chrome glyph (the custom Heroicons-style set under
-    <code>crates/kobel-shell/assets/</code>), pick the Phosphor variant you want to switch to.
-    The slug field is my best guess at the matching Phosphor icon name &mdash; edit it if a row looks
-    wrong or blank, all six variants re-render live. Click a tile to select it; selections
-    autosave to this browser (localStorage) as you go. This only decides the shell's own
-    control glyphs (wifi/battery/power/etc) &mdash; application icons in the dock/launcher/tray
-    come from your system icon theme (Adwaita) and are not affected.
+    This records the original custom-glyph to Phosphor migration map. Active control glyphs are
+    vendored from <code>phosphor-icons/core v2.0.8</code> Bold under
+    <code>crates/kobel-theme/assets/icons/</code> and render at 16 logical pixels. Use the variant
+    grid to compare alternatives; selections autosave to this browser (localStorage) but do not
+    rewrite the Rust assets. Application icons in the dock/launcher/tray come from the system icon
+    theme and are not affected.
   </div>
   <div class="controls">
     <label>Filter <input type="text" id="filter" placeholder="e.g. wifi, bluetooth..." /></label>

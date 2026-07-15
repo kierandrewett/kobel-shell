@@ -3,13 +3,14 @@
 use chrono::{Local, TimeZone};
 use freya_components::button::{Button, ButtonLayoutThemePartial};
 use freya_components::scrollviews::ScrollView;
-use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use kobel_services::{Command, Notification};
 use kobel_theme::{TOKENS, icons};
 use torin::prelude::{Alignment, Content, Size};
 
-use super::{BarActionSink, BarContext, button_colours, button_layout, popover_frame, use_popover_layout};
+use super::{
+    BarActionSink, BarContext, button_colours, button_layout, decorative_icon, icon, popover_frame, use_popover_layout,
+};
 
 pub fn notifications_popup_app() -> impl IntoElement {
     NotificationsPanel
@@ -220,7 +221,7 @@ impl Component for NotificationCard {
                     .padding(0.0),
             )
             .on_press(move |_| close_sink.service(Command::CloseNotification(id)))
-            .child(label().text("x").a11y_alt(format!("Dismiss {}", notification.summary)));
+            .child(icon(icons::X).a11y_alt(format!("Dismiss {}", notification.summary)));
 
         let mut text = rect()
             .width(Size::flex(1.0))
@@ -256,12 +257,7 @@ impl Component for NotificationCard {
             .content(Content::Flex)
             .cross_align(Alignment::Start)
             .spacing(TOKENS.notifications.card_gap)
-            .child(
-                SvgViewer::new(icons::BELL)
-                    .color(TOKENS.colours.text_muted.rgba())
-                    .width(Size::px(TOKENS.popover.icon_size))
-                    .height(Size::px(TOKENS.popover.icon_size)),
-            )
+            .child(decorative_icon(icons::BELL))
             .child(text)
             .child(close);
 

@@ -5,10 +5,12 @@ use freya_core::prelude::*;
 use kobel_services::{
     AudioSnapshot, BluetoothSnapshot, Command, NetworkSnapshot, PowerProfile, PowerSnapshot, SessionVerb,
 };
-use kobel_theme::TOKENS;
+use kobel_theme::{TOKENS, icons};
 use torin::prelude::{Alignment, Content, Size};
 
-use super::{BarActionSink, BarContext, BarPanel, button_layout, popover_frame, use_popover_layout};
+use super::{
+    BarActionSink, BarContext, BarPanel, button_layout, decorative_icon, icon, popover_frame, use_popover_layout,
+};
 
 const MAX_DRILL_ROWS: usize = 6;
 
@@ -206,7 +208,15 @@ fn quick_chip(
                     TOKENS.popover.row_radius,
                 ))
                 .on_press(on_drill)
-                .child(label().text(">").a11y_alt(format!("Open {name} details"))),
+                .child(
+                    icon(icons::CARET_RIGHT)
+                        .color(if active {
+                            TOKENS.colours.accent_text.rgba()
+                        } else {
+                            TOKENS.colours.text.rgba()
+                        })
+                        .a11y_alt(format!("Open {name} details")),
+                ),
         );
     }
 
@@ -419,9 +429,18 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
                 ))
                 .on_press(view_handler(view, QuickSettingsView::Mixer))
                 .child(
-                    label()
-                        .text("Per-application volume >")
-                        .font_size(TOKENS.typography.small_size),
+                    rect()
+                        .width(Size::fill())
+                        .horizontal()
+                        .content(Content::Flex)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text("Per-application volume")
+                                .width(Size::flex(1.0))
+                                .font_size(TOKENS.typography.small_size),
+                        )
+                        .child(decorative_icon(icons::CARET_RIGHT).color(TOKENS.colours.text.rgba())),
                 ),
         )
         .into_element()
@@ -444,7 +463,11 @@ fn drill_header(title: &'static str, view: State<QuickSettingsView>) -> Rect {
                     TOKENS.popover.row_radius,
                 ))
                 .on_press(view_handler(view, QuickSettingsView::Root))
-                .child(label().text("<").a11y_alt("Back to quick settings")),
+                .child(
+                    icon(icons::CARET_LEFT)
+                        .color(TOKENS.colours.text.rgba())
+                        .a11y_alt("Back to quick settings"),
+                ),
         )
         .child(
             label()

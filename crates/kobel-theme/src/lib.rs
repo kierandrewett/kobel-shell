@@ -26,6 +26,8 @@ impl Rgba {
 pub struct Tokens {
     pub colours: ColourTokens,
     pub typography: TypeTokens,
+    /// Phosphor Bold chrome glyph size. Application artwork uses `dock.icon_size`.
+    pub chrome_icon_size: f32,
     pub bar: BarTokens,
     pub dock: DockTokens,
     pub popover: PopoverTokens,
@@ -72,7 +74,6 @@ pub struct BarTokens {
     pub control_height: f32,
     pub control_padding: f32,
     pub radius: f32,
-    pub icon_size: f32,
     pub muted_opacity: f32,
     pub notification_gap: f32,
     pub compact_width: f32,
@@ -124,7 +125,6 @@ pub struct PopoverTokens {
     pub row_radius: f32,
     pub control_height: f32,
     pub control_padding: f32,
-    pub icon_size: f32,
     pub indicator_size: f32,
     pub border_width: f32,
 }
@@ -153,7 +153,6 @@ pub struct SessionTokens {
     pub tile_gap: f32,
     pub tile_size: f32,
     pub tile_radius: f32,
-    pub glyph_size: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -191,6 +190,7 @@ pub const TOKENS: Tokens = Tokens {
         semibold_weight: 600,
         tracking_percent: -3.0,
     },
+    chrome_icon_size: 16.0,
     bar: BarTokens {
         height: 32,
         horizontal_padding: 12.0,
@@ -198,7 +198,6 @@ pub const TOKENS: Tokens = Tokens {
         control_height: 24.0,
         control_padding: 8.0,
         radius: 999.0,
-        icon_size: 16.0,
         muted_opacity: 0.65,
         notification_gap: 4.0,
         compact_width: 520.0,
@@ -246,7 +245,6 @@ pub const TOKENS: Tokens = Tokens {
         row_radius: 12.0,
         control_height: 36.0,
         control_padding: 12.0,
-        icon_size: 16.0,
         indicator_size: 3.0,
         border_width: 1.0,
     },
@@ -269,7 +267,6 @@ pub const TOKENS: Tokens = Tokens {
         tile_gap: 8.0,
         tile_size: 64.0,
         tile_radius: 20.0,
-        glyph_size: 22.0,
     },
     motion: MotionTokens {
         fast_seconds: 0.12,
@@ -287,6 +284,11 @@ mod tests {
     fn bundled_font_is_a_nonempty_sfnt() {
         assert_eq!(&FONT_DATA[..4], &[0, 1, 0, 0]);
         assert!(u16::from_be_bytes([FONT_DATA[4], FONT_DATA[5]]) > 0);
+    }
+
+    #[test]
+    fn phosphor_chrome_icons_use_sixteen_logical_pixels() {
+        assert_eq!(TOKENS.chrome_icon_size, 16.0);
     }
 
     #[test]

@@ -5,14 +5,15 @@ use std::time::Duration;
 use async_io::Timer;
 use freya_components::button::{Button, ButtonLayoutThemePartial};
 use freya_components::scrollviews::ScrollView;
-use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use kobel_services::{Command, SessionVerb};
 use kobel_theme::{TOKENS, icons};
 use kobel_wayland::KeyPress;
 use torin::prelude::{Alignment, Size};
 
-use super::{BarActionSink, BarContext, BarPanel, PopoverLayout, button_colours, popover_frame, use_popover_layout};
+use super::{
+    BarActionSink, BarContext, BarPanel, PopoverLayout, button_colours, icon, popover_frame, use_popover_layout,
+};
 
 const ACTIONS: [SessionAction; 4] = [
     SessionAction::Lock,
@@ -163,16 +164,14 @@ fn session_action_button(
                     press_action(action, armed_action, generation, &sink);
                 })
                 .child(
-                    SvgViewer::new(action.icon())
+                    icon(action.icon())
                         .color(glyph_colour)
-                        .width(Size::px(TOKENS.session.glyph_size))
-                        .height(Size::px(TOKENS.session.glyph_size)),
+                        .a11y_alt(action.accessibility_label(armed)),
                 ),
         )
         .child(
             label()
                 .text(label_text)
-                .a11y_alt(action.accessibility_label(armed))
                 .font_size(TOKENS.typography.small_size)
                 .font_weight(TOKENS.typography.semibold_weight)
                 .color(if armed {
