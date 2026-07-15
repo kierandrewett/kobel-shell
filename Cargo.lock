@@ -2484,6 +2484,8 @@ dependencies = [
  "freya",
  "freya-core",
  "freya-testing",
+ "kobel-services",
+ "kobel-theme",
  "kobel-wayland",
  "torin",
 ]
