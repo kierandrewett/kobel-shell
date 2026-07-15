@@ -126,6 +126,12 @@ if [ "$expected_popup_height" -gt 620 ]; then
 elif [ "$expected_popup_height" -lt 1 ]; then
     expected_popup_height=1
 fi
+expected_datemenu_width=$((primary_width - 24))
+if [ "$expected_datemenu_width" -gt 664 ]; then
+    expected_datemenu_width=664
+elif [ "$expected_datemenu_width" -lt 1 ]; then
+    expected_datemenu_width=1
+fi
 
 session_x=$((primary_width - 28))
 session_restart_x=$((primary_width - 166))
@@ -404,7 +410,7 @@ else
     echo "FAIL: notification history screenshot is missing or empty: $NOTIFICATIONS_HISTORY_OUT"
     fail=1
 fi
-for panel in Session Calendar QuickSettings Notifications; do
+for panel in Session QuickSettings Notifications; do
     if grep -q "\[bar\] opened $panel popup .* at ${expected_popup_width}x${expected_popup_height}" "$DK/bar.log"; then
         echo "PASS: $panel popup resolved to ${expected_popup_width}x${expected_popup_height}"
     else
@@ -413,6 +419,13 @@ for panel in Session Calendar QuickSettings Notifications; do
         fail=1
     fi
 done
+if grep -q "\[bar\] opened Calendar popup .* at ${expected_datemenu_width}x${expected_popup_height}" "$DK/bar.log"; then
+    echo "PASS: Calendar popup resolved to ${expected_datemenu_width}x${expected_popup_height}"
+else
+    echo "FAIL: Calendar popup did not use ${expected_datemenu_width}x${expected_popup_height}"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
 
 
 primary_output_line="$(grep -m1 "\[dock\] mounted" "$DK/dock.log" || true)"

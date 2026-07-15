@@ -129,6 +129,8 @@ pub struct DockTokens {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PopoverTokens {
     pub width: u32,
+    /// Two-column date-menu width (notifications + calendar).
+    pub wide_width: u32,
     pub max_height: u32,
     pub screen_inset: u32,
     pub compact_width: u32,
@@ -252,6 +254,7 @@ pub const TOKENS: Tokens = Tokens {
     },
     popover: PopoverTokens {
         width: 384,
+        wide_width: 664,
         max_height: 620,
         screen_inset: 12,
         compact_width: 368,

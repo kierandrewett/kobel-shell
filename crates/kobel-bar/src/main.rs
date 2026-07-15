@@ -119,7 +119,7 @@ fn main() -> anyhow::Result<()> {
                     return;
                 }
 
-                let layout = PopoverLayout::for_output(output_size);
+                let layout = PopoverLayout::for_output_panel(output_size, popup.panel);
                 if let Some(layout_state) = popup_layouts.borrow().get(&popup.surface).copied()
                     && *layout_state.peek() != layout
                 {
@@ -232,7 +232,7 @@ fn main() -> anyhow::Result<()> {
                         let parent_output = parent_outputs.borrow().get(&parent).copied();
                         let layout = parent_output
                             .and_then(|output| output_sizes.borrow().get(&output).copied())
-                            .map(PopoverLayout::for_output)
+                            .map(|size| PopoverLayout::for_output_panel(size, panel))
                             .unwrap_or_default();
 
                         let snapshots = latest.borrow().clone();

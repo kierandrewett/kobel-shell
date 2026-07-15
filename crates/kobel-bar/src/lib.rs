@@ -53,14 +53,25 @@ pub struct PopoverLayout {
 
 impl PopoverLayout {
     pub fn for_output(output_size: (u32, u32)) -> Self {
+        Self::with_max_width(output_size, TOKENS.popover.width)
+    }
+
+    /// Panel-aware width: the calendar acts as GNOME's two-column date menu.
+    pub fn for_output_panel(output_size: (u32, u32), panel: BarPanel) -> Self {
+        let max_width = match panel {
+            BarPanel::Calendar => TOKENS.popover.wide_width,
+            _ => TOKENS.popover.width,
+        };
+        Self::with_max_width(output_size, max_width)
+    }
+
+    fn with_max_width(output_size: (u32, u32), max_width: u32) -> Self {
         let (output_width, output_height) = output_size;
         let horizontal_insets = TOKENS.popover.screen_inset.saturating_mul(2);
         let vertical_chrome = SURFACE_HEIGHT.saturating_add(TOKENS.popover.screen_inset);
 
         Self {
-            width: output_width
-                .saturating_sub(horizontal_insets)
-                .clamp(1, TOKENS.popover.width),
+            width: output_width.saturating_sub(horizontal_insets).clamp(1, max_width),
             max_height: output_height
                 .saturating_sub(vertical_chrome)
                 .clamp(1, TOKENS.popover.max_height),
@@ -1020,14 +1031,34 @@ impl Component for CalendarPanel {
             )
             .child(events);
 
-        popover_frame().child(
-            ScrollView::new()
-                .height(Size::auto())
-                .max_height(Size::px(layout.inner_max_height()))
-                .show_scrollbar(true)
-                .scroll_with_arrows(true)
-                .child(content),
-        )
+        let calendar_column = ScrollView::new()
+            .height(Size::auto())
+            .max_height(Size::px(layout.inner_max_height()))
+            .show_scrollbar(true)
+            .scroll_with_arrows(true)
+            .child(content);
+
+        if layout.compact() {
+            popover_frame().child(calendar_column)
+        } else {
+            popover_frame()
+                .horizontal()
+                .content(Content::Flex)
+                .spacing(TOKENS.popover.section_gap)
+                .child(rect().width(Size::flex(1.0)).child(notifications::notification_column(
+                    &context,
+                    &sink,
+                    layout.inner_max_height(),
+                    false,
+                )))
+                .child(
+                    rect()
+                        .width(Size::px(1.0))
+                        .height(Size::px(layout.inner_max_height()))
+                        .background(TOKENS.colours.border.rgba()),
+                )
+                .child(rect().width(Size::flex(1.0)).child(calendar_column))
+        }
     }
 }
 

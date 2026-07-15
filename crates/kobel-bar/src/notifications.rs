@@ -24,165 +24,182 @@ impl Component for NotificationsPanel {
         let context = use_consume::<BarContext>();
         let sink = use_consume::<BarActionSink>();
         let layout = use_popover_layout();
-        let snapshot = context.notifications.read().clone();
-        let count = snapshot.notifications.len();
-        let dnd = snapshot.dnd;
-        let dnd_sink = sink.clone();
-        let clear_sink = sink.clone();
+        popover_frame().child(notification_column(
+            &context,
+            &sink,
+            layout.inner_max_height(),
+            layout.compact(),
+        ))
+    }
+}
 
-        let dnd_button = Button::new()
-            .flat()
-            .theme_colors(button_colours(
-                if dnd {
-                    TOKENS.colours.active.rgba().into()
+/// The notification history column: header, optional service banner and the scrollable
+/// card list (or empty state). Rendered standalone by the bell popup and as the left
+/// column of the clock date menu. Not a component, so it takes no hooks.
+pub(crate) fn notification_column(
+    context: &BarContext,
+    sink: &BarActionSink,
+    inner_max_height: f32,
+    compact: bool,
+) -> impl IntoElement {
+    let snapshot = context.notifications.read().clone();
+    let count = snapshot.notifications.len();
+    let dnd = snapshot.dnd;
+    let dnd_sink = sink.clone();
+    let clear_sink = sink.clone();
+
+    let dnd_button = Button::new()
+        .flat()
+        .theme_colors(button_colours(
+            if dnd {
+                TOKENS.colours.active.rgba().into()
+            } else {
+                Color::TRANSPARENT
+            },
+            TOKENS.colours.hover.rgba().into(),
+        ))
+        .theme_layout(button_layout(
+            Size::auto(),
+            TOKENS.popover.control_height,
+            (0.0, TOKENS.popover.control_padding),
+            TOKENS.popover.row_radius,
+        ))
+        .on_press(move |_| dnd_sink.service(Command::SetDnd(!dnd)))
+        .child(
+            label()
+                .text(if dnd { "Resume alerts" } else { "Do not disturb" })
+                .a11y_alt(if dnd {
+                    "Resume notification alerts"
                 } else {
-                    Color::TRANSPARENT
-                },
-                TOKENS.colours.hover.rgba().into(),
-            ))
-            .theme_layout(button_layout(
-                Size::auto(),
-                TOKENS.popover.control_height,
-                (0.0, TOKENS.popover.control_padding),
-                TOKENS.popover.row_radius,
-            ))
-            .on_press(move |_| dnd_sink.service(Command::SetDnd(!dnd)))
+                    "Pause notification alerts"
+                })
+                .font_size(TOKENS.typography.small_size),
+        );
+
+    let clear_button = Button::new()
+        .flat()
+        .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
+        .theme_layout(button_layout(
+            Size::auto(),
+            TOKENS.popover.control_height,
+            (0.0, TOKENS.popover.control_padding),
+            TOKENS.popover.row_radius,
+        ))
+        .on_press(move |_| clear_sink.service(Command::ClearNotifications))
+        .child(
+            label()
+                .text("Clear")
+                .a11y_alt("Clear all notifications")
+                .font_size(TOKENS.typography.small_size),
+        );
+
+    let heading = |width| {
+        rect()
+            .width(width)
+            .spacing(TOKENS.notifications.header_text_gap)
             .child(
                 label()
-                    .text(if dnd { "Resume alerts" } else { "Do not disturb" })
-                    .a11y_alt(if dnd {
-                        "Resume notification alerts"
-                    } else {
-                        "Pause notification alerts"
-                    })
-                    .font_size(TOKENS.typography.small_size),
-            );
-
-        let clear_button = Button::new()
-            .flat()
-            .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
-            .theme_layout(button_layout(
-                Size::auto(),
-                TOKENS.popover.control_height,
-                (0.0, TOKENS.popover.control_padding),
-                TOKENS.popover.row_radius,
-            ))
-            .on_press(move |_| clear_sink.service(Command::ClearNotifications))
+                    .text("Notifications")
+                    .font_size(TOKENS.typography.title_size)
+                    .font_weight(TOKENS.typography.semibold_weight),
+            )
             .child(
                 label()
-                    .text("Clear")
-                    .a11y_alt("Clear all notifications")
-                    .font_size(TOKENS.typography.small_size),
-            );
-
-        let heading = |width| {
-            rect()
-                .width(width)
-                .spacing(TOKENS.notifications.header_text_gap)
-                .child(
-                    label()
-                        .text("Notifications")
-                        .font_size(TOKENS.typography.title_size)
-                        .font_weight(TOKENS.typography.semibold_weight),
-                )
-                .child(
-                    label()
-                        .text(notification_count_label(count))
-                        .font_size(TOKENS.typography.small_size)
-                        .color(TOKENS.colours.text_muted.rgba()),
-                )
-        };
-        let actions = rect()
+                    .text(notification_count_label(count))
+                    .font_size(TOKENS.typography.small_size)
+                    .color(TOKENS.colours.text_muted.rgba()),
+            )
+    };
+    let actions = rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(TOKENS.popover.row_gap)
+        .child(dnd_button)
+        .child(clear_button);
+    let header_height = if compact {
+        TOKENS.notifications.header_height + TOKENS.popover.control_height + TOKENS.popover.row_gap
+    } else {
+        TOKENS.notifications.header_height
+    };
+    let header = if compact {
+        rect()
+            .width(Size::fill())
+            .height(Size::px(header_height))
+            .vertical()
+            .spacing(TOKENS.popover.row_gap)
+            .child(heading(Size::fill()))
+            .child(actions)
+    } else {
+        rect()
+            .width(Size::fill())
+            .height(Size::px(header_height))
             .horizontal()
             .cross_align(Alignment::Center)
-            .spacing(TOKENS.popover.row_gap)
-            .child(dnd_button)
-            .child(clear_button);
-        let compact = layout.compact();
-        let header_height = if compact {
-            TOKENS.notifications.header_height + TOKENS.popover.control_height + TOKENS.popover.row_gap
-        } else {
-            TOKENS.notifications.header_height
-        };
-        let header = if compact {
-            rect()
-                .width(Size::fill())
-                .height(Size::px(header_height))
-                .vertical()
-                .spacing(TOKENS.popover.row_gap)
-                .child(heading(Size::fill()))
-                .child(actions)
-        } else {
-            rect()
-                .width(Size::fill())
-                .height(Size::px(header_height))
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .content(Content::Flex)
-                .child(heading(Size::flex(1.0)))
-                .child(actions)
-        };
+            .content(Content::Flex)
+            .child(heading(Size::flex(1.0)))
+            .child(actions)
+    };
 
-        let unavailable_height = if snapshot.serving {
-            0.0
-        } else {
-            TOKENS.popover.control_height + TOKENS.popover.section_gap
-        };
-        let history_max_height =
-            (layout.inner_max_height() - TOKENS.popover.section_gap - header_height - unavailable_height).max(1.0);
-        let content = if snapshot.notifications.is_empty() {
+    let unavailable_height = if snapshot.serving {
+        0.0
+    } else {
+        TOKENS.popover.control_height + TOKENS.popover.section_gap
+    };
+    let history_max_height =
+        (inner_max_height - TOKENS.popover.section_gap - header_height - unavailable_height).max(1.0);
+    let content = if snapshot.notifications.is_empty() {
+        rect()
+            .width(Size::fill())
+            .height(Size::px(
+                TOKENS.notifications.empty_state_height.min(history_max_height),
+            ))
+            .center()
+            .child(
+                label()
+                    .text("All caught up")
+                    .font_size(TOKENS.typography.body_size)
+                    .color(TOKENS.colours.text_muted.rgba()),
+            )
+            .into_element()
+    } else {
+        ScrollView::new()
+            .height(Size::auto())
+            .max_height(Size::px(history_max_height))
+            .show_scrollbar(true)
+            .scroll_with_arrows(true)
+            .spacing(TOKENS.popover.row_gap)
+            .children(
+                snapshot
+                    .notifications
+                    .into_iter()
+                    .map(|notification| NotificationCard { notification, compact }.into_element()),
+            )
+            .into_element()
+    };
+
+    let mut root = rect()
+        .width(Size::fill())
+        .height(Size::auto())
+        .vertical()
+        .spacing(TOKENS.popover.section_gap)
+        .child(header);
+
+    if !snapshot.serving {
+        root = root.child(
             rect()
                 .width(Size::fill())
-                .height(Size::px(
-                    TOKENS.notifications.empty_state_height.min(history_max_height),
-                ))
-                .center()
+                .padding((TOKENS.notifications.card_gap, TOKENS.notifications.card_padding))
+                .corner_radius(TOKENS.popover.row_radius)
+                .background(TOKENS.colours.active.rgba())
                 .child(
                     label()
-                        .text("All caught up")
-                        .font_size(TOKENS.typography.body_size)
-                        .color(TOKENS.colours.text_muted.rgba()),
-                )
-                .into_element()
-        } else {
-            ScrollView::new()
-                .height(Size::auto())
-                .max_height(Size::px(history_max_height))
-                .show_scrollbar(true)
-                .scroll_with_arrows(true)
-                .spacing(TOKENS.popover.row_gap)
-                .children(
-                    snapshot
-                        .notifications
-                        .into_iter()
-                        .map(|notification| NotificationCard { notification, compact }.into_element()),
-                )
-                .into_element()
-        };
-
-        let mut root = popover_frame()
-            .height(Size::auto())
-            .vertical()
-            .spacing(TOKENS.popover.section_gap)
-            .child(header);
-
-        if !snapshot.serving {
-            root = root.child(
-                rect()
-                    .width(Size::fill())
-                    .padding((TOKENS.notifications.card_gap, TOKENS.notifications.card_padding))
-                    .corner_radius(TOKENS.popover.row_radius)
-                    .background(TOKENS.colours.active.rgba())
-                    .child(
-                        label()
-                            .text("Notification service unavailable")
-                            .font_size(TOKENS.typography.small_size),
-                    ),
-            );
-        }
-
-        root.child(content)
+                        .text("Notification service unavailable")
+                        .font_size(TOKENS.typography.small_size),
+                ),
+        );
     }
+
+    root.child(content)
 }
 
 #[derive(PartialEq)]
