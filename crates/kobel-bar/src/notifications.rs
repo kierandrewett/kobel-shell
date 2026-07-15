@@ -34,11 +34,11 @@ impl Component for NotificationsPanel {
             .flat()
             .theme_colors(button_colours(
                 if dnd {
-                    TOKENS.colours.surface_active.rgba().into()
+                    TOKENS.colours.active.rgba().into()
                 } else {
                     Color::TRANSPARENT
                 },
-                TOKENS.colours.surface_hover.rgba().into(),
+                TOKENS.colours.hover.rgba().into(),
             ))
             .theme_layout(button_layout(
                 Size::auto(),
@@ -60,10 +60,7 @@ impl Component for NotificationsPanel {
 
         let clear_button = Button::new()
             .flat()
-            .theme_colors(button_colours(
-                Color::TRANSPARENT,
-                TOKENS.colours.surface_hover.rgba().into(),
-            ))
+            .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
             .theme_layout(button_layout(
                 Size::auto(),
                 TOKENS.popover.control_height,
@@ -175,7 +172,7 @@ impl Component for NotificationsPanel {
                     .width(Size::fill())
                     .padding((TOKENS.notifications.card_gap, TOKENS.notifications.card_padding))
                     .corner_radius(TOKENS.popover.row_radius)
-                    .background(TOKENS.colours.surface_active.rgba())
+                    .background(TOKENS.colours.active.rgba())
                     .child(
                         label()
                             .text("Notification service unavailable")
@@ -208,10 +205,7 @@ impl Component for NotificationCard {
 
         let close = Button::new()
             .flat()
-            .theme_colors(button_colours(
-                Color::TRANSPARENT,
-                TOKENS.colours.surface_hover.rgba().into(),
-            ))
+            .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
             .theme_layout(
                 ButtonLayoutThemePartial::new()
                     .margin(0.0)
@@ -276,8 +270,8 @@ impl Component for NotificationCard {
             Button::new()
                 .flat()
                 .theme_colors(button_colours(
-                    TOKENS.colours.surface_elevated.rgba().into(),
-                    TOKENS.colours.surface_hover.rgba().into(),
+                    TOKENS.colours.card.rgba().into(),
+                    TOKENS.colours.hover.rgba().into(),
                 ))
                 .theme_layout(button_layout(
                     if self.compact { Size::fill() } else { Size::auto() },
@@ -304,7 +298,7 @@ impl Component for NotificationCard {
             .width(Size::fill())
             .padding(TOKENS.notifications.card_padding)
             .corner_radius(TOKENS.popover.row_radius)
-            .background(TOKENS.colours.surface_elevated.rgba())
+            .background(TOKENS.colours.card.rgba())
             .border(
                 Border::new()
                     .fill(TOKENS.colours.border.rgba())

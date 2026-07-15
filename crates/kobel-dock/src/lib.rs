@@ -402,7 +402,7 @@ impl Component for TooltipBubble {
             .interactive(false)
             .opacity(progress)
             .scale(TOKENS.dock.tooltip_initial_scale + progress * (1.0 - TOKENS.dock.tooltip_initial_scale))
-            .background(TOKENS.colours.surface_elevated.rgba())
+            .background(TOKENS.colours.card.rgba())
             .corner_radius(TOKENS.popover.row_radius)
             .padding(TOKENS.dock.tooltip_padding)
             .shadow((
@@ -476,7 +476,7 @@ impl Component for AppIcon {
                 .width(Size::px(size))
                 .height(Size::px(size))
                 .center()
-                .background(TOKENS.colours.surface_elevated.rgba())
+                .background(TOKENS.colours.card.rgba())
                 .corner_radius(TOKENS.dock.radius * TOKENS.dock.fallback_radius_ratio)
                 .child(
                     label()
@@ -609,11 +609,11 @@ impl Component for DockTile {
             ),
         };
 
-        let hover_alpha = (TOKENS.colours.surface_hover.3 as f32 * hover_progress).round() as u8;
+        let hover_alpha = (TOKENS.colours.hover.3 as f32 * hover_progress).round() as u8;
         let hover_background = (
-            TOKENS.colours.surface_hover.0,
-            TOKENS.colours.surface_hover.1,
-            TOKENS.colours.surface_hover.2,
+            TOKENS.colours.hover.0,
+            TOKENS.colours.hover.1,
+            TOKENS.colours.hover.2,
             hover_alpha,
         );
         let scale = 1.0 + hover_progress * (TOKENS.dock.hover_scale - 1.0);
@@ -740,9 +740,9 @@ impl Component for DockSlab {
                 .into_element()
         }));
         let background = (
-            TOKENS.colours.surface.0,
-            TOKENS.colours.surface.1,
-            TOKENS.colours.surface.2,
+            TOKENS.colours.system.0,
+            TOKENS.colours.system.1,
+            TOKENS.colours.system.2,
             TOKENS.dock.background_opacity,
         );
 

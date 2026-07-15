@@ -7,10 +7,11 @@
 pub mod icons;
 
 /// Family name registered with `kobel_wayland::Shell::with_font`.
-pub const FONT_FAMILY: &str = "Geist Sans";
+pub const FONT_FAMILY: &str = "Adwaita Sans";
 
-/// Geist Sans variable font, vendored from vercel/geist-font v1.7.2.
-pub const FONT_DATA: &[u8] = include_bytes!("../assets/fonts/Geist[wght].ttf");
+/// Adwaita Sans variable font (weight axis 100-900), the GNOME 48+ UI typeface.
+/// Vendored from Fedora's adwaita-sans-fonts 49.0; see LICENSES/AdwaitaSans-OFL.txt.
+pub const FONT_DATA: &[u8] = include_bytes!("../assets/fonts/AdwaitaSans.ttf");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rgba(pub u8, pub u8, pub u8, pub u8);
@@ -39,16 +40,31 @@ pub struct Tokens {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ColourTokens {
+    /// Top bar background. GNOME's `#panel` is pure black.
+    pub panel: Rgba,
+    /// Primary foreground text on dark chrome.
     pub text: Rgba,
+    /// Secondary/subtitle text (GNOME `transparentize($fg, 0.3)`).
     pub text_muted: Rgba,
-    pub surface: Rgba,
-    pub surface_elevated: Rgba,
-    pub surface_hover: Rgba,
-    pub surface_active: Rgba,
+    /// Floating sheet/menu content background (GNOME `$bg_color` #36363a).
+    pub popover: Rgba,
+    /// Cards, tiles and inactive toggles (GNOME `$card_bg_color` #47474c).
+    pub card: Rgba,
+    /// Dash/overview slab (GNOME `$system_overlay_bg_color` ~#38383b).
+    pub system: Rgba,
+    /// Hover fill on interactive surfaces.
+    pub hover: Rgba,
+    /// Pressed/selected fill.
+    pub active: Rgba,
+    /// Hairline dividers (GNOME `transparentize($fg, 0.9)`).
     pub border: Rgba,
+    /// Accent fill: active toggles, primary actions, today (GNOME blue #3584e4).
     pub accent: Rgba,
+    /// Ink on accent fills.
     pub accent_text: Rgba,
+    /// Destructive elements.
     pub danger: Rgba,
+    /// Elevation shadow for tooltips and toasts.
     pub shadow: Rgba,
 }
 
@@ -62,8 +78,6 @@ pub struct TypeTokens {
     pub regular_weight: i32,
     pub medium_weight: i32,
     pub semibold_weight: i32,
-    /// Applied to labels as a percentage of font size.
-    pub tracking_percent: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -167,28 +181,29 @@ pub struct MotionTokens {
 /// through bar, dock or panel components.
 pub const TOKENS: Tokens = Tokens {
     colours: ColourTokens {
-        text: Rgba(238, 239, 242, 255),
-        text_muted: Rgba(170, 173, 183, 255),
-        surface: Rgba(28, 29, 33, 255),
-        surface_elevated: Rgba(39, 40, 46, 255),
-        surface_hover: Rgba(52, 53, 60, 255),
-        surface_active: Rgba(69, 71, 81, 255),
-        border: Rgba(78, 80, 91, 255),
-        accent: Rgba(137, 180, 250, 255),
-        accent_text: Rgba(18, 23, 33, 255),
-        danger: Rgba(242, 139, 130, 255),
-        shadow: Rgba(0, 0, 0, 115),
+        panel: Rgba(0, 0, 0, 255),
+        text: Rgba(255, 255, 255, 255),
+        text_muted: Rgba(255, 255, 255, 178),
+        popover: Rgba(54, 54, 58, 255),
+        card: Rgba(71, 71, 76, 255),
+        system: Rgba(56, 56, 59, 255),
+        hover: Rgba(86, 86, 91, 255),
+        active: Rgba(95, 95, 102, 255),
+        border: Rgba(255, 255, 255, 26),
+        accent: Rgba(53, 132, 228, 255),
+        accent_text: Rgba(255, 255, 255, 255),
+        danger: Rgba(192, 28, 40, 255),
+        shadow: Rgba(0, 0, 0, 64),
     },
     typography: TypeTokens {
         family: FONT_FAMILY,
         title_size: 15.0,
-        body_size: 13.0,
+        body_size: 14.0,
         small_size: 12.0,
-        label_size: 13.0,
+        label_size: 14.0,
         regular_weight: 400,
         medium_weight: 500,
-        semibold_weight: 600,
-        tracking_percent: -3.0,
+        semibold_weight: 700,
     },
     chrome_icon_size: 16.0,
     bar: BarTokens {
@@ -209,7 +224,7 @@ pub const TOKENS: Tokens = Tokens {
         item_gap: 4.0,
         edge_gap: 8,
         radius: 18.0,
-        background_opacity: 204,
+        background_opacity: 255,
         hover_scale: 1.08,
         indicator_active_scale: 1.75,
         indicator_size: 4.0,

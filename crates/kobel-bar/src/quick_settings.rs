@@ -97,7 +97,7 @@ fn button_colours(active: bool) -> ButtonColorsThemePartial {
     let background = if active {
         TOKENS.colours.accent.rgba()
     } else {
-        TOKENS.colours.surface_elevated.rgba()
+        TOKENS.colours.card.rgba()
     };
     let foreground = if active {
         TOKENS.colours.accent_text.rgba()
@@ -107,7 +107,7 @@ fn button_colours(active: bool) -> ButtonColorsThemePartial {
     let hover = if active {
         TOKENS.colours.accent.rgba()
     } else {
-        TOKENS.colours.surface_hover.rgba()
+        TOKENS.colours.hover.rgba()
     };
 
     ButtonColorsThemePartial::new()
@@ -120,7 +120,7 @@ fn button_colours(active: bool) -> ButtonColorsThemePartial {
 
 fn slider_theme() -> SliderThemePartial {
     SliderThemePartial::new()
-        .background(TOKENS.colours.surface_active.rgba())
+        .background(TOKENS.colours.active.rgba())
         .thumb_background(TOKENS.colours.accent.rgba())
         .thumb_inner_background(TOKENS.colours.accent_text.rgba())
         .border_fill(TOKENS.colours.accent.rgba())
@@ -192,7 +192,7 @@ fn quick_chip(
         .background(if active {
             TOKENS.colours.accent.rgba()
         } else {
-            TOKENS.colours.surface_elevated.rgba()
+            TOKENS.colours.card.rgba()
         })
         .child(main);
 
@@ -397,7 +397,7 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
                 .width(Size::fill())
                 .padding(TOKENS.popover.control_padding)
                 .corner_radius(TOKENS.popover.row_radius)
-                .background(TOKENS.colours.surface_active.rgba())
+                .background(TOKENS.colours.active.rgba())
                 .horizontal()
                 .content(Content::Flex)
                 .cross_align(Alignment::Center)

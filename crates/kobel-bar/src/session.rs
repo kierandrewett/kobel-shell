@@ -132,9 +132,9 @@ fn session_action_button(
     let mut click_selection = selection;
     let label_text = if armed { "Press again" } else { action.label() };
     let background = if armed || selected {
-        TOKENS.colours.surface_active.rgba().into()
+        TOKENS.colours.active.rgba().into()
     } else {
-        TOKENS.colours.surface_elevated.rgba().into()
+        TOKENS.colours.card.rgba().into()
     };
     let glyph_colour = if action.destructive() || armed {
         TOKENS.colours.danger.rgba()
@@ -150,7 +150,7 @@ fn session_action_button(
         .child(
             Button::new()
                 .flat()
-                .theme_colors(button_colours(background, TOKENS.colours.surface_hover.rgba().into()))
+                .theme_colors(button_colours(background, TOKENS.colours.hover.rgba().into()))
                 .theme_layout(
                     ButtonLayoutThemePartial::new()
                         .margin(0.0)

@@ -371,7 +371,7 @@ pub fn bar_app() -> impl IntoElement {
     let mut bar = rect()
         .width(Size::fill())
         .height(Size::fill())
-        .background(TOKENS.colours.surface.rgba())
+        .background(TOKENS.colours.panel.rgba())
         .padding((0.0, TOKENS.bar.horizontal_padding))
         .horizontal()
         .content(Content::Flex)
@@ -450,7 +450,7 @@ pub(crate) fn popover_frame() -> Rect {
         .width(Size::fill())
         .padding(TOKENS.popover.padding)
         .corner_radius(TOKENS.popover.radius)
-        .background(TOKENS.colours.surface.rgba())
+        .background(TOKENS.colours.popover.rgba())
         .border(
             Border::new()
                 .fill(TOKENS.colours.border.rgba())
@@ -503,10 +503,7 @@ impl Component for ClockButton {
             .child(
                 Button::new()
                     .flat()
-                    .theme_colors(button_colours(
-                        Color::TRANSPARENT,
-                        TOKENS.colours.surface_hover.rgba().into(),
-                    ))
+                    .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
                     .theme_layout(button_layout(
                         Size::auto(),
                         TOKENS.bar.control_height,
@@ -587,8 +584,8 @@ impl Component for StatusPill {
                 Button::new()
                     .flat()
                     .theme_colors(button_colours(
-                        TOKENS.colours.surface_elevated.rgba().into(),
-                        TOKENS.colours.surface_hover.rgba().into(),
+                        TOKENS.colours.card.rgba().into(),
+                        TOKENS.colours.hover.rgba().into(),
                     ))
                     .theme_layout(button_layout(
                         Size::auto(),
@@ -642,10 +639,7 @@ impl Component for NotificationButton {
             .child(
                 Button::new()
                     .flat()
-                    .theme_colors(button_colours(
-                        Color::TRANSPARENT,
-                        TOKENS.colours.surface_hover.rgba().into(),
-                    ))
+                    .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
                     .theme_layout(button_layout(
                         Size::auto(),
                         TOKENS.bar.control_height,
@@ -673,10 +667,7 @@ impl Component for SessionButton {
             .child(
                 Button::new()
                     .flat()
-                    .theme_colors(button_colours(
-                        Color::TRANSPARENT,
-                        TOKENS.colours.surface_hover.rgba().into(),
-                    ))
+                    .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
                     .theme_layout(button_layout(
                         Size::auto(),
                         TOKENS.bar.control_height,
@@ -847,16 +838,16 @@ impl Component for CalendarPanel {
                 }
 
                 let background = if is_selected {
-                    TOKENS.colours.surface_active.rgba().into()
+                    TOKENS.colours.active.rgba().into()
                 } else if date == today {
-                    TOKENS.colours.surface_hover.rgba().into()
+                    TOKENS.colours.hover.rgba().into()
                 } else {
                     Color::TRANSPARENT
                 };
                 row = row.child(
                     Button::new()
                         .flat()
-                        .theme_colors(button_colours(background, TOKENS.colours.surface_hover.rgba().into()))
+                        .theme_colors(button_colours(background, TOKENS.colours.hover.rgba().into()))
                         .theme_layout(button_layout(
                             Size::flex(1.0),
                             TOKENS.popover.control_height,
@@ -903,7 +894,7 @@ impl Component for CalendarPanel {
                         .width(Size::fill())
                         .padding(TOKENS.popover.control_padding)
                         .corner_radius(TOKENS.popover.row_radius)
-                        .background(TOKENS.colours.surface_elevated.rgba())
+                        .background(TOKENS.colours.card.rgba())
                         .vertical()
                         .spacing(TOKENS.bar.module_gap)
                         .child(
@@ -942,8 +933,8 @@ impl Component for CalendarPanel {
         let previous = Button::new()
             .flat()
             .theme_colors(button_colours(
-                TOKENS.colours.surface_elevated.rgba().into(),
-                TOKENS.colours.surface_hover.rgba().into(),
+                TOKENS.colours.card.rgba().into(),
+                TOKENS.colours.hover.rgba().into(),
             ))
             .theme_layout(button_layout(
                 Size::px(TOKENS.popover.control_height),
@@ -971,8 +962,8 @@ impl Component for CalendarPanel {
         let next = Button::new()
             .flat()
             .theme_colors(button_colours(
-                TOKENS.colours.surface_elevated.rgba().into(),
-                TOKENS.colours.surface_hover.rgba().into(),
+                TOKENS.colours.card.rgba().into(),
+                TOKENS.colours.hover.rgba().into(),
             ))
             .theme_layout(button_layout(
                 Size::px(TOKENS.popover.control_height),
