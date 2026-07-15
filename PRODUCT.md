@@ -7,62 +7,66 @@ product
 ## Users
 
 Kieran (the author, a systems developer who lives in his desktop all day) and gnoblin
-adopters — Linux power users who chose a stripped, patched GNOME specifically so they
-could bring their own chrome. They are fluent in the category's best work (AGS/Aylur
-shells, end-4's illogical-impulse, caelestia) and will instantly clock anything
-generic, laggy, or "vibe-coded". Context of use: every hour of every day, as the
-ambient frame around all other work.
+adopters -- Linux power users who chose a stripped, patched GNOME specifically so they
+could bring their own chrome, rendered by a fast native stack. They know exactly what
+stock GNOME looks and feels like and will instantly clock anything that is "almost
+GNOME but off": wrong spacing, wrong weight, wrong icon language, laggy popovers.
+Context of use: every hour of every day, as the ambient frame around all other work.
 
 ## Product Purpose
 
-kobel-shell is the complete chrome suite for gnoblin, built in Rust with Freya as
-the UI framework, rendered by our own wlr-layer-shell host (no winit, no GTK): top
-bar, launcher, quick-settings dashboard, notification drawer, calendar, media +
-OSD, session controls. gnoblin vacates the space (no gnome panel/dash/OSD); kobel
-fills all of it and drives gnoblin live over org.gnoblin.Shell. Success = it feels
-better than the gnome-shell it replaced — buttery, instant, personal — and other
-gnoblin users want to steal it.
+kobel-shell is the complete chrome suite for gnoblin, built in Rust with Freya as the
+UI framework, rendered by our own wlr-layer-shell host (no winit, no GTK): top bar,
+quick-settings, the clock date menu (calendar + notifications), dock, session controls.
+gnoblin vacates the space (no gnome panel/dash/OSD); kobel fills all of it and drives
+gnoblin live over org.gnoblin.Shell.
+
+The visual target is a **faithful clone of stock GNOME 49 (Adwaita dark)**. Success =
+a gnoblin user cannot tell, at a glance, that the chrome is not the real gnome-shell it
+replaced -- same anatomy, same colours, same typeface, same icon language -- while being
+buttery and instant because it is native Rust/Skia rather than GJS.
+
+The source of truth for every visual value is the running gnoblin shell theme:
+`~/dev/gnoblin/subprojects/gnome-shell/data/theme/gnome-shell-sass` (and the compiled
+`gnome-shell-dark.css`). Values are copied from there, never invented.
 
 ## Brand Personality
 
-Playful precision. Three words: **buttery, playful, exacting**. The energy of the
-sakura-pop rice scene (bright filled chips, colourful icons, warm art behind dark
-chrome) executed with instrument-grade discipline (real spring physics, tabular
-numerals, consistent affordances). Delight lives in motion and moments, never in
-decoration for its own sake.
+Invisible correctness. The shell should read as stock GNOME, not as a re-skin or a
+"GNOME-inspired" theme. Personality lives in performance (native springs, instant
+popovers), not in a distinct visual identity. If a detail differs from stock GNOME,
+that is a bug, not a style choice.
 
 ## Anti-references
 
-- The 70 rejected explorations from July 2026: recolored rice templates, corporate
-  design-system cosplay, static pictures of shells.
-- Glassmorphism-by-default — gnoblin has no blur-behind protocol; fake frost is a lie.
-  Surfaces are honestly opaque.
-- The AI-default azure/indigo accent, cream/sand surfaces, ghost-cards
-  (1px border + soft wide shadow), 24px+ rounding, gradient-monogram "app icons".
-- Stock GNOME Adwaita — the thing gnoblin exists to strip.
+- A custom identity layered over GNOME (recoloured accents, bespoke surfaces,
+  non-Adwaita icon packs). The earlier "sakura pop" direction was explicitly dropped:
+  the shell now clones GNOME rather than replacing its look.
+- Phosphor / Lucide / any non-Adwaita icon set in the chrome. Stock GNOME uses Adwaita
+  symbolic icons.
+- Glassmorphism / blur-behind. gnoblin has no blur-behind protocol; GNOME surfaces are
+  honestly opaque and so are ours.
+- "Almost GNOME": correct colours on the wrong structure (calendar-only clock popup, an
+  invented quick-settings header, a standalone power button in the panel). Structure and
+  anatomy must match GNOME, not just the palette.
 
 ## Design Principles
 
-1. **Motion is the product.** Every state change is a spring — interruptible,
-   velocity-preserving, never a keyframe that snaps. If it can't animate at 60fps,
-   it doesn't ship.
-2. **Honest materials.** Opaque panels with real elevation. No effect the real
-   compositor can't render.
-3. **Accent is earned.** The leaf accent appears only as active state, primary action,
-   and live data — solid fills with dark ink text, never tints-as-decoration.
-4. **Data wears tabular.** Times, percentages, metrics render in a monospace face
-   with tabular numerals (`tnum`) so digits align like an instrument (see
-   DESIGN.md's typography section for the exact family split).
-5. **Dogfood gnoblin.** org.gnoblin.Shell is a visible, first-class surface (soft
-   reload, feature ownership, screencast grants) — the shell demos the compositor.
+1. **Match the source.** Colours, radii, spacing, font and icons come from the gnoblin
+   shell SASS, not from taste. When in doubt, read the stylesheet.
+2. **Match the anatomy.** The panel is minimal (workspace dots, centred clock, status
+   cluster). Power/lock/settings live in Quick Settings; notifications live in the clock
+   date menu. There is no bespoke chrome GNOME does not have.
+3. **Honest materials.** Opaque panels; no effect the compositor cannot render.
+4. **Motion is native.** Every state change is an interruptible spring; if it cannot
+   animate at 60fps it does not ship. This is where kobel earns its keep over GJS.
+5. **Dogfood gnoblin.** org.gnoblin.Shell is a first-class surface (soft reload, feature
+   ownership, screencast grants).
 
 ## Accessibility & Inclusion
 
-- `prefers-reduced-motion` honored everywhere: every UI spring settles instantly
-  on its target instead of animating.
-- Text contrast ≥ 4.5:1 on all surfaces, including muted/secondary text.
-- Full keyboard path on the two keyboard-Exclusive surfaces: launcher
-  (type, arrows, Enter, Escape) and session (arrow-nav, press-again confirm).
-  Every other surface is pointer/hover-only; see DESIGN.md's "Keyboard path"
-  note for the full breakdown.
-- Hit targets ≥ 24px in the bar, ≥ 32px in panels.
+- `prefers-reduced-motion` honoured everywhere: springs settle instantly on target.
+- Text contrast follows Adwaita dark (white / 70% white on the GNOME surface greys).
+- Full keyboard path on the keyboard-exclusive surfaces (launcher, session); every other
+  surface is pointer/hover-only plus Escape-to-close.
+- Hit targets follow GNOME's panel-button and quick-toggle sizing.

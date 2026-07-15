@@ -1,6 +1,6 @@
 # kobel-shell
 
-Rust shell infrastructure for [gnoblin](https://github.com/kierandrewett/gnoblin), with a custom wlr-layer-shell host that embeds [Freya](https://github.com/marc2332/freya) without winit.
+Rust shell infrastructure for [gnoblin](https://github.com/kierandrewett/gnoblin), with a custom wlr-layer-shell host that embeds [Freya](https://github.com/marc2332/freya) without winit. The chrome targets a faithful clone of stock GNOME 49 (Adwaita dark); see DESIGN.md.
 
 The concrete UI lives in two independently runnable crates: a service-backed top bar and a dock that remains the next presentation surface to rebuild.
 
@@ -12,7 +12,7 @@ crates/
 |-- kobel-wayland   layer-shell host, EGL/Skia renderer and embedded Freya runtime
 |-- kobel-services  UI-free system snapshots and typed commands
 |-- kobel-shell     UI-neutral manager, IPC server and spring primitives
-|-- kobel-theme     shared design tokens, Geist Sans and Phosphor icon assets
+|-- kobel-theme     shared design tokens, Adwaita Sans and Adwaita symbolic icon assets
 |-- kobel-bar       independent top-bar component, preview and layer-shell process
 `-- kobel-dock      independent dock component, preview and layer-shell process
 
@@ -27,9 +27,9 @@ tools/freya-devtools-app     matching standalone Freya inspector
 - `kobel-wayland`, `kobel-services`, `kobel-ipc` and `kobel-shell` remain reusable infrastructure.
 - `kobel-bar` and `kobel-dock` are independent processes with no dependency on each other.
 - Each UI crate exposes the exact component used by its layer-shell process and native preview.
-- The bar is a service-backed, full-width top-layer surface with Activities, a live clock, network/audio state and optional battery state. The clock opens an anchored calendar popup with month navigation, GNOME calendar events and keyboard focus; Escape or an outside click closes it.
+- The bar is a service-backed, full-width top-layer surface with a workspace dot, a live clock, network/audio state and optional battery state. The clock opens an anchored calendar popup with month navigation, GNOME calendar events and keyboard focus; Escape or an outside click closes it. (Merging notifications into this popover as GNOME's two-column date menu is in progress.)
 - The dock is still a basic transparent bottom-layer starting point with an exclusive zone and outer margin.
-- `kobel-theme` centralises the restyleable presentation contract: plain RGBA/geometry tokens, vendored Geist Sans and vendored Phosphor Bold SVG bytes. Shell chrome glyphs share one 16 logical pixel token; application artwork keeps its independent dock sizing.
+- `kobel-theme` centralises the restyleable presentation contract: plain RGBA/geometry tokens copied from the gnoblin shell theme, vendored Adwaita Sans and vendored Adwaita symbolic SVG bytes. Shell chrome glyphs share one 16 logical pixel token; application artwork keeps its independent dock sizing.
 - The remaining shell surfaces and popouts stay in `archive/freya-ui-v1` as implementation reference while the new UI is rebuilt.
 - `kobelctl toggle <surface>` accepts UI-owned names made from lowercase ASCII letters, digits, `-` and `_`.
 
