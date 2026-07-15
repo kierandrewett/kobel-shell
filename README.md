@@ -2,7 +2,7 @@
 
 Rust shell infrastructure for [gnoblin](https://github.com/kierandrewett/gnoblin), with a custom wlr-layer-shell host that embeds [Freya](https://github.com/marc2332/freya) without winit.
 
-The concrete UI now starts as two deliberately basic, independently runnable crates: a top bar and a dock.
+The concrete UI lives in two independently runnable crates: a service-backed top bar and a dock that remains the next presentation surface to rebuild.
 
 ## Workspace
 
@@ -12,6 +12,7 @@ crates/
 |-- kobel-wayland   layer-shell host, EGL/Skia renderer and embedded Freya runtime
 |-- kobel-services  UI-free system snapshots and typed commands
 |-- kobel-shell     UI-neutral manager, IPC server and spring primitives
+|-- kobel-theme     shared design tokens, Geist Sans and Phosphor icon assets
 |-- kobel-bar       independent top-bar component, preview and layer-shell process
 `-- kobel-dock      independent dock component, preview and layer-shell process
 
@@ -26,10 +27,10 @@ tools/freya-devtools-app     matching standalone Freya inspector
 - `kobel-wayland`, `kobel-services`, `kobel-ipc` and `kobel-shell` remain reusable infrastructure.
 - `kobel-bar` and `kobel-dock` are independent processes with no dependency on each other.
 - Each UI crate exposes the exact component used by its layer-shell process and native preview.
-- The bar is a transparent top-layer surface with an exclusive zone.
-- The dock is a transparent bottom-layer surface with an exclusive zone and outer margin.
-- Both components are deliberately basic starting points for human-owned UI work.
-- No theme, icons or larger shell surface vocabulary has been restored from the archived UI.
+- The bar is a service-backed, full-width top-layer surface with Activities, a live clock, network/audio state and optional battery state.
+- The dock is still a basic transparent bottom-layer starting point with an exclusive zone and outer margin.
+- `kobel-theme` centralises the restyleable presentation contract: plain RGBA/geometry tokens, vendored Geist Sans and vendored Phosphor Bold SVG bytes.
+- Larger shell surfaces and popouts remain in `archive/freya-ui-v1` only as implementation reference while the new UI is rebuilt.
 - `kobelctl toggle <surface>` accepts UI-owned names made from lowercase ASCII letters, digits, `-` and `_`.
 
 ## Requirements
