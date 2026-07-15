@@ -1406,6 +1406,13 @@ mod tests {
         runner.click_cursor(settings.center().to_f64());
         assert!(matches!(
             receiver.try_recv(),
+            Ok(super::BarAction::ClosePanel {
+                panel: BarPanel::QuickSettings,
+                ..
+            })
+        ));
+        assert!(matches!(
+            receiver.try_recv(),
             Ok(super::BarAction::Service(Command::LaunchApp(app))) if app == "org.gnome.Settings"
         ));
 
@@ -1417,6 +1424,13 @@ mod tests {
             })
             .expect("lock control");
         runner.click_cursor(lock.center().to_f64());
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::ClosePanel {
+                panel: BarPanel::QuickSettings,
+                ..
+            })
+        ));
         assert!(matches!(
             receiver.try_recv(),
             Ok(super::BarAction::Service(Command::Session(

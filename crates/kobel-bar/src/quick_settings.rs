@@ -268,7 +268,15 @@ fn action_button(label_text: &'static str, sink: &BarActionSink, command: Comman
 }
 
 fn system_icon_button(glyph: &'static [u8], alt: &'static str, sink: &BarActionSink, command: Command) -> Element {
-    system_action_button(glyph, alt, command_handler(sink, command))
+    // Stock GNOME dismisses Quick Settings when a system-row control fires, so the
+    // Settings app never opens under a lingering popup and Lock cannot return to an
+    // open menu after unlock. Queue the close ahead of the service command.
+    let sink = sink.clone();
+    let on_press = EventHandler::new(move |_| {
+        sink.close(BarPanel::QuickSettings);
+        sink.service(command.clone());
+    });
+    system_action_button(glyph, alt, on_press)
 }
 
 fn system_action_button(
