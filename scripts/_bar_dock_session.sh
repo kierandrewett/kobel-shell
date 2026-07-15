@@ -97,9 +97,42 @@ for process in "$bar_pid:$DK/bar.log" "$dock_pid:$DK/dock.log"; do
 done
 primary_monitor="${VIRTUAL_MONITORS%% *}"
 primary_width="${primary_monitor%%x*}"
+primary_height="${primary_monitor#*x}"
+primary_bar_geometry=""
+for _ in $(seq 1 40); do
+    primary_bar_geometry="$(grep -m1 "\[bar\] output .* resolved to" "$DK/bar.log" || true)"
+    [ -n "$primary_bar_geometry" ] && break
+    sleep 0.1
+done
+if [[ "$primary_bar_geometry" =~ resolved\ to\ ([0-9]+)x([0-9]+)$ ]]; then
+    primary_width="${BASH_REMATCH[1]}"
+    primary_height="${BASH_REMATCH[2]}"
+else
+    echo "FAIL: bar did not report resolved primary output geometry"
+    fail=1
+fi
+
+expected_popup_width=$((primary_width - 24))
+if [ "$expected_popup_width" -gt 384 ]; then
+    expected_popup_width=384
+elif [ "$expected_popup_width" -lt 1 ]; then
+    expected_popup_width=1
+fi
+# Mirrors the public bar surface height and popover screen inset exercised by
+# PopoverLayout::for_output; a mismatch is exactly what this hosted gate should catch.
+expected_popup_height=$((primary_height - 32 - 12))
+if [ "$expected_popup_height" -gt 620 ]; then
+    expected_popup_height=620
+elif [ "$expected_popup_height" -lt 1 ]; then
+    expected_popup_height=1
+fi
 
 session_x=$((primary_width - 28))
 session_restart_x=$((primary_width - 166))
+session_restart_actions=("move:${session_restart_x}:112" "wait:250" "click")
+if [ "$primary_width" -lt 408 ]; then
+    session_restart_actions=("key:Down" "wait:250" "key:Return")
+fi
 session_closed_before=$(grep -c "\[bar\] Session popup .* closed" "$DK/bar.log" || true)
 if ! python3 "$INPUT_DRIVER" \
     --settle-prime 1.5 \
@@ -108,9 +141,7 @@ if ! python3 "$INPUT_DRIVER" \
     "click" \
     "wait:500" \
     "screenshot:${SESSION_OUT}" \
-    "move:${session_restart_x}:112" \
-    "wait:250" \
-    "click" \
+    "${session_restart_actions[@]}" \
     "wait:500" \
     "screenshot:${SESSION_CONFIRM_OUT}" >"$DK/session-input.log" 2>&1; then
     echo "FAIL: session popup interaction injection failed"
@@ -160,6 +191,9 @@ else
 fi
 
 clock_x=$((primary_width / 2))
+if [ "$primary_width" -le 520 ]; then
+    clock_x=36
+fi
 if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "click:${clock_x}:16" "wait:500"; then
     echo "FAIL: calendar popup input injection failed"
     fail=1
@@ -236,6 +270,11 @@ fi
 
 status_x=$((primary_width - 112))
 quick_settings_drill_x=$((primary_width - 302))
+if [ "$primary_width" -lt 408 ]; then
+    quick_settings_drill_x=$((primary_width - 58))
+elif [ "$quick_settings_drill_x" -lt 48 ]; then
+    quick_settings_drill_x=48
+fi
 quick_settings_closed_before=$(grep -c "\[bar\] QuickSettings popup .* closed" "$DK/bar.log" || true)
 if ! python3 "$INPUT_DRIVER" \
     --settle-prime 1.5 \
@@ -349,7 +388,7 @@ notifications_history_opened_before=$(grep -c "\[bar\] opened Notifications popu
 notifications_history_closed_before=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
 if ! python3 "$INPUT_DRIVER" \
     --settle-prime 1.5 \
-    "move:1000:300" \
+    "move:$((primary_width / 2)):$((primary_height / 2))" \
     "wait:250" \
     "move:${notifications_x}:16" \
     "wait:250" \
@@ -378,6 +417,16 @@ else
     echo "FAIL: notification history screenshot is missing or empty: $NOTIFICATIONS_HISTORY_OUT"
     fail=1
 fi
+for panel in Session Calendar QuickSettings Notifications; do
+    if grep -q "\[bar\] opened $panel popup .* at ${expected_popup_width}x${expected_popup_height}" "$DK/bar.log"; then
+        echo "PASS: $panel popup resolved to ${expected_popup_width}x${expected_popup_height}"
+    else
+        echo "FAIL: $panel popup did not use ${expected_popup_width}x${expected_popup_height}"
+        tail -30 "$DK/bar.log"
+        fail=1
+    fi
+done
+
 
 primary_output_line="$(grep -m1 "\[dock\] mounted" "$DK/dock.log" || true)"
 if [[ "$primary_output_line" =~ on\ (OutputId\([0-9]+\)) ]]; then
@@ -406,7 +455,7 @@ if [[ "$show_point_line" =~ x=([0-9]+)\ y=([0-9]+) ]]; then
         show_y="${BASH_REMATCH[2]}"
         if python3 "$INPUT_DRIVER" \
             --settle-prime 1.5 \
-            "move:${away_x}:300" \
+            "move:${away_x}:$((primary_height / 2))" \
             "wait:250" \
             "move:${show_x}:${show_y}" \
             "wait:250" \
