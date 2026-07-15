@@ -2481,7 +2481,10 @@ name = "kobel-dock"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-io",
  "freya",
+ "freya-animation",
+ "freya-components",
  "freya-core",
  "freya-testing",
  "kobel-services",

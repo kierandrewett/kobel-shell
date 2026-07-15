@@ -7,6 +7,7 @@ pub const ARROW_CLOCKWISE: &[u8] = include_bytes!("../assets/icons/arrow-clockwi
 pub const BATTERY_HIGH: &[u8] = include_bytes!("../assets/icons/battery-high.svg");
 pub const BELL: &[u8] = include_bytes!("../assets/icons/bell.svg");
 pub const CALENDAR_BLANK: &[u8] = include_bytes!("../assets/icons/calendar-blank.svg");
+pub const DOTS_NINE: &[u8] = include_bytes!("../assets/icons/dots-nine.svg");
 pub const CARET_DOWN: &[u8] = include_bytes!("../assets/icons/caret-down.svg");
 pub const LOCK: &[u8] = include_bytes!("../assets/icons/lock.svg");
 pub const SPEAKER_HIGH: &[u8] = include_bytes!("../assets/icons/speaker-high.svg");
@@ -17,7 +18,8 @@ pub const SIGN_OUT: &[u8] = include_bytes!("../assets/icons/sign-out.svg");
 #[cfg(test)]
 mod tests {
     use super::{
-        ARROW_CLOCKWISE, BATTERY_HIGH, BELL, CALENDAR_BLANK, CARET_DOWN, LOCK, POWER, SIGN_OUT, SPEAKER_HIGH, WIFI_HIGH,
+        ARROW_CLOCKWISE, BATTERY_HIGH, BELL, CALENDAR_BLANK, CARET_DOWN, DOTS_NINE, LOCK, POWER, SIGN_OUT,
+        SPEAKER_HIGH, WIFI_HIGH,
     };
 
     #[test]
@@ -27,6 +29,7 @@ mod tests {
             BATTERY_HIGH,
             BELL,
             CALENDAR_BLANK,
+            DOTS_NINE,
             CARET_DOWN,
             LOCK,
             POWER,

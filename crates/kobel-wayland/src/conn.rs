@@ -548,6 +548,12 @@ impl OutputControl<'_> {
         Control { host: &mut *self.host }.set_input_region_empty(id, empty);
     }
 
+    /// Restrict pointer input while handling output lifecycle events. This is
+    /// the [`OutputControl`] counterpart to [`Control::set_input_region_rects`].
+    pub fn set_input_region_rects(&mut self, id: SurfaceId, rects: &[(i32, i32, i32, i32)]) {
+        Control { host: &mut *self.host }.set_input_region_rects(id, rects);
+    }
+
     /// Current compositor-logical dimensions for `output`.
     ///
     /// Returns `None` until xdg-output metadata is complete, after removal, or if

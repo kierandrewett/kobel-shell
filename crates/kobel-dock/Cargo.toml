@@ -12,6 +12,9 @@ devtools = ["dep:freya", "freya/devtools", "freya/winit"]
 
 [dependencies]
 anyhow = { workspace = true }
+async-io = { workspace = true }
+freya-animation = { workspace = true }
+freya-components = { workspace = true }
 freya-core = { workspace = true }
 kobel-services = { workspace = true }
 kobel-theme = { workspace = true }

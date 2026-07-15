@@ -2,12 +2,18 @@
 
 use std::path::PathBuf;
 use std::process::{Command as ProcessCommand, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
 
+use async_io::Timer;
+use freya_animation::prelude::*;
+use freya_components::image_viewer::ImageViewer;
+use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use kobel_services::{AppEntry, AppsSnapshot, ServiceEvent};
 use kobel_theme::TOKENS;
-use kobel_wayland::{Anchor, KeyboardInteractivity, Margins, SurfaceConfig, SurfaceSize, ToplevelInfo};
-use torin::prelude::{Alignment, Size};
+use kobel_wayland::{Anchor, KeyboardInteractivity, LoopWaker, Margins, SurfaceConfig, SurfaceSize, ToplevelInfo};
+use torin::prelude::{Alignment, Position, Size};
 
 pub const OUTER_GAP: i32 = TOKENS.dock.edge_gap;
 pub const TOOLTIP_HEADROOM: u32 = 56;
@@ -29,6 +35,34 @@ pub enum DockRequest {
     Activate(String),
     Minimize(String),
     ShowApplications,
+}
+
+#[derive(Clone)]
+pub struct DockActionSink {
+    sender: mpsc::Sender<DockRequest>,
+    waker: Option<LoopWaker>,
+}
+
+impl DockActionSink {
+    pub fn new(sender: mpsc::Sender<DockRequest>, waker: LoopWaker) -> Self {
+        Self {
+            sender,
+            waker: Some(waker),
+        }
+    }
+
+    fn inert() -> Self {
+        let (sender, _receiver) = mpsc::channel();
+        Self { sender, waker: None }
+    }
+
+    fn send(&self, request: DockRequest) {
+        if self.sender.send(request).is_ok()
+            && let Some(waker) = &self.waker
+        {
+            waker.wake();
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -183,8 +217,14 @@ pub fn app_ids_match(left: &str, right: &str) -> bool {
         return true;
     }
 
-    normalized_app_id(left).rsplit('.').next().is_some_and(|left_tail| {
-        normalized_app_id(right)
+    let left = normalized_app_id(left);
+    let right = normalized_app_id(right);
+    if left.contains('.') && right.contains('.') {
+        return false;
+    }
+
+    left.rsplit('.').next().is_some_and(|left_tail| {
+        right
             .rsplit('.')
             .next()
             .is_some_and(|right_tail| left_tail.eq_ignore_ascii_case(right_tail))
@@ -195,7 +235,7 @@ fn find_app<'a>(apps: &'a AppsSnapshot, id: &str) -> Option<&'a AppEntry> {
     apps.apps
         .iter()
         .find(|app| exact_app_ids_match(&app.id, id))
-        .or_else(|| apps.by_id(id))
+        .or_else(|| apps.apps.iter().find(|app| app_ids_match(&app.id, id)))
 }
 
 fn windows_for(id: &str, windows: &[ToplevelInfo]) -> Vec<ToplevelInfo> {
@@ -286,6 +326,435 @@ pub fn scroll_request(windows: &[ToplevelInfo], forward: bool) -> Option<DockReq
     Some(DockRequest::Activate(windows[next].id.clone()))
 }
 
+fn indicator_window(total: usize, focused: Option<usize>) -> (usize, usize) {
+    let visible = total.min(4);
+    if total <= 4 {
+        return (0, visible);
+    }
+
+    let focused = focused.unwrap_or(0);
+    (focused.saturating_sub(1).min(total - 4), visible)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct TooltipHover {
+    visible: State<bool>,
+    generation: State<u64>,
+}
+
+impl TooltipHover {
+    fn create() -> Self {
+        Self {
+            visible: use_state(|| false),
+            generation: use_state(|| 0),
+        }
+    }
+
+    fn enter(self) {
+        let mut generation = self.generation;
+        *generation.write() += 1;
+        let current = *generation.peek();
+        let mut visible = self.visible;
+        let platform = Platform::get();
+        spawn(async move {
+            Timer::after(Duration::from_millis(TOKENS.motion.tooltip_delay_millis)).await;
+            if *generation.peek() == current {
+                visible.set(true);
+                platform.send(UserEvent::RequestRedraw);
+            }
+        });
+    }
+
+    fn leave(self) {
+        let mut generation = self.generation;
+        *generation.write() += 1;
+        let mut visible = self.visible;
+        visible.set(false);
+    }
+}
+
+#[derive(PartialEq)]
+struct TooltipBubble {
+    text: String,
+    visible: bool,
+    item_size: f32,
+}
+
+impl Component for TooltipBubble {
+    fn render(&self) -> impl IntoElement {
+        let visible = self.visible;
+        let animation = use_animation_transition(visible, |from, to| {
+            let duration = if to {
+                TOKENS.motion.standard_seconds
+            } else {
+                TOKENS.motion.fast_seconds
+            };
+            AnimNum::new(u8::from(from) as f32, u8::from(to) as f32)
+                .time((duration * 1000.0) as u64)
+                .ease(Ease::Out)
+                .function(Function::Expo)
+        });
+        let progress = animation.read().value();
+
+        rect()
+            .position(
+                Position::new_absolute()
+                    .bottom(self.item_size + TOKENS.dock.tooltip_offset as f32)
+                    .left(0.0),
+            )
+            .interactive(false)
+            .opacity(progress)
+            .scale(0.96 + progress * 0.04)
+            .background(TOKENS.colours.surface_elevated.rgba())
+            .corner_radius(TOKENS.popover.row_radius)
+            .padding((6.0, 10.0))
+            .shadow((0.0, 5.0, 16.0, 0.0, TOKENS.colours.shadow.rgba()))
+            .child(
+                label()
+                    .text(self.text.clone())
+                    .font_size(TOKENS.typography.small_size)
+                    .font_weight(TOKENS.typography.medium_weight)
+                    .color(TOKENS.colours.text.rgba())
+                    .max_lines(1usize),
+            )
+    }
+}
+
+#[derive(Clone, PartialEq)]
+enum IconData {
+    Svg(String, Bytes),
+    Raster(String, Bytes),
+    Missing,
+}
+
+fn load_icon(path: &Option<PathBuf>) -> IconData {
+    let Some(path) = path else {
+        return IconData::Missing;
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return IconData::Missing;
+    };
+    let key = path.to_string_lossy().into_owned();
+    let bytes = Bytes::from(bytes);
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
+    {
+        IconData::Svg(key, bytes)
+    } else {
+        IconData::Raster(key, bytes)
+    }
+}
+
+#[derive(PartialEq)]
+struct AppIcon {
+    path: Option<PathBuf>,
+    fallback: String,
+    size: f32,
+}
+
+impl Component for AppIcon {
+    fn render(&self) -> impl IntoElement {
+        let path = use_reactive(&self.path);
+        let data = use_memo(move || load_icon(&path.read()));
+        let size = self.size;
+
+        match &*data.read() {
+            IconData::Svg(key, bytes) => SvgViewer::new((key.clone(), bytes.clone()))
+                .width(Size::px(size))
+                .height(Size::px(size))
+                .into_element(),
+            IconData::Raster(key, bytes) => ImageViewer::new((key.clone(), bytes.clone()))
+                .width(Size::px(size))
+                .height(Size::px(size))
+                .into_element(),
+            IconData::Missing => rect()
+                .width(Size::px(size))
+                .height(Size::px(size))
+                .center()
+                .background(TOKENS.colours.surface_elevated.rgba())
+                .corner_radius(TOKENS.dock.radius * 0.55)
+                .child(
+                    label()
+                        .text(self.fallback.chars().next().unwrap_or('?').to_uppercase().to_string())
+                        .font_size(size * 0.5)
+                        .font_weight(TOKENS.typography.semibold_weight)
+                        .color(TOKENS.colours.text.rgba()),
+                )
+                .into_element(),
+        }
+    }
+}
+
+#[derive(PartialEq)]
+struct WindowDot {
+    focused: bool,
+}
+
+impl Component for WindowDot {
+    fn render(&self) -> impl IntoElement {
+        let focused = self.focused;
+        let animation = use_animation_transition(focused, |from, to| {
+            AnimNum::new(u8::from(from) as f32, u8::from(to) as f32)
+                .time((TOKENS.motion.dock_seconds * 1000.0) as u64)
+                .ease(Ease::Out)
+                .function(Function::Expo)
+        });
+        let progress = animation.read().value();
+        let slot_width = TOKENS.dock.indicator_size * TOKENS.dock.indicator_active_scale;
+
+        rect()
+            .width(Size::px(slot_width))
+            .height(Size::px(TOKENS.dock.indicator_size))
+            .center()
+            .child(
+                rect()
+                    .width(Size::px(TOKENS.dock.indicator_size))
+                    .height(Size::px(TOKENS.dock.indicator_size))
+                    .corner_radius(TOKENS.dock.indicator_size)
+                    .background(if focused {
+                        TOKENS.colours.accent.rgba()
+                    } else {
+                        TOKENS.colours.text_muted.rgba()
+                    })
+                    .scale((1.0 + progress * (TOKENS.dock.indicator_active_scale - 1.0), 1.0)),
+            )
+    }
+}
+
+fn window_indicators(windows: &[ToplevelInfo], item_size: f32) -> Element {
+    let focused = windows.iter().position(|window| window.focused);
+    let (start, count) = indicator_window(windows.len(), focused);
+    let dots = (0..count)
+        .map(|index| {
+            WindowDot {
+                focused: focused == Some(start + index),
+            }
+            .into_element()
+        })
+        .collect::<Vec<_>>();
+
+    rect()
+        .position(Position::new_absolute().bottom(3.0).left(0.0))
+        .width(Size::px(item_size))
+        .horizontal()
+        .main_align(Alignment::Center)
+        .spacing(2.0)
+        .interactive(false)
+        .children(dots)
+        .into_element()
+}
+
+#[derive(Clone, PartialEq)]
+enum DockTileContent {
+    ShowApplications,
+    App(DockItem),
+}
+
+#[derive(PartialEq)]
+struct DockTile {
+    content: DockTileContent,
+    metrics: DockMetrics,
+}
+
+impl Component for DockTile {
+    fn render(&self) -> impl IntoElement {
+        let sink = use_consume::<DockActionSink>();
+        let mut hovered = use_state(|| false);
+        let tooltip = TooltipHover::create();
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let hover_animation = use_animation_transition(hovered, |from: bool, to: bool| {
+            AnimNum::new(u8::from(from) as f32, u8::from(to) as f32)
+                .time((TOKENS.motion.dock_seconds * 1000.0) as u64)
+                .ease(Ease::Out)
+                .function(Function::Expo)
+        });
+        let hover_progress = hover_animation.read().value();
+
+        let (name, primary, middle, windows, icon): (
+            String,
+            DockRequest,
+            Option<DockRequest>,
+            Vec<ToplevelInfo>,
+            Element,
+        ) = match &self.content {
+            DockTileContent::ShowApplications => (
+                "Show Applications".to_string(),
+                DockRequest::ShowApplications,
+                None,
+                Vec::new(),
+                SvgViewer::new(kobel_theme::icons::DOTS_NINE)
+                    .color(TOKENS.colours.text.rgba())
+                    .width(Size::px(self.metrics.icon_size))
+                    .height(Size::px(self.metrics.icon_size))
+                    .into_element(),
+            ),
+            DockTileContent::App(item) => (
+                item.name.clone(),
+                primary_request(&item.id, &item.windows),
+                Some(DockRequest::Launch(item.id.clone())),
+                item.windows.clone(),
+                AppIcon {
+                    path: item.icon.clone(),
+                    fallback: item.name.clone(),
+                    size: self.metrics.icon_size,
+                }
+                .into_element(),
+            ),
+        };
+
+        let hover_alpha = (TOKENS.colours.surface_hover.3 as f32 * hover_progress).round() as u8;
+        let hover_background = (
+            TOKENS.colours.surface_hover.0,
+            TOKENS.colours.surface_hover.1,
+            TOKENS.colours.surface_hover.2,
+            hover_alpha,
+        );
+        let scale = 1.0 + hover_progress * (TOKENS.dock.hover_scale - 1.0);
+        let press_sink = sink.clone();
+        let middle_sink = sink.clone();
+        let wheel_sink = sink;
+        let wheel_windows = windows.clone();
+
+        let tile = rect()
+            .width(Size::px(self.metrics.item_size))
+            .height(Size::px(self.metrics.item_size))
+            .center()
+            .background(hover_background)
+            .corner_radius(TOKENS.dock.radius * 0.66)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .a11y_alt(name.clone())
+            .on_pointer_enter(move |_| {
+                hovered.set(true);
+                tooltip.enter();
+            })
+            .on_pointer_leave(move |_| {
+                hovered.set(false);
+                tooltip.leave();
+            })
+            .on_press(move |_| press_sink.send(primary.clone()))
+            .on_mouse_down(move |event: Event<MouseEventData>| {
+                if event.button == Some(MouseButton::Middle)
+                    && let Some(request) = &middle
+                {
+                    middle_sink.send(request.clone());
+                }
+            })
+            .on_wheel(move |event: Event<WheelEventData>| {
+                if let Some(request) = scroll_request(&wheel_windows, event.delta_y > 0.0) {
+                    wheel_sink.send(request);
+                }
+            })
+            .maybe(focus() == Focus::Keyboard, |el| {
+                el.border(Border::new().fill(TOKENS.colours.accent.rgba()).width(2.0))
+            })
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .center()
+                    .scale(scale)
+                    .child(icon),
+            )
+            .maybe(!windows.is_empty(), |el| {
+                el.child(window_indicators(&windows, self.metrics.item_size))
+            });
+
+        rect()
+            .width(Size::px(self.metrics.item_size))
+            .height(Size::px(self.metrics.item_size))
+            .child(tile)
+            .child(TooltipBubble {
+                text: name,
+                visible: *tooltip.visible.read(),
+                item_size: self.metrics.item_size,
+            })
+    }
+}
+
+#[derive(PartialEq)]
+struct DockSlab {
+    items: Vec<DockItem>,
+    metrics: DockMetrics,
+}
+
+impl Component for DockSlab {
+    fn render(&self) -> impl IntoElement {
+        let entrance = use_animation(|config| {
+            config.on_creation(OnCreation::Run);
+            (
+                AnimNum::new(0.94, 1.0)
+                    .time((TOKENS.motion.dock_seconds * 1000.0) as u64)
+                    .ease(Ease::Out)
+                    .function(Function::Expo),
+                AnimNum::new(0.0, 1.0)
+                    .time((TOKENS.motion.dock_seconds * 1000.0) as u64)
+                    .ease(Ease::Out)
+                    .function(Function::Expo),
+            )
+        });
+        let entrance = entrance.read();
+        let scale = entrance.0.value();
+        let opacity = entrance.1.value();
+        let mut children = Vec::with_capacity(self.items.len() + 2);
+        children.push(
+            rect()
+                .key("show-applications")
+                .width(Size::px(self.metrics.item_size))
+                .height(Size::px(self.metrics.item_size))
+                .child(DockTile {
+                    content: DockTileContent::ShowApplications,
+                    metrics: self.metrics,
+                })
+                .into_element(),
+        );
+        children.push(
+            rect()
+                .width(Size::px(SEPARATOR_WIDTH))
+                .height(Size::px(self.metrics.icon_size))
+                .background(TOKENS.colours.border.rgba())
+                .into_element(),
+        );
+        children.extend(self.items.iter().cloned().map(|item| {
+            let key = item.id.clone();
+            rect()
+                .key(key)
+                .width(Size::px(self.metrics.item_size))
+                .height(Size::px(self.metrics.item_size))
+                .child(DockTile {
+                    content: DockTileContent::App(item),
+                    metrics: self.metrics,
+                })
+                .into_element()
+        }));
+        let background = (
+            TOKENS.colours.surface.0,
+            TOKENS.colours.surface.1,
+            TOKENS.colours.surface.2,
+            TOKENS.dock.background_opacity,
+        );
+
+        rect()
+            .width(Size::px(self.metrics.width))
+            .height(Size::px(self.metrics.height))
+            .horizontal()
+            .main_align(Alignment::Center)
+            .cross_align(Alignment::Center)
+            .spacing(TOKENS.dock.item_gap)
+            .padding(TOKENS.dock.padding)
+            .background(background)
+            .corner_radius(TOKENS.dock.radius)
+            .shadow((0.0, 4.0, 18.0, 0.0, TOKENS.colours.shadow.rgba()))
+            .scale(scale)
+            .opacity(opacity)
+            .children(children)
+    }
+}
+
 pub fn dock_app() -> impl IntoElement {
     let context = use_consume::<DockContext>();
     let items = dock_items(
@@ -293,6 +762,7 @@ pub fn dock_app() -> impl IntoElement {
         &context.apps.read(),
         &context.windows.read(),
     );
+    let metrics = DockMetrics::for_output(*context.output_width.read(), items.len());
 
     rect()
         .width(Size::fill())
@@ -300,20 +770,8 @@ pub fn dock_app() -> impl IntoElement {
         .vertical()
         .main_align(Alignment::End)
         .cross_align(Alignment::Center)
-        .child(
-            rect()
-                .horizontal()
-                .spacing(TOKENS.dock.item_gap)
-                .padding(TOKENS.dock.padding)
-                .background(TOKENS.colours.surface.rgba())
-                .corner_radius(TOKENS.dock.radius)
-                .children(
-                    items
-                        .into_iter()
-                        .map(|item| item.name.into_element())
-                        .collect::<Vec<_>>(),
-                ),
-        )
+        .font_family(TOKENS.typography.family)
+        .child(DockSlab { items, metrics })
 }
 
 pub fn dock_preview_app() -> impl IntoElement {
@@ -327,6 +785,7 @@ pub fn dock_preview_app() -> impl IntoElement {
             960,
         )
     });
+    use_provide_context(DockActionSink::inert);
     dock_app()
 }
 
@@ -360,7 +819,7 @@ mod tests {
 
     use super::{
         DockMetrics, DockRequest, OUTER_GAP, SURFACE_HEIGHT, app_ids_match, dock_items, dock_preview_app,
-        parse_favourite_apps, primary_request, scroll_request, surface_config,
+        indicator_window, parse_favourite_apps, primary_request, scroll_request, surface_config,
     };
 
     fn app(id: &str, name: &str) -> AppEntry {
@@ -479,6 +938,26 @@ mod tests {
     }
 
     #[test]
+    fn closed_favourite_does_not_claim_a_qualified_app_with_the_same_tail() {
+        let apps = AppsSnapshot {
+            apps: vec![
+                app("org.foo.Terminal", "Foo Terminal"),
+                app("com.bar.Terminal", "Bar Terminal"),
+            ],
+        };
+        let items = dock_items(
+            &["org.foo.Terminal".to_string()],
+            &apps,
+            &[window("bar-1", "com.bar.Terminal", true)],
+        );
+
+        assert_eq!(items.len(), 2);
+        assert!(items[0].windows.is_empty());
+        assert_eq!(items[1].id, "com.bar.Terminal");
+        assert_eq!(items[1].windows[0].id, "bar-1");
+    }
+
+    #[test]
     fn primary_request_matches_dash_to_dock_click_action() {
         assert_eq!(
             primary_request("firefox", &[]),
@@ -518,6 +997,14 @@ mod tests {
             Some(DockRequest::Activate("one".to_string()))
         );
         assert_eq!(scroll_request(&[], true), None);
+    }
+
+    #[test]
+    fn window_indicators_cap_at_four_and_keep_focus_visible() {
+        assert_eq!(indicator_window(3, Some(2)), (0, 3));
+        assert_eq!(indicator_window(7, Some(0)), (0, 4));
+        assert_eq!(indicator_window(7, Some(4)), (3, 4));
+        assert_eq!(indicator_window(7, Some(6)), (3, 4));
     }
 
     #[test]
