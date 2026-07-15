@@ -393,7 +393,7 @@ pub fn bar_app() -> impl IntoElement {
                     .horizontal()
                     .cross_align(Alignment::Center)
                     .main_align(Alignment::Start)
-                    .child(ActivitiesButton),
+                    .child(WorkspaceIndicator),
             )
             .child(ClockButton { compact })
             .child(right);
@@ -410,19 +410,24 @@ pub fn bar_preview_app() -> impl IntoElement {
 }
 
 #[derive(PartialEq)]
-struct ActivitiesButton;
+struct WorkspaceIndicator;
 
-impl Component for ActivitiesButton {
+impl Component for WorkspaceIndicator {
     fn render(&self) -> impl IntoElement {
+        // GNOME 48+ shows workspace dots here. gnoblin exposes no workspace state,
+        // so render a single dot for the one workspace. Matches `.workspace-dot`:
+        // circular, panel foreground, half the status-icon size.
+        let dot = TOKENS.chrome_icon_size * 0.5;
         rect()
             .height(Size::px(TOKENS.bar.control_height))
             .padding((0.0, TOKENS.bar.control_padding))
             .center()
             .child(
-                label()
-                    .text("Activities")
-                    .font_size(TOKENS.typography.label_size)
-                    .font_weight(TOKENS.typography.semibold_weight),
+                rect()
+                    .width(Size::px(dot))
+                    .height(Size::px(dot))
+                    .corner_radius(999.0)
+                    .background(TOKENS.colours.text.rgba()),
             )
     }
 }
