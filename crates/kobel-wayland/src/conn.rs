@@ -513,7 +513,7 @@ pub struct OutputControl<'a> {
     host: &'a mut Host,
     /// The output being removed (for an [`OutputEvent::Removed`]). sctk keeps the
     /// removed proxy in its `OutputState` until the output_destroyed callback
-    /// returns, so [`OutputControl::remaining`] filters it out. `None` for Added.
+    /// returns, so [`OutputControl::remaining`] filters it out. `None` otherwise.
     removing: Option<wl_output::WlOutput>,
 }
 
@@ -1508,13 +1508,22 @@ impl OutputHandler for Host {
     }
 
     fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
-        // Fires on the output's first `Done`. Startup outputs were already announced
-        // eagerly by Shell::on_output, so this only mounts genuinely-new (hotplugged)
-        // outputs; announce_added dedupes via announced_outputs.
+        // Fires on the output's first `Done`. Startup outputs were announced eagerly
+        // before that metadata existed, so their first Done becomes Updated; a real
+        // hotplug is mounted through Added.
+        let already_announced = self.announced_outputs.contains(&output_id_of(&output));
         self.announce_added(&output);
+        if already_announced {
+            self.dispatch_output(OutputEvent::Updated(output_id_of(&output)), None);
+        }
     }
 
-    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
+    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
+        let id = output_id_of(&output);
+        if self.announced_outputs.contains(&id) {
+            self.dispatch_output(OutputEvent::Updated(id), None);
+        }
+    }
 
     fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
         // sctk still lists `output` in OutputState until this returns; destroy_output

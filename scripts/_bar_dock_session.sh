@@ -379,6 +379,58 @@ else
     fail=1
 fi
 
+primary_output_line="$(grep -m1 "\[dock\] mounted" "$DK/dock.log" || true)"
+if [[ "$primary_output_line" =~ on\ (OutputId\([0-9]+\)) ]]; then
+    primary_output="${BASH_REMATCH[1]}"
+else
+    primary_output=""
+fi
+show_point_line=""
+if [ -n "$primary_output" ]; then
+    for _ in $(seq 1 40); do
+        show_point_line="$(grep -F "resolved Show Applications point" "$DK/dock.log" | grep -F "on $primary_output:" | tail -1 || true)"
+        [ -n "$show_point_line" ] && break
+        sleep 0.25
+    done
+fi
+show_request_before=$(grep -c "Show Applications requires the native launcher" "$DK/dock.log" || true)
+show_clicked=0
+if [[ "$show_point_line" =~ x=([0-9]+)\ y=([0-9]+) ]]; then
+    away_x=$((primary_width / 2))
+    for attempt in 1 2 3; do
+        show_point_line="$(grep -F "resolved Show Applications point" "$DK/dock.log" | grep -F "on $primary_output:" | tail -1 || true)"
+        if [[ ! "$show_point_line" =~ x=([0-9]+)\ y=([0-9]+) ]]; then
+            continue
+        fi
+        show_x="${BASH_REMATCH[1]}"
+        show_y="${BASH_REMATCH[2]}"
+        if python3 "$INPUT_DRIVER" \
+            --settle-prime 1.5 \
+            "move:${away_x}:300" \
+            "wait:250" \
+            "move:${show_x}:${show_y}" \
+            "wait:250" \
+            "click" \
+            "wait:500" >"$DK/dock-input.log" 2>&1; then
+            show_request_after=$(grep -c "Show Applications requires the native launcher" "$DK/dock.log" || true)
+            if [ "$show_request_after" -gt "$show_request_before" ]; then
+                show_clicked=1
+                break
+            fi
+        fi
+    done
+    cat "$DK/dock-input.log"
+else
+    echo "FAIL: no resolved Show Applications coordinate for the primary output"
+fi
+if [ "$show_clicked" -eq 1 ]; then
+    echo "PASS: dock Show Applications click crossed the precise input region"
+else
+    echo "FAIL: dock Show Applications click did not reach its typed action"
+    tail -30 "$DK/dock.log"
+    fail=1
+fi
+
 for port in 7354 7355; do
     if [ -n "$(ss -Htnl "sport = :$port")" ]; then
         echo "FAIL: devtools port $port is already in use"
@@ -525,6 +577,57 @@ assert_mounts() {
 
 assert_mounts "$DK/bar.log" bar
 assert_mounts "$DK/dock.log" dock
+
+assert_provisional_widths_resolved() {
+    local log="$1"
+    local line
+    local monitor
+    local output
+    local width
+    local unresolved=0
+    local -A expected_widths=()
+    local -A provisional=()
+    local -A resolved=()
+    local -A resolved_widths=()
+
+    for monitor in $VIRTUAL_MONITORS; do
+        width="${monitor%%x*}"
+        expected_widths["$width"]=$(( ${expected_widths[$width]:-0} + 1 ))
+    done
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ no\ logical\ width\ for\ (OutputId\([0-9]+\)) ]]; then
+            provisional["${BASH_REMATCH[1]}"]=1
+        elif [[ "$line" =~ updated\ SurfaceId\([0-9]+\)\ on\ (OutputId\([0-9]+\))\ to\ logical\ width\ ([0-9]+) ]]; then
+            resolved["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+        fi
+    done < "$log"
+
+    for output in "${!provisional[@]}"; do
+        if [ -z "${resolved[$output]:-}" ]; then
+            echo "FAIL: dock kept provisional geometry for $output"
+            unresolved=1
+        fi
+    done
+    for output in "${!resolved[@]}"; do
+        width="${resolved[$output]}"
+        resolved_widths["$width"]=$(( ${resolved_widths[$width]:-0} + 1 ))
+    done
+    for width in "${!expected_widths[@]}"; do
+        if [ "${resolved_widths[$width]:-0}" -ne "${expected_widths[$width]}" ]; then
+            echo "FAIL: dock resolved ${resolved_widths[$width]:-0} output(s) at ${width}px, expected ${expected_widths[$width]}"
+            unresolved=1
+        fi
+    done
+
+    if [ "$unresolved" -eq 0 ]; then
+        echo "PASS: dock resolved every provisional output width to the virtual-monitor geometry"
+    else
+        fail=1
+    fi
+}
+
+assert_provisional_widths_resolved "$DK/dock.log"
 
 echo "== bar log =="
 cat "$DK/bar.log"

@@ -74,16 +74,19 @@ impl OutputId {
 }
 
 /// An output lifecycle event delivered to the handler installed with
-/// [`Shell::on_output`]. The host fires [`OutputEvent::Added`] for every output --
-/// those present at startup AND those hotplugged at runtime -- so the app has one
-/// mount path; [`OutputEvent::SurfaceClosed`] when the compositor retires a single
-/// surface (its output may stay live); and [`OutputEvent::Removed`] once an output
-/// goes away.
+/// [`Shell::on_output`]. The host fires [`OutputEvent::Added`] for every output,
+/// [`OutputEvent::Updated`] when its logical metadata becomes available or changes,
+/// [`OutputEvent::SurfaceClosed`] when the compositor retires one surface (while its
+/// output may stay live), and [`OutputEvent::Removed`] once an output goes away.
 #[derive(Clone, Debug)]
 pub enum OutputEvent {
     /// An output became available (present at startup or hotplugged). Mount the
     /// per-output surfaces for it via [`OutputControl::create_on`].
     Added(OutputId),
+    /// The compositor published new metadata for a live output. Presentation crates
+    /// should re-read [`OutputControl::logical_size`] and update output-dependent
+    /// geometry without remounting the surface.
+    Updated(OutputId),
     /// The compositor closed exactly ONE surface (wlr-layer-shell `closed`). Per the
     /// protocol this retires a single surface and does NOT imply its output died --
     /// the compositor MAY close a surface while the output stays live, so mutter's

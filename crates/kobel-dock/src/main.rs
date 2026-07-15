@@ -4,15 +4,41 @@ use std::rc::Rc;
 use std::sync::mpsc;
 
 use freya_core::prelude::IntoElement;
-use kobel_dock::{DockActionSink, DockContext, DockRequest};
+use kobel_dock::{DockActionSink, DockContext, DockMetrics, DockRequest, OUTER_GAP, SURFACE_HEIGHT};
 use kobel_services::{AppsSnapshot, Command, ServiceCapability, ServiceEvent, ServiceSet, Services};
-use kobel_wayland::{OutputEvent, Shell, SurfaceId};
+use kobel_wayland::{OutputEvent, OutputId, Shell, SurfaceId};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct DockGeometry {
+    input_rect: (i32, i32, i32, i32),
+    show_applications_point: (i32, i32),
+}
 
 #[derive(Clone, PartialEq)]
 struct MountedDock {
     context: DockContext,
+    output: OutputId,
     output_width: u32,
-    input_rect: (i32, i32, i32, i32),
+    output_height: u32,
+    geometry: DockGeometry,
+    geometry_resolved: bool,
+}
+
+fn dock_geometry(metrics: DockMetrics, output_width: u32, output_height: u32) -> DockGeometry {
+    let input_rect = metrics.input_rect(output_width);
+    let item_centre = (kobel_theme::TOKENS.dock.padding + metrics.item_size / 2.0).round() as i32;
+    DockGeometry {
+        input_rect,
+        show_applications_point: (
+            input_rect.0 + item_centre,
+            output_height as i32 - OUTER_GAP - SURFACE_HEIGHT as i32 + input_rect.1 + item_centre,
+        ),
+    }
+}
+
+fn log_show_applications_point(surface: SurfaceId, output: OutputId, point: (i32, i32)) {
+    let (x, y) = point;
+    eprintln!("[dock] resolved Show Applications point for {surface:?} on {output:?}: x={x} y={y}");
 }
 
 fn main() -> anyhow::Result<()> {
@@ -41,13 +67,11 @@ fn main() -> anyhow::Result<()> {
         let latest_windows = latest_windows.clone();
         move |event, control| match event {
             OutputEvent::Added(output) => {
-                let output_width = control.logical_size(output).map_or_else(
-                    || {
-                        eprintln!("[dock] no logical width for {output:?}; using 1920 until the output is rebound");
-                        1920
-                    },
-                    |(width, _)| width,
-                );
+                let logical_size = control.logical_size(output);
+                let (output_width, output_height) = logical_size.unwrap_or_else(|| {
+                    eprintln!("[dock] no logical width for {output:?}; using provisional 1920");
+                    (1920, 1080)
+                });
                 let sink = DockActionSink::new(action_tx.clone(), action_waker.clone());
                 let setup_sink = sink.clone();
                 let setup_favourites = favourites.clone();
@@ -68,19 +92,52 @@ fn main() -> anyhow::Result<()> {
                     || kobel_dock::dock_app().into_element(),
                 ) {
                     Ok((surface, context)) => {
-                        let input_rect = context.metrics().input_rect(output_width);
-                        control.set_input_region_rects(surface, &[input_rect]);
+                        let geometry = dock_geometry(context.metrics(), output_width, output_height);
+                        control.set_input_region_rects(surface, &[geometry.input_rect]);
+                        if logical_size.is_some() {
+                            log_show_applications_point(surface, output, geometry.show_applications_point);
+                        }
                         docks.borrow_mut().insert(
                             surface,
                             MountedDock {
                                 context,
+                                output,
                                 output_width,
-                                input_rect,
+                                output_height,
+                                geometry,
+                                geometry_resolved: logical_size.is_some(),
                             },
                         );
                         eprintln!("[dock] mounted {surface:?} on {output:?}");
                     }
                     Err(error) => eprintln!("[dock] failed to mount on {output:?}: {error:#}"),
+                }
+            }
+            OutputEvent::Updated(output) => {
+                let Some((output_width, output_height)) = control.logical_size(output) else {
+                    return;
+                };
+                for (surface, dock) in docks.borrow_mut().iter_mut() {
+                    if dock.output != output
+                        || (dock.geometry_resolved
+                            && dock.output_width == output_width
+                            && dock.output_height == output_height)
+                    {
+                        continue;
+                    }
+                    dock.output_width = output_width;
+                    dock.output_height = output_height;
+                    dock.geometry_resolved = true;
+                    dock.context.set_output_width(output_width);
+                    let geometry = dock_geometry(dock.context.metrics(), output_width, output_height);
+                    if geometry.input_rect != dock.geometry.input_rect {
+                        control.set_input_region_rects(*surface, &[geometry.input_rect]);
+                    }
+                    dock.geometry = geometry;
+                    eprintln!(
+                        "[dock] updated {surface:?} on {output:?} to logical width {output_width} height {output_height}"
+                    );
+                    log_show_applications_point(*surface, output, geometry.show_applications_point);
                 }
             }
             OutputEvent::SurfaceClosed { output, surface } => {
@@ -128,11 +185,16 @@ fn main() -> anyhow::Result<()> {
 
             if regions_dirty {
                 for (surface, dock) in docks.borrow_mut().iter_mut() {
-                    let input_rect = dock.context.metrics().input_rect(dock.output_width);
-                    if input_rect != dock.input_rect {
-                        control.set_input_region_rects(*surface, &[input_rect]);
-                        dock.input_rect = input_rect;
+                    let geometry = dock_geometry(dock.context.metrics(), dock.output_width, dock.output_height);
+                    if geometry.input_rect != dock.geometry.input_rect {
+                        control.set_input_region_rects(*surface, &[geometry.input_rect]);
                     }
+                    if dock.geometry_resolved
+                        && geometry.show_applications_point != dock.geometry.show_applications_point
+                    {
+                        log_show_applications_point(*surface, dock.output, geometry.show_applications_point);
+                    }
+                    dock.geometry = geometry;
                 }
             }
 

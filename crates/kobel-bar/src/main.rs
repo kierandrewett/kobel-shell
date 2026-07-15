@@ -87,6 +87,7 @@ fn main() -> anyhow::Result<()> {
                     Err(error) => eprintln!("[bar] failed to mount on {output:?}: {error:#}"),
                 }
             }
+            OutputEvent::Updated(_) => {}
             OutputEvent::SurfaceClosed { output, surface } => {
                 contexts.borrow_mut().remove(&surface);
                 if let Some(popup) = active_popup.get().filter(|popup| popup.surface == surface) {
