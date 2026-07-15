@@ -8,40 +8,17 @@ use kobel_services::{Command, Notification};
 use kobel_theme::{TOKENS, icons};
 use torin::prelude::{Alignment, Content, Size};
 
-use super::{
-    BarActionSink, BarContext, button_colours, button_layout, decorative_icon, icon, popover_frame, use_popover_layout,
-};
-
-pub fn notifications_popup_app() -> impl IntoElement {
-    NotificationsPanel
-}
-
-#[derive(PartialEq)]
-struct NotificationsPanel;
-
-impl Component for NotificationsPanel {
-    fn render(&self) -> impl IntoElement {
-        let context = use_consume::<BarContext>();
-        let sink = use_consume::<BarActionSink>();
-        let layout = use_popover_layout();
-        popover_frame().child(notification_column(
-            &context,
-            &sink,
-            layout.inner_max_height(),
-            layout.compact(),
-        ))
-    }
-}
+use super::{BarActionSink, BarContext, button_colours, button_layout, decorative_icon, icon};
 
 /// The notification history column: header, optional service banner and the scrollable
-/// card list (or empty state). Rendered standalone by the bell popup and as the left
-/// column of the clock date menu. Not a component, so it takes no hooks.
+/// card list (or empty state). Rendered as the left column of the clock date menu.
+/// Not a component, so it takes no hooks.
 pub(crate) fn notification_column(
     context: &BarContext,
     sink: &BarActionSink,
     inner_max_height: f32,
     compact: bool,
-) -> impl IntoElement {
+) -> impl IntoElement + use<> {
     let snapshot = context.notifications.read().clone();
     let count = snapshot.notifications.len();
     let dnd = snapshot.dnd;

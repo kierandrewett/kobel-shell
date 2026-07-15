@@ -251,7 +251,6 @@ fn main() -> anyhow::Result<()> {
                             move || match panel {
                                 BarPanel::Calendar => kobel_bar::calendar_popup_app().into_element(),
                                 BarPanel::QuickSettings => kobel_bar::quick_settings_popup_app().into_element(),
-                                BarPanel::Notifications => kobel_bar::notifications_popup_app().into_element(),
                                 BarPanel::Session => kobel_bar::session_popup_app().into_element(),
                             },
                         );

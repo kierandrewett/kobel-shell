@@ -4,7 +4,6 @@ mod notifications;
 mod quick_settings;
 mod session;
 
-pub use notifications::notifications_popup_app;
 pub use quick_settings::quick_settings_popup_app;
 pub use session::session_popup_app;
 
@@ -37,7 +36,6 @@ const MAX_VISIBLE_EVENTS: usize = 2;
 pub enum BarPanel {
     Calendar,
     QuickSettings,
-    Notifications,
     Session,
 }
 
@@ -376,7 +374,6 @@ pub fn bar_app() -> impl IntoElement {
         .main_align(Alignment::End)
         .spacing(TOKENS.bar.module_gap)
         .child(StatusPill { compact })
-        .child(NotificationButton)
         .child(SessionButton);
 
     let mut bar = rect()
@@ -611,59 +608,6 @@ impl Component for StatusPill {
                     ))
                     .on_press(move |_| open_quick_settings.toggle(BarPanel::QuickSettings, *bounds.read()))
                     .child(status.child(label().text("").a11y_alt("Open quick settings"))),
-            )
-    }
-}
-
-#[derive(PartialEq)]
-struct NotificationButton;
-
-impl Component for NotificationButton {
-    fn render(&self) -> impl IntoElement {
-        let context = use_consume::<BarContext>();
-        let sink = use_consume::<BarActionSink>();
-        let bounds = use_state(Area::default);
-        let mut measured = bounds;
-        let open_notifications = sink.clone();
-        let notifications = context.notifications.read();
-        let count = notifications.notifications.len();
-        let accessible_label = match count {
-            0 => "Open notifications".to_string(),
-            1 => "Open notifications, 1 item".to_string(),
-            count => format!("Open notifications, {count} items"),
-        };
-
-        let mut content = rect()
-            .horizontal()
-            .cross_align(Alignment::Center)
-            .spacing(TOKENS.bar.notification_gap)
-            .child(decorative_icon(icons::BELL));
-        if count > 0 {
-            content = content.child(
-                label()
-                    .text(if count > 9 { "9+".to_string() } else { count.to_string() })
-                    .font_size(TOKENS.typography.small_size)
-                    .font_weight(TOKENS.typography.semibold_weight),
-            );
-        }
-        if notifications.dnd {
-            content = content.opacity(TOKENS.bar.muted_opacity);
-        }
-
-        rect()
-            .on_sized(move |event: Event<SizedEventData>| measured.set(event.area))
-            .child(
-                Button::new()
-                    .flat()
-                    .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
-                    .theme_layout(button_layout(
-                        Size::auto(),
-                        TOKENS.bar.control_height,
-                        (0.0, TOKENS.bar.control_padding),
-                        TOKENS.bar.radius,
-                    ))
-                    .on_press(move |_| open_notifications.toggle(BarPanel::Notifications, *bounds.read()))
-                    .child(content.child(label().text("").a11y_alt(accessible_label))),
             )
     }
 }
@@ -1090,17 +1034,6 @@ pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32), layout: 
         )
         .anchor(PopupAnchor::BottomRight)
         .gravity(PopupGravity::BottomLeft),
-        BarPanel::Notifications => PopupConfig::new(
-            "kobel-notifications",
-            anchor_rect,
-            SurfaceSize::ContentSized {
-                width: layout.width,
-                max_height: layout.max_height,
-            },
-            PreferredTheme::Dark,
-        )
-        .anchor(PopupAnchor::BottomRight)
-        .gravity(PopupGravity::BottomLeft),
         BarPanel::Session => PopupConfig::new(
             "kobel-session",
             anchor_rect,
@@ -1143,10 +1076,11 @@ mod tests {
     };
     use kobel_wayland::{Anchor, KeyboardInteractivity, PopupAnchor, PopupGravity, SurfaceSize};
 
+    use super::notifications::notification_column;
     use super::{
         BarActionSink, BarContext, BarPanel, BarSnapshots, MAX_VISIBLE_EVENTS, PopoverLayout, SURFACE_HEIGHT, TOKENS,
-        bar_preview_app, calendar_popup_app, event_occurs_on, event_time_label, local_midnight_epoch,
-        notifications_popup_app, popup_config, session_popup_app, surface_config, visible_events_for_day,
+        bar_preview_app, calendar_popup_app, event_occurs_on, event_time_label, local_midnight_epoch, popup_config,
+        session_popup_app, surface_config, visible_events_for_day,
     };
 
     #[test]
@@ -1211,7 +1145,7 @@ mod tests {
                     .is_some(),
                 "compact clock lost its calendar action name at {scale_factor}x",
             );
-            let control_names = ["Open quick settings", "Open notifications", "Open session controls"];
+            let control_names = ["Open quick settings", "Open session controls"];
             for name in control_names {
                 assert!(
                     runner
@@ -1262,33 +1196,6 @@ mod tests {
             use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
             super::quick_settings_popup_app()
         }
-        fn notifications() -> impl IntoElement {
-            let snapshots = BarSnapshots {
-                notifications: NotifdSnapshot {
-                    serving: true,
-                    dnd: false,
-                    notifications: vec![Notification {
-                        id: 1,
-                        app_name: "Compact test".to_string(),
-                        app_icon: None,
-                        summary: "A notification with actions".to_string(),
-                        body: "The body remains readable while every action stays inside the card.".to_string(),
-                        actions: vec![
-                            ("open".to_string(), "Open a deliberately long action".to_string()),
-                            ("snooze".to_string(), "Snooze until tomorrow morning".to_string()),
-                            ("settings".to_string(), "Notification settings".to_string()),
-                        ],
-                        critical: false,
-                        time: 0,
-                    }],
-                },
-                ..BarSnapshots::default()
-            };
-            use_provide_context(move || BarContext::from_snapshots(&snapshots));
-            use_provide_context(BarActionSink::inert);
-            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
-            notifications_popup_app()
-        }
         fn session() -> impl IntoElement {
             use_provide_context(BarContext::create);
             use_provide_context(BarActionSink::inert);
@@ -1299,10 +1206,6 @@ mod tests {
         for (runner, expected_label) in [
             (TestingRunner::new(calendar, viewport, |_| {}, 1.0).0, "M"),
             (TestingRunner::new(quick_settings, viewport, |_| {}, 1.0).0, "Volume"),
-            (
-                TestingRunner::new(notifications, viewport, |_| {}, 1.0).0,
-                "Notifications",
-            ),
             (TestingRunner::new(session, viewport, |_| {}, 1.0).0, "Session"),
         ] {
             assert_compact_popup_fits_width(runner, layout.width as f32, expected_label);
@@ -1345,17 +1248,14 @@ mod tests {
             }));
         runner.sync_and_update();
         runner.sync_and_update();
-        runner.click_cursor((420.0, 250.0));
-        assert!(matches!(
-            receiver.try_recv(),
-            Ok(super::BarAction::TogglePanel {
-                parent: action_parent,
-                panel: BarPanel::Notifications,
-                ..
-            }) if action_parent == parent
-        ));
-
-        runner.click_cursor((472.0, 250.0));
+        let session_area = runner
+            .find(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.accessibility.builder.label() == Some("Open session controls"))
+                    .map(|_| node.layout().area)
+            })
+            .expect("session control");
+        runner.click_cursor(session_area.center().to_f64());
         assert!(matches!(
             receiver.try_recv(),
             Ok(super::BarAction::TogglePanel {
@@ -1452,9 +1352,9 @@ mod tests {
     #[test]
     fn notification_popup_mounts_with_an_empty_state() {
         fn preview() -> impl IntoElement {
-            use_provide_context(BarContext::create);
-            use_provide_context(BarActionSink::inert);
-            notifications_popup_app()
+            let context = use_provide_context(BarContext::create);
+            let sink = use_provide_context(BarActionSink::inert);
+            notification_column(&context, &sink, 480.0, false)
         }
 
         let mut runner = launch_test(preview);
@@ -1475,9 +1375,9 @@ mod tests {
         let mut runner = launch_test(move || {
             let provided_sink = sink.clone();
             let context = use_provide_context(BarContext::create);
-            app_context_slot.replace(Some(context));
-            use_provide_context(move || provided_sink);
-            notifications_popup_app()
+            app_context_slot.replace(Some(context.clone()));
+            let sink = use_provide_context(move || provided_sink);
+            notification_column(&context, &sink, 480.0, false)
         });
         runner.sync_and_update();
 
@@ -1640,7 +1540,7 @@ mod tests {
     #[test]
     fn right_hand_popups_align_below_their_controls() {
         let anchor = (1140, 4, 28, 28);
-        for panel in [BarPanel::Notifications, BarPanel::Session] {
+        for panel in [BarPanel::QuickSettings, BarPanel::Session] {
             let config = popup_config(panel, anchor, PopoverLayout::default());
             assert_eq!(config.anchor_rect, anchor);
             assert_eq!(config.anchor, PopupAnchor::BottomRight);
@@ -1659,7 +1559,7 @@ mod tests {
     #[test]
     fn popup_layout_stays_inside_narrow_and_short_outputs() {
         let layout = PopoverLayout::for_output((320, 240));
-        let config = popup_config(BarPanel::Notifications, (260, 4, 28, 24), layout);
+        let config = popup_config(BarPanel::Session, (260, 4, 28, 24), layout);
 
         assert_eq!(
             config.size,

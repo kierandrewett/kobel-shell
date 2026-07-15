@@ -247,9 +247,12 @@ else
     echo "PASS: Escape closed the calendar popup"
 fi
 
-notifications_x=$((primary_width - 79))
-notifications_closed_before=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
-notifications_opened_before=$(grep -c "\[bar\] opened Notifications popup" "$DK/bar.log" || true)
+notifications_x=$((primary_width / 2))
+if [ "$primary_width" -le 520 ]; then
+    notifications_x=36
+fi
+notifications_closed_before=$(grep -c "\[bar\] Calendar popup .* closed" "$DK/bar.log" || true)
+notifications_opened_before=$(grep -c "\[bar\] opened Calendar popup" "$DK/bar.log" || true)
 if ! gdbus call --session \
     --dest org.freedesktop.Notifications \
     --object-path /org/freedesktop/Notifications \
@@ -261,8 +264,8 @@ if ! gdbus call --session \
     fail=1
 fi
 
-status_x=$((primary_width - 112))
-quick_settings_drill_x=$((primary_width - 302))
+status_x=$((primary_width - 60))
+quick_settings_drill_x=$((primary_width - 275))
 if [ "$primary_width" -lt 408 ]; then
     quick_settings_drill_x=$((primary_width - 58))
 elif [ "$quick_settings_drill_x" -lt 48 ]; then
@@ -341,11 +344,11 @@ else
     fail=1
 fi
 
-notifications_opened_after=$(grep -c "\[bar\] opened Notifications popup" "$DK/bar.log" || true)
-notifications_closed_after=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
+notifications_opened_after=$(grep -c "\[bar\] opened Calendar popup" "$DK/bar.log" || true)
+notifications_closed_after=$(grep -c "\[bar\] Calendar popup .* closed" "$DK/bar.log" || true)
 if [ "$notifications_opened_after" -gt "$notifications_opened_before" ] \
     && [ "$notifications_closed_after" -gt "$notifications_closed_before" ]; then
-    echo "PASS: count-bearing bell opened notifications and Escape closed it"
+    echo "PASS: clock date menu opened notifications and Escape closed it"
 else
     echo "FAIL: notification popup lifecycle did not complete"
     tail -30 "$DK/bar.log"
@@ -377,8 +380,8 @@ fi
 
 # A new devkit RemoteDesktop session can inherit the last pointer coordinate.
 # Force a real in-bounds move away before targeting the same top-bar control.
-notifications_history_opened_before=$(grep -c "\[bar\] opened Notifications popup" "$DK/bar.log" || true)
-notifications_history_closed_before=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
+notifications_history_opened_before=$(grep -c "\[bar\] opened Calendar popup" "$DK/bar.log" || true)
+notifications_history_closed_before=$(grep -c "\[bar\] Calendar popup .* closed" "$DK/bar.log" || true)
 if ! python3 "$INPUT_DRIVER" \
     --settle-prime 1.5 \
     "move:$((primary_width / 2)):$((primary_height / 2))" \
@@ -394,8 +397,8 @@ if ! python3 "$INPUT_DRIVER" \
     fail=1
 fi
 cat "$DK/notifications-history-input.log"
-notifications_history_opened_after=$(grep -c "\[bar\] opened Notifications popup" "$DK/bar.log" || true)
-notifications_history_closed_after=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
+notifications_history_opened_after=$(grep -c "\[bar\] opened Calendar popup" "$DK/bar.log" || true)
+notifications_history_closed_after=$(grep -c "\[bar\] Calendar popup .* closed" "$DK/bar.log" || true)
 if [ "$notifications_history_opened_after" -gt "$notifications_history_opened_before" ] \
     && [ "$notifications_history_closed_after" -gt "$notifications_history_closed_before" ]; then
     echo "PASS: long notification history opened and closed"
@@ -410,7 +413,7 @@ else
     echo "FAIL: notification history screenshot is missing or empty: $NOTIFICATIONS_HISTORY_OUT"
     fail=1
 fi
-for panel in Session QuickSettings Notifications; do
+for panel in Session QuickSettings; do
     if grep -q "\[bar\] opened $panel popup .* at ${expected_popup_width}x${expected_popup_height}" "$DK/bar.log"; then
         echo "PASS: $panel popup resolved to ${expected_popup_width}x${expected_popup_height}"
     else
