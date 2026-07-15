@@ -64,7 +64,9 @@ impl SpringSim {
 
     /// Advance the spring by `dt` seconds using the CLOSED-FORM solution of
     ///
-    ///     y'' + d*y' + k*y = 0,   where y = x - target
+    /// ```text
+    /// y'' + d*y' + k*y = 0,   where y = x - target
+    /// ```
     ///
     /// evaluated from the current `(x, v)`. Because this is the exact analytic
     /// solution (not Euler integration), retargeting mid-flight is exact and the
