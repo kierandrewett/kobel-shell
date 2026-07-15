@@ -492,6 +492,7 @@ impl Component for ClockButton {
             clock
         });
         let (time, date) = clock.read().clone();
+        let accessible_clock = format!("Open calendar, {date}, {time}");
 
         rect()
             .on_sized(move |event: Event<SizedEventData>| measured.set(event.area))
@@ -517,6 +518,7 @@ impl Component for ClockButton {
                             .child(
                                 label()
                                     .text(time)
+                                    .a11y_alt(accessible_clock)
                                     .font_size(TOKENS.typography.label_size)
                                     .font_weight(TOKENS.typography.semibold_weight),
                             );
@@ -1151,6 +1153,20 @@ mod tests {
                     })
                     .is_none(),
                 "compact bars must surrender the decorative Activities label before controls collide",
+            );
+            assert!(
+                runner
+                    .find(|_, element| {
+                        Label::try_downcast(element).filter(|label| {
+                            label
+                                .accessibility
+                                .builder
+                                .label()
+                                .is_some_and(|name| name.starts_with("Open calendar, "))
+                        })
+                    })
+                    .is_some(),
+                "compact clock lost its calendar action name at {scale_factor}x",
             );
             let control_names = ["Open quick settings", "Open notifications", "Open session controls"];
             for name in control_names {
