@@ -34,7 +34,6 @@ pub struct Tokens {
     pub popover: PopoverTokens,
     pub notifications: NotificationTokens,
     pub quick_settings: QuickSettingsTokens,
-    pub session: SessionTokens,
     pub motion: MotionTokens,
 }
 
@@ -166,14 +165,6 @@ pub struct QuickSettingsTokens {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SessionTokens {
-    pub tile_width: f32,
-    pub tile_gap: f32,
-    pub tile_size: f32,
-    pub tile_radius: f32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MotionTokens {
     pub fast_seconds: f32,
     pub standard_seconds: f32,
@@ -282,12 +273,6 @@ pub const TOKENS: Tokens = Tokens {
         chip_radius: 999.0,
         slider_label_width: 72.0,
         slider_value_width: 40.0,
-    },
-    session: SessionTokens {
-        tile_width: 78.0,
-        tile_gap: 8.0,
-        tile_size: 64.0,
-        tile_radius: 20.0,
     },
     motion: MotionTokens {
         fast_seconds: 0.12,
