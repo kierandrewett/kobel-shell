@@ -9,12 +9,7 @@ use kobel_services::{Command, Notification};
 use kobel_theme::{TOKENS, icons};
 use torin::prelude::{Alignment, Content, Size};
 
-use super::{BarActionSink, BarContext, button_colours, button_layout};
-
-const CARD_PADDING: f32 = 12.0;
-const CARD_GAP: f32 = 8.0;
-const EMPTY_STATE_HEIGHT: f32 = 96.0;
-const HEADER_HEIGHT: f32 = 38.0;
+use super::{BarActionSink, BarContext, button_colours, button_layout, popover_frame};
 
 pub fn notifications_popup_app() -> impl IntoElement {
     NotificationsPanel
@@ -89,7 +84,7 @@ impl Component for NotificationsPanel {
             .child(
                 rect()
                     .width(Size::flex(1.0))
-                    .spacing(2.0)
+                    .spacing(TOKENS.notifications.header_text_gap)
                     .child(
                         label()
                             .text("Notifications")
@@ -114,12 +109,12 @@ impl Component for NotificationsPanel {
         let history_max_height = TOKENS.popover.max_height as f32
             - TOKENS.popover.padding * 2.0
             - TOKENS.popover.section_gap
-            - HEADER_HEIGHT
+            - TOKENS.notifications.header_height
             - unavailable_height;
         let content = if snapshot.notifications.is_empty() {
             rect()
                 .width(Size::fill())
-                .height(Size::px(EMPTY_STATE_HEIGHT))
+                .height(Size::px(TOKENS.notifications.empty_state_height))
                 .center()
                 .child(
                     label()
@@ -144,24 +139,17 @@ impl Component for NotificationsPanel {
                 .into_element()
         };
 
-        let mut root = rect()
-            .width(Size::fill())
+        let mut root = popover_frame()
             .height(Size::auto())
-            .padding(TOKENS.popover.padding)
-            .corner_radius(TOKENS.popover.radius)
-            .background(TOKENS.colours.surface.rgba())
-            .border(Border::new().fill(TOKENS.colours.border.rgba()).width(1.0))
             .vertical()
             .spacing(TOKENS.popover.section_gap)
-            .font_family(TOKENS.typography.family)
-            .color(TOKENS.colours.text.rgba())
             .child(header);
 
         if !snapshot.serving {
             root = root.child(
                 rect()
                     .width(Size::fill())
-                    .padding((8.0, CARD_PADDING))
+                    .padding((TOKENS.notifications.card_gap, TOKENS.notifications.card_padding))
                     .corner_radius(TOKENS.popover.row_radius)
                     .background(TOKENS.colours.surface_active.rgba())
                     .child(
@@ -203,8 +191,8 @@ impl Component for NotificationCard {
                 ButtonLayoutThemePartial::new()
                     .margin(0.0)
                     .corner_radius(TOKENS.popover.row_radius)
-                    .width(Size::px(28.0))
-                    .height(Size::px(28.0))
+                    .width(Size::px(TOKENS.notifications.dismiss_size))
+                    .height(Size::px(TOKENS.notifications.dismiss_size))
                     .padding(0.0),
             )
             .on_press(move |_| close_sink.service(Command::CloseNotification(id)))
@@ -212,7 +200,7 @@ impl Component for NotificationCard {
 
         let mut text = rect()
             .width(Size::flex(1.0))
-            .spacing(4.0)
+            .spacing(TOKENS.notifications.body_text_gap)
             .child(
                 label()
                     .text(title)
@@ -243,7 +231,7 @@ impl Component for NotificationCard {
             .horizontal()
             .content(Content::Flex)
             .cross_align(Alignment::Start)
-            .spacing(CARD_GAP)
+            .spacing(TOKENS.notifications.card_gap)
             .child(
                 SvgViewer::new(icons::BELL)
                     .color(TOKENS.colours.text_muted.rgba())
@@ -284,14 +272,23 @@ impl Component for NotificationCard {
 
         rect()
             .width(Size::fill())
-            .padding(CARD_PADDING)
+            .padding(TOKENS.notifications.card_padding)
             .corner_radius(TOKENS.popover.row_radius)
             .background(TOKENS.colours.surface_elevated.rgba())
-            .border(Border::new().fill(TOKENS.colours.border.rgba()).width(1.0))
+            .border(
+                Border::new()
+                    .fill(TOKENS.colours.border.rgba())
+                    .width(TOKENS.popover.border_width),
+            )
             .vertical()
-            .spacing(CARD_GAP)
+            .spacing(TOKENS.notifications.card_gap)
             .child(body)
-            .child(rect().horizontal().spacing(CARD_GAP).children(actions))
+            .child(
+                rect()
+                    .horizontal()
+                    .spacing(TOKENS.notifications.card_gap)
+                    .children(actions),
+            )
     }
 }
 

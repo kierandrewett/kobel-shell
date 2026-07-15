@@ -16,12 +16,9 @@ use kobel_wayland::{Anchor, KeyboardInteractivity, LoopWaker, Margins, SurfaceCo
 use torin::prelude::{Alignment, Position, Size};
 
 pub const OUTER_GAP: i32 = TOKENS.dock.edge_gap;
-pub const TOOLTIP_HEADROOM: u32 = 56;
-pub const SURFACE_HEIGHT: u32 = 120;
+pub const TOOLTIP_HEADROOM: u32 = TOKENS.dock.tooltip_headroom;
+pub const SURFACE_HEIGHT: u32 = TOKENS.dock.surface_height;
 
-const DOCK_MAX_WIDTH_RATIO: f32 = 0.9;
-const MIN_ITEM_SIZE: f32 = 24.0;
-const SEPARATOR_WIDTH: f32 = 1.0;
 const FALLBACK_FAVOURITES: [&str; 4] = [
     "org.gnome.Nautilus",
     "org.mozilla.firefox",
@@ -85,9 +82,9 @@ pub struct DockMetrics {
 impl DockMetrics {
     pub fn for_output(output_width: u32, app_count: usize) -> Self {
         let slot_count = app_count.saturating_add(1) as f32;
-        let fixed_width = TOKENS.dock.padding * 2.0 + TOKENS.dock.item_gap * slot_count + SEPARATOR_WIDTH;
-        let max_width = output_width as f32 * DOCK_MAX_WIDTH_RATIO;
-        let available_item_size = ((max_width - fixed_width) / slot_count).max(MIN_ITEM_SIZE);
+        let fixed_width = TOKENS.dock.padding * 2.0 + TOKENS.dock.item_gap * slot_count + TOKENS.dock.separator_width;
+        let max_width = output_width as f32 * TOKENS.dock.max_width_ratio;
+        let available_item_size = ((max_width - fixed_width) / slot_count).max(TOKENS.dock.min_item_size);
         let item_size = TOKENS.dock.item_size.min(available_item_size);
         let icon_size = TOKENS.dock.icon_size * (item_size / TOKENS.dock.item_size);
         let width = fixed_width + slot_count * item_size;
@@ -404,11 +401,17 @@ impl Component for TooltipBubble {
             )
             .interactive(false)
             .opacity(progress)
-            .scale(0.96 + progress * 0.04)
+            .scale(TOKENS.dock.tooltip_initial_scale + progress * (1.0 - TOKENS.dock.tooltip_initial_scale))
             .background(TOKENS.colours.surface_elevated.rgba())
             .corner_radius(TOKENS.popover.row_radius)
-            .padding((6.0, 10.0))
-            .shadow((0.0, 5.0, 16.0, 0.0, TOKENS.colours.shadow.rgba()))
+            .padding(TOKENS.dock.tooltip_padding)
+            .shadow((
+                0.0,
+                TOKENS.dock.tooltip_shadow_y,
+                TOKENS.dock.tooltip_shadow_blur,
+                0.0,
+                TOKENS.colours.shadow.rgba(),
+            ))
             .child(
                 label()
                     .text(self.text.clone())
@@ -474,11 +477,11 @@ impl Component for AppIcon {
                 .height(Size::px(size))
                 .center()
                 .background(TOKENS.colours.surface_elevated.rgba())
-                .corner_radius(TOKENS.dock.radius * 0.55)
+                .corner_radius(TOKENS.dock.radius * TOKENS.dock.fallback_radius_ratio)
                 .child(
                     label()
                         .text(self.fallback.chars().next().unwrap_or('?').to_uppercase().to_string())
-                        .font_size(size * 0.5)
+                        .font_size(size * TOKENS.dock.fallback_icon_scale)
                         .font_weight(TOKENS.typography.semibold_weight)
                         .color(TOKENS.colours.text.rgba()),
                 )
@@ -536,11 +539,11 @@ fn window_indicators(windows: &[ToplevelInfo], item_size: f32) -> Element {
         .collect::<Vec<_>>();
 
     rect()
-        .position(Position::new_absolute().bottom(3.0).left(0.0))
+        .position(Position::new_absolute().bottom(TOKENS.dock.indicator_bottom).left(0.0))
         .width(Size::px(item_size))
         .horizontal()
         .main_align(Alignment::Center)
-        .spacing(2.0)
+        .spacing(TOKENS.dock.indicator_gap)
         .interactive(false)
         .children(dots)
         .into_element()
@@ -623,7 +626,7 @@ impl Component for DockTile {
             .height(Size::px(self.metrics.item_size))
             .center()
             .background(hover_background)
-            .corner_radius(TOKENS.dock.radius * 0.66)
+            .corner_radius(TOKENS.dock.radius * TOKENS.dock.item_radius_ratio)
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -650,7 +653,11 @@ impl Component for DockTile {
                 }
             })
             .maybe(focus() == Focus::Keyboard, |el| {
-                el.border(Border::new().fill(TOKENS.colours.accent.rgba()).width(2.0))
+                el.border(
+                    Border::new()
+                        .fill(TOKENS.colours.accent.rgba())
+                        .width(TOKENS.dock.focus_border_width),
+                )
             })
             .child(
                 rect()
@@ -687,7 +694,7 @@ impl Component for DockSlab {
         let entrance = use_animation(|config| {
             config.on_creation(OnCreation::Run);
             (
-                AnimNum::new(0.94, 1.0)
+                AnimNum::new(TOKENS.dock.open_initial_scale, 1.0)
                     .time((TOKENS.motion.dock_seconds * 1000.0) as u64)
                     .ease(Ease::Out)
                     .function(Function::Expo),
@@ -714,7 +721,7 @@ impl Component for DockSlab {
         );
         children.push(
             rect()
-                .width(Size::px(SEPARATOR_WIDTH))
+                .width(Size::px(TOKENS.dock.separator_width))
                 .height(Size::px(self.metrics.icon_size))
                 .background(TOKENS.colours.border.rgba())
                 .into_element(),
@@ -748,7 +755,13 @@ impl Component for DockSlab {
             .padding(TOKENS.dock.padding)
             .background(background)
             .corner_radius(TOKENS.dock.radius)
-            .shadow((0.0, 4.0, 18.0, 0.0, TOKENS.colours.shadow.rgba()))
+            .shadow((
+                0.0,
+                TOKENS.dock.shadow_y,
+                TOKENS.dock.shadow_blur,
+                0.0,
+                TOKENS.colours.shadow.rgba(),
+            ))
             .scale(scale)
             .opacity(opacity)
             .children(children)
@@ -818,7 +831,7 @@ mod tests {
     use kobel_wayland::{Anchor, KeyboardInteractivity, SurfaceSize, ToplevelInfo};
 
     use super::{
-        DockMetrics, DockRequest, OUTER_GAP, SURFACE_HEIGHT, app_ids_match, dock_items, dock_preview_app,
+        DockMetrics, DockRequest, OUTER_GAP, SURFACE_HEIGHT, TOKENS, app_ids_match, dock_items, dock_preview_app,
         indicator_window, parse_favourite_apps, primary_request, scroll_request, surface_config,
     };
 
@@ -1012,10 +1025,10 @@ mod tests {
         let wide = DockMetrics::for_output(1920, 20);
         let narrow = DockMetrics::for_output(1024, 20);
 
-        assert_eq!(wide.item_size, 48.0);
-        assert!(wide.width <= 1920.0 * 0.9);
+        assert_eq!(wide.item_size, TOKENS.dock.item_size);
+        assert!(wide.width <= 1920.0 * TOKENS.dock.max_width_ratio);
         assert!(narrow.item_size < wide.item_size);
-        assert!(narrow.width <= 1024.0 * 0.9 + 0.01);
+        assert!(narrow.width <= 1024.0 * TOKENS.dock.max_width_ratio + 0.01);
 
         let (x, y, width, height) = narrow.input_rect(1024);
         assert_eq!(x, ((1024.0 - narrow.width) / 2.0).floor() as i32);

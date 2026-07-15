@@ -7,7 +7,7 @@ use kobel_services::{
 use kobel_theme::TOKENS;
 use torin::prelude::{Alignment, Content, Size};
 
-use super::{BarActionSink, BarContext, BarPanel, button_layout};
+use super::{BarActionSink, BarContext, BarPanel, button_layout, popover_frame};
 
 const MAX_DRILL_ROWS: usize = 6;
 
@@ -151,7 +151,7 @@ fn quick_chip(
         .theme_colors(button_colours(active))
         .theme_layout(button_layout(
             main_width,
-            TOKENS.popover.control_height * 1.5,
+            TOKENS.popover.control_height * TOKENS.quick_settings.chip_height_ratio,
             (0.0, TOKENS.popover.control_padding),
             TOKENS.popover.row_radius,
         ))
@@ -180,7 +180,9 @@ fn quick_chip(
 
     let mut chip = rect()
         .width(Size::flex(1.0))
-        .height(Size::px(TOKENS.popover.control_height * 1.5))
+        .height(Size::px(
+            TOKENS.popover.control_height * TOKENS.quick_settings.chip_height_ratio,
+        ))
         .horizontal()
         .content(Content::Flex)
         .corner_radius(TOKENS.popover.row_radius)
@@ -198,7 +200,7 @@ fn quick_chip(
                 .theme_colors(button_colours(active))
                 .theme_layout(button_layout(
                     Size::px(TOKENS.popover.control_height),
-                    TOKENS.popover.control_height * 1.5,
+                    TOKENS.popover.control_height * TOKENS.quick_settings.chip_height_ratio,
                     (0.0, 0.0),
                     TOKENS.popover.row_radius,
                 ))
@@ -252,7 +254,7 @@ fn slider_row(label_text: impl Into<String>, value: f32, enabled: bool, on_moved
         .child(
             label()
                 .text(label_text)
-                .width(Size::px(72.0))
+                .width(Size::px(TOKENS.quick_settings.slider_label_width))
                 .font_size(TOKENS.typography.small_size)
                 .font_weight(TOKENS.typography.medium_weight),
         )
@@ -272,7 +274,7 @@ fn slider_row(label_text: impl Into<String>, value: f32, enabled: bool, on_moved
         .child(
             label()
                 .text(format!("{}%", (value.clamp(0.0, 1.0) * 100.0).round() as i64))
-                .width(Size::px(40.0))
+                .width(Size::px(TOKENS.quick_settings.slider_value_width))
                 .font_size(TOKENS.typography.small_size)
                 .color(TOKENS.colours.text_muted.rgba()),
         )
@@ -666,15 +668,7 @@ impl Component for QuickSettingsPanel {
             QuickSettingsView::Mixer => mixer_drill(&context.audio.read(), &sink, view),
         };
 
-        rect()
-            .width(Size::fill())
-            .padding(TOKENS.popover.padding)
-            .corner_radius(TOKENS.popover.radius)
-            .background(TOKENS.colours.surface.rgba())
-            .border(Border::new().fill(TOKENS.colours.border.rgba()).width(1.0))
-            .font_family(TOKENS.typography.family)
-            .color(TOKENS.colours.text.rgba())
-            .child(content)
+        popover_frame().child(content)
     }
 }
 

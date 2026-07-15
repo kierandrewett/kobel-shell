@@ -11,7 +11,7 @@ use kobel_theme::{TOKENS, icons};
 use kobel_wayland::KeyPress;
 use torin::prelude::{Alignment, Size};
 
-use super::{BarActionSink, BarContext, BarPanel, button_colours};
+use super::{BarActionSink, BarContext, BarPanel, button_colours, popover_frame};
 
 const ACTIONS: [SessionAction; 4] = [
     SessionAction::Lock,
@@ -20,9 +20,6 @@ const ACTIONS: [SessionAction; 4] = [
     SessionAction::Shutdown,
 ];
 const REVERT_MS: u64 = 4000;
-const TILE_SIZE: f32 = 64.0;
-const TILE_RADIUS: f32 = 20.0;
-const GLYPH_SIZE: f32 = 22.0;
 
 pub fn session_popup_app() -> impl IntoElement {
     SessionPanel
@@ -66,14 +63,7 @@ impl Component for SessionPanel {
             .into_element()
         });
 
-        rect()
-            .width(Size::fill())
-            .padding(TOKENS.popover.padding)
-            .corner_radius(TOKENS.popover.radius)
-            .background(TOKENS.colours.surface.rgba())
-            .border(Border::new().fill(TOKENS.colours.border.rgba()).width(1.0))
-            .font_family(TOKENS.typography.family)
-            .color(TOKENS.colours.text.rgba())
+        popover_frame()
             .vertical()
             .spacing(TOKENS.popover.section_gap)
             .child(
@@ -88,7 +78,7 @@ impl Component for SessionPanel {
                     .horizontal()
                     .cross_align(Alignment::Start)
                     .main_align(Alignment::Center)
-                    .spacing(TOKENS.popover.row_gap)
+                    .spacing(TOKENS.session.tile_gap)
                     .children(actions),
             )
     }
@@ -120,9 +110,9 @@ fn session_action_button(
     };
 
     rect()
-        .width(Size::px(78.0))
+        .width(Size::px(TOKENS.session.tile_width))
         .cross_align(Alignment::Center)
-        .spacing(8.0)
+        .spacing(TOKENS.session.tile_gap)
         .on_pointer_enter(move |_| hover_selection.set(index))
         .child(
             Button::new()
@@ -131,9 +121,9 @@ fn session_action_button(
                 .theme_layout(
                     ButtonLayoutThemePartial::new()
                         .margin(0.0)
-                        .corner_radius(TILE_RADIUS)
-                        .width(Size::px(TILE_SIZE))
-                        .height(Size::px(TILE_SIZE))
+                        .corner_radius(TOKENS.session.tile_radius)
+                        .width(Size::px(TOKENS.session.tile_size))
+                        .height(Size::px(TOKENS.session.tile_size))
                         .padding(0.0),
                 )
                 .on_press(move |_| {
@@ -143,8 +133,8 @@ fn session_action_button(
                 .child(
                     SvgViewer::new(action.icon())
                         .color(glyph_colour)
-                        .width(Size::px(GLYPH_SIZE))
-                        .height(Size::px(GLYPH_SIZE)),
+                        .width(Size::px(TOKENS.session.glyph_size))
+                        .height(Size::px(TOKENS.session.glyph_size)),
                 ),
         )
         .child(

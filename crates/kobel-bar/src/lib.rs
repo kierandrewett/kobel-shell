@@ -378,6 +378,21 @@ fn button_layout(width: Size, height: f32, padding: (f32, f32), corner_radius: f
         .padding(padding)
 }
 
+pub(crate) fn popover_frame() -> Rect {
+    rect()
+        .width(Size::fill())
+        .padding(TOKENS.popover.padding)
+        .corner_radius(TOKENS.popover.radius)
+        .background(TOKENS.colours.surface.rgba())
+        .border(
+            Border::new()
+                .fill(TOKENS.colours.border.rgba())
+                .width(TOKENS.popover.border_width),
+        )
+        .font_family(TOKENS.typography.family)
+        .color(TOKENS.colours.text.rgba())
+}
+
 #[derive(PartialEq)]
 struct ClockButton;
 
@@ -478,7 +493,7 @@ impl Component for StatusPill {
         }
 
         if !network.available || !network.enabled || audio.muted {
-            status = status.opacity(0.65);
+            status = status.opacity(TOKENS.bar.muted_opacity);
         }
 
         rect()
@@ -523,7 +538,7 @@ impl Component for NotificationButton {
         let mut content = rect()
             .horizontal()
             .cross_align(Alignment::Center)
-            .spacing(4.0)
+            .spacing(TOKENS.bar.notification_gap)
             .child(icon(icons::BELL));
         if count > 0 {
             content = content.child(
@@ -534,7 +549,7 @@ impl Component for NotificationButton {
             );
         }
         if notifications.dnd {
-            content = content.opacity(0.65);
+            content = content.opacity(TOKENS.bar.muted_opacity);
         }
 
         rect()
@@ -895,16 +910,9 @@ impl Component for CalendarPanel {
                     .font_size(TOKENS.typography.title_size),
             );
 
-        rect()
-            .width(Size::fill())
-            .padding(TOKENS.popover.padding)
-            .corner_radius(TOKENS.popover.radius)
-            .background(TOKENS.colours.surface.rgba())
-            .border(Border::new().fill(TOKENS.colours.border.rgba()).width(1.0))
+        popover_frame()
             .vertical()
             .spacing(TOKENS.popover.section_gap)
-            .font_family(TOKENS.typography.family)
-            .color(TOKENS.colours.text.rgba())
             .child(
                 rect()
                     .width(Size::fill())

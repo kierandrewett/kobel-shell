@@ -29,6 +29,9 @@ pub struct Tokens {
     pub bar: BarTokens,
     pub dock: DockTokens,
     pub popover: PopoverTokens,
+    pub notifications: NotificationTokens,
+    pub quick_settings: QuickSettingsTokens,
+    pub session: SessionTokens,
     pub motion: MotionTokens,
 }
 
@@ -70,6 +73,8 @@ pub struct BarTokens {
     pub control_padding: f32,
     pub radius: f32,
     pub icon_size: f32,
+    pub muted_opacity: f32,
+    pub notification_gap: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -85,6 +90,24 @@ pub struct DockTokens {
     pub indicator_active_scale: f32,
     pub indicator_size: f32,
     pub tooltip_offset: i32,
+    pub surface_height: u32,
+    pub max_width_ratio: f32,
+    pub min_item_size: f32,
+    pub separator_width: f32,
+    pub item_radius_ratio: f32,
+    pub fallback_radius_ratio: f32,
+    pub fallback_icon_scale: f32,
+    pub focus_border_width: f32,
+    pub indicator_gap: f32,
+    pub indicator_bottom: f32,
+    pub tooltip_headroom: u32,
+    pub tooltip_initial_scale: f32,
+    pub tooltip_padding: (f32, f32),
+    pub tooltip_shadow_y: f32,
+    pub tooltip_shadow_blur: f32,
+    pub open_initial_scale: f32,
+    pub shadow_y: f32,
+    pub shadow_blur: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -100,6 +123,34 @@ pub struct PopoverTokens {
     pub control_padding: f32,
     pub icon_size: f32,
     pub indicator_size: f32,
+    pub border_width: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NotificationTokens {
+    pub card_padding: f32,
+    pub card_gap: f32,
+    pub empty_state_height: f32,
+    pub header_height: f32,
+    pub header_text_gap: f32,
+    pub body_text_gap: f32,
+    pub dismiss_size: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct QuickSettingsTokens {
+    pub chip_height_ratio: f32,
+    pub slider_label_width: f32,
+    pub slider_value_width: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SessionTokens {
+    pub tile_width: f32,
+    pub tile_gap: f32,
+    pub tile_size: f32,
+    pub tile_radius: f32,
+    pub glyph_size: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -145,6 +196,8 @@ pub const TOKENS: Tokens = Tokens {
         control_padding: 8.0,
         radius: 999.0,
         icon_size: 16.0,
+        muted_opacity: 0.65,
+        notification_gap: 4.0,
     },
     dock: DockTokens {
         item_size: 48.0,
@@ -158,6 +211,24 @@ pub const TOKENS: Tokens = Tokens {
         indicator_active_scale: 1.75,
         indicator_size: 4.0,
         tooltip_offset: 10,
+        surface_height: 120,
+        max_width_ratio: 0.9,
+        min_item_size: 24.0,
+        separator_width: 1.0,
+        item_radius_ratio: 0.66,
+        fallback_radius_ratio: 0.55,
+        fallback_icon_scale: 0.5,
+        focus_border_width: 2.0,
+        indicator_gap: 2.0,
+        indicator_bottom: 3.0,
+        tooltip_headroom: 56,
+        tooltip_initial_scale: 0.96,
+        tooltip_padding: (6.0, 10.0),
+        tooltip_shadow_y: 5.0,
+        tooltip_shadow_blur: 16.0,
+        open_initial_scale: 0.94,
+        shadow_y: 4.0,
+        shadow_blur: 18.0,
     },
     popover: PopoverTokens {
         width: 384,
@@ -171,6 +242,28 @@ pub const TOKENS: Tokens = Tokens {
         control_padding: 12.0,
         icon_size: 16.0,
         indicator_size: 3.0,
+        border_width: 1.0,
+    },
+    notifications: NotificationTokens {
+        card_padding: 12.0,
+        card_gap: 8.0,
+        empty_state_height: 96.0,
+        header_height: 38.0,
+        header_text_gap: 2.0,
+        body_text_gap: 4.0,
+        dismiss_size: 28.0,
+    },
+    quick_settings: QuickSettingsTokens {
+        chip_height_ratio: 1.5,
+        slider_label_width: 72.0,
+        slider_value_width: 40.0,
+    },
+    session: SessionTokens {
+        tile_width: 78.0,
+        tile_gap: 8.0,
+        tile_size: 64.0,
+        tile_radius: 20.0,
+        glyph_size: 22.0,
     },
     motion: MotionTokens {
         fast_seconds: 0.12,
@@ -182,11 +275,17 @@ pub const TOKENS: Tokens = Tokens {
 
 #[cfg(test)]
 mod tests {
-    use super::FONT_DATA;
+    use super::{FONT_DATA, TOKENS};
 
     #[test]
     fn bundled_font_is_a_nonempty_sfnt() {
         assert_eq!(&FONT_DATA[..4], &[0, 1, 0, 0]);
         assert!(u16::from_be_bytes([FONT_DATA[4], FONT_DATA[5]]) > 0);
+    }
+
+    #[test]
+    fn dock_surface_reserves_exact_tooltip_headroom() {
+        let slab_height = (TOKENS.dock.item_size + TOKENS.dock.padding * 2.0).ceil() as u32;
+        assert_eq!(TOKENS.dock.surface_height, TOKENS.dock.tooltip_headroom + slab_height,);
     }
 }
