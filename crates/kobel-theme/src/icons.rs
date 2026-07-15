@@ -14,6 +14,8 @@ pub const CALENDAR_BLANK: &[u8] = include_bytes!("../assets/icons/x-office-calen
 pub const DOTS_NINE: &[u8] = include_bytes!("../assets/icons/view-app-grid-symbolic.svg");
 pub const CARET_DOWN: &[u8] = include_bytes!("../assets/icons/pan-down-symbolic.svg");
 pub const LOCK: &[u8] = include_bytes!("../assets/icons/system-lock-screen-symbolic.svg");
+pub const SETTINGS: &[u8] = include_bytes!("../assets/icons/preferences-system-symbolic.svg");
+pub const SUSPEND: &[u8] = include_bytes!("../assets/icons/media-playback-pause-symbolic.svg");
 pub const SPEAKER_HIGH: &[u8] = include_bytes!("../assets/icons/audio-volume-high-symbolic.svg");
 pub const WIFI_HIGH: &[u8] = include_bytes!("../assets/icons/network-wireless-signal-excellent-symbolic.svg");
 pub const POWER: &[u8] = include_bytes!("../assets/icons/system-shutdown-symbolic.svg");
@@ -29,7 +31,8 @@ pub const NIGHT_LIGHT: &[u8] = include_bytes!("../assets/icons/night-light-symbo
 mod tests {
     use super::{
         ARROW_CLOCKWISE, BATTERY_HIGH, BELL, BLUETOOTH, CALENDAR_BLANK, CARET_DOWN, CARET_LEFT, CARET_RIGHT,
-        DARK_STYLE, DOTS_NINE, LOCK, MUTED, NIGHT_LIGHT, POWER, POWER_SAVER, SIGN_OUT, SPEAKER_HIGH, WIFI_HIGH, X,
+        DARK_STYLE, DOTS_NINE, LOCK, MUTED, NIGHT_LIGHT, POWER, POWER_SAVER, SETTINGS, SIGN_OUT, SPEAKER_HIGH, SUSPEND,
+        WIFI_HIGH, X,
     };
 
     #[test]
@@ -44,6 +47,8 @@ mod tests {
             CARET_LEFT,
             CARET_RIGHT,
             LOCK,
+            SETTINGS,
+            SUSPEND,
             POWER,
             SIGN_OUT,
             SPEAKER_HIGH,

@@ -133,32 +133,36 @@ elif [ "$expected_datemenu_width" -lt 1 ]; then
     expected_datemenu_width=1
 fi
 
-session_x=$((primary_width - 28))
-session_restart_x=$((primary_width - 166))
-session_restart_actions=("move:${session_restart_x}:112" "wait:250" "click")
-if [ "$primary_width" -lt 408 ]; then
-    session_restart_actions=("key:Down" "wait:250" "key:Return")
-fi
-session_closed_before=$(grep -c "\[bar\] Session popup .* closed" "$DK/bar.log" || true)
+# Session controls now live inside Quick Settings: a Power control in the QS
+# system row opens a keyboard-navigable session view (Lock/Log out/Restart/Shut
+# down). Open QS, click Power, then arm Restart from the keyboard -- this also
+# exercises the real key delivery path into the embedded session view.
+qs_status_x=$((primary_width - 60))
+qs_power_x=$((primary_width - 51))
+qs_power_y=70
+qs_closed_before=$(grep -c "\[bar\] QuickSettings popup .* closed" "$DK/bar.log" || true)
 if ! python3 "$INPUT_DRIVER" \
     --settle-prime 1.5 \
-    "move:${session_x}:16" \
-    "wait:250" \
-    "click" \
+    "click:${qs_status_x}:16" \
     "wait:500" \
     "screenshot:${SESSION_OUT}" \
-    "${session_restart_actions[@]}" \
+    "click:${qs_power_x}:${qs_power_y}" \
+    "wait:500" \
+    "key:Down" \
+    "wait:200" \
+    "key:Return" \
     "wait:500" \
     "screenshot:${SESSION_CONFIRM_OUT}" >"$DK/session-input.log" 2>&1; then
     echo "FAIL: session popup interaction injection failed"
     fail=1
 fi
 cat "$DK/session-input.log"
-if grep -q "\[bar\] opened Session popup" "$DK/bar.log" \
+if grep -q "\[bar\] opened QuickSettings popup" "$DK/bar.log" \
+    && grep -q "\[bar\] quick settings view Session" "$DK/bar.log" \
     && grep -q "\[bar\] session armed Restart" "$DK/bar.log"; then
-    echo "PASS: session popup armed restart confirmation"
+    echo "PASS: quick settings session view armed restart confirmation"
 else
-    echo "FAIL: session popup did not arm restart confirmation"
+    echo "FAIL: quick settings session view did not arm restart confirmation"
     tail -30 "$DK/bar.log"
     fail=1
 fi
@@ -169,13 +173,14 @@ else
     fail=1
 fi
 
+# First Escape disarms the pending Restart without leaving the session view.
 if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "key:Escape" "wait:500"; then
     echo "FAIL: session confirmation Escape injection failed"
     fail=1
 fi
-session_closed_after_disarm=$(grep -c "\[bar\] Session popup .* closed" "$DK/bar.log" || true)
+qs_closed_after_disarm=$(grep -c "\[bar\] QuickSettings popup .* closed" "$DK/bar.log" || true)
 if grep -q "\[bar\] session disarmed Restart" "$DK/bar.log" \
-    && [ "$session_closed_after_disarm" -eq "$session_closed_before" ]; then
+    && [ "$qs_closed_after_disarm" -eq "$qs_closed_before" ]; then
     echo "PASS: first Escape disarmed restart without closing"
 else
     echo "FAIL: first Escape did not disarm restart cleanly"
@@ -183,15 +188,16 @@ else
     fail=1
 fi
 
-if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "key:Escape" "wait:500"; then
+# Second Escape returns to the QS root; third closes the popup.
+if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "key:Escape" "wait:500" "key:Escape" "wait:500"; then
     echo "FAIL: session close Escape injection failed"
     fail=1
 fi
-session_closed_after=$(grep -c "\[bar\] Session popup .* closed" "$DK/bar.log" || true)
-if [ "$session_closed_after" -gt "$session_closed_after_disarm" ]; then
-    echo "PASS: second Escape closed session controls"
+qs_closed_after=$(grep -c "\[bar\] QuickSettings popup .* closed" "$DK/bar.log" || true)
+if [ "$qs_closed_after" -gt "$qs_closed_after_disarm" ]; then
+    echo "PASS: Escape returned to root and closed quick settings from the session view"
 else
-    echo "FAIL: second Escape did not close session controls"
+    echo "FAIL: Escape did not close quick settings from the session view"
     tail -30 "$DK/bar.log"
     fail=1
 fi
@@ -265,7 +271,7 @@ if ! gdbus call --session \
 fi
 
 status_x=$((primary_width - 60))
-quick_settings_drill_x=$((primary_width - 275))
+quick_settings_drill_x=$((primary_width - 227))
 if [ "$primary_width" -lt 408 ]; then
     quick_settings_drill_x=$((primary_width - 58))
 elif [ "$quick_settings_drill_x" -lt 48 ]; then
@@ -413,7 +419,7 @@ else
     echo "FAIL: notification history screenshot is missing or empty: $NOTIFICATIONS_HISTORY_OUT"
     fail=1
 fi
-for panel in Session QuickSettings; do
+for panel in QuickSettings; do
     if grep -q "\[bar\] opened $panel popup .* at ${expected_popup_width}x${expected_popup_height}" "$DK/bar.log"; then
         echo "PASS: $panel popup resolved to ${expected_popup_width}x${expected_popup_height}"
     else

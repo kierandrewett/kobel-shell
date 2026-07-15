@@ -2,10 +2,8 @@
 
 mod notifications;
 mod quick_settings;
-mod session;
 
 pub use quick_settings::quick_settings_popup_app;
-pub use session::session_popup_app;
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -36,7 +34,6 @@ const MAX_VISIBLE_EVENTS: usize = 2;
 pub enum BarPanel {
     Calendar,
     QuickSettings,
-    Session,
 }
 
 /// Output-resolved viewport policy shared by an xdg popup and its Freya content.
@@ -373,8 +370,7 @@ pub fn bar_app() -> impl IntoElement {
         .cross_align(Alignment::Center)
         .main_align(Alignment::End)
         .spacing(TOKENS.bar.module_gap)
-        .child(StatusPill { compact })
-        .child(SessionButton);
+        .child(StatusPill { compact });
 
     let mut bar = rect()
         .width(Size::fill())
@@ -608,40 +604,6 @@ impl Component for StatusPill {
                     ))
                     .on_press(move |_| open_quick_settings.toggle(BarPanel::QuickSettings, *bounds.read()))
                     .child(status.child(label().text("").a11y_alt("Open quick settings"))),
-            )
-    }
-}
-
-#[derive(PartialEq)]
-struct SessionButton;
-
-impl Component for SessionButton {
-    fn render(&self) -> impl IntoElement {
-        let sink = use_consume::<BarActionSink>();
-        let bounds = use_state(Area::default);
-        let mut measured = bounds;
-        let open_session = sink.clone();
-
-        rect()
-            .on_sized(move |event: Event<SizedEventData>| measured.set(event.area))
-            .child(
-                Button::new()
-                    .flat()
-                    .theme_colors(button_colours(Color::TRANSPARENT, TOKENS.colours.hover.rgba().into()))
-                    .theme_layout(button_layout(
-                        Size::auto(),
-                        TOKENS.bar.control_height,
-                        (0.0, TOKENS.bar.control_padding),
-                        TOKENS.bar.radius,
-                    ))
-                    .on_press(move |_| open_session.toggle(BarPanel::Session, *bounds.read()))
-                    .child(
-                        rect()
-                            .horizontal()
-                            .cross_align(Alignment::Center)
-                            .child(decorative_icon(icons::POWER))
-                            .child(label().text("").a11y_alt("Open session controls")),
-                    ),
             )
     }
 }
@@ -1034,17 +996,6 @@ pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32), layout: 
         )
         .anchor(PopupAnchor::BottomRight)
         .gravity(PopupGravity::BottomLeft),
-        BarPanel::Session => PopupConfig::new(
-            "kobel-session",
-            anchor_rect,
-            SurfaceSize::ContentSized {
-                width: layout.width,
-                max_height: layout.max_height,
-            },
-            PreferredTheme::Dark,
-        )
-        .anchor(PopupAnchor::BottomRight)
-        .gravity(PopupGravity::BottomLeft),
     }
 }
 
@@ -1080,7 +1031,7 @@ mod tests {
     use super::{
         BarActionSink, BarContext, BarPanel, BarSnapshots, MAX_VISIBLE_EVENTS, PopoverLayout, SURFACE_HEIGHT, TOKENS,
         bar_preview_app, calendar_popup_app, event_occurs_on, event_time_label, local_midnight_epoch, popup_config,
-        session_popup_app, surface_config, visible_events_for_day,
+        surface_config, visible_events_for_day,
     };
 
     #[test]
@@ -1145,18 +1096,15 @@ mod tests {
                     .is_some(),
                 "compact clock lost its calendar action name at {scale_factor}x",
             );
-            let control_names = ["Open quick settings", "Open session controls"];
-            for name in control_names {
-                assert!(
-                    runner
-                        .find(|_, element| {
-                            Label::try_downcast(element)
-                                .filter(|label| label.accessibility.builder.label() == Some(name))
-                        })
-                        .is_some(),
-                    "missing compact bar control `{name}` at {scale_factor}x",
-                );
-            }
+            assert!(
+                runner
+                    .find(|_, element| {
+                        Label::try_downcast(element)
+                            .filter(|label| label.accessibility.builder.label() == Some("Open quick settings"))
+                    })
+                    .is_some(),
+                "missing compact bar control `Open quick settings` at {scale_factor}x",
+            );
         }
     }
 
@@ -1196,74 +1144,13 @@ mod tests {
             use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
             super::quick_settings_popup_app()
         }
-        fn session() -> impl IntoElement {
-            use_provide_context(BarContext::create);
-            use_provide_context(BarActionSink::inert);
-            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
-            session_popup_app()
-        }
 
         for (runner, expected_label) in [
             (TestingRunner::new(calendar, viewport, |_| {}, 1.0).0, "M"),
             (TestingRunner::new(quick_settings, viewport, |_| {}, 1.0).0, "Volume"),
-            (TestingRunner::new(session, viewport, |_| {}, 1.0).0, "Session"),
         ] {
             assert_compact_popup_fits_width(runner, layout.width as f32, expected_label);
         }
-    }
-
-    #[test]
-    fn right_hand_controls_dispatch_their_panel_actions() {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let parent = kobel_wayland::SurfaceId::new(7);
-        let context_slot = std::rc::Rc::new(std::cell::RefCell::new(None::<BarContext>));
-        let app_context_slot = context_slot.clone();
-        let sink = BarActionSink::testing(sender, parent);
-        let mut runner = launch_test(move || {
-            let provided_sink = sink.clone();
-            let context = use_provide_context(BarContext::create);
-            app_context_slot.replace(Some(context));
-            use_provide_context(move || provided_sink);
-            super::bar_app()
-        });
-        runner.sync_and_update();
-
-        context_slot
-            .borrow()
-            .as_ref()
-            .expect("test context")
-            .apply(&ServiceEvent::Notifd(NotifdSnapshot {
-                serving: true,
-                dnd: false,
-                notifications: vec![Notification {
-                    id: 1,
-                    app_name: "Kobel test".to_string(),
-                    app_icon: None,
-                    summary: "Notification".to_string(),
-                    body: "Body".to_string(),
-                    actions: Vec::new(),
-                    critical: false,
-                    time: 0,
-                }],
-            }));
-        runner.sync_and_update();
-        runner.sync_and_update();
-        let session_area = runner
-            .find(|node, element| {
-                Label::try_downcast(element)
-                    .filter(|label| label.accessibility.builder.label() == Some("Open session controls"))
-                    .map(|_| node.layout().area)
-            })
-            .expect("session control");
-        runner.click_cursor(session_area.center().to_f64());
-        assert!(matches!(
-            receiver.try_recv(),
-            Ok(super::BarAction::TogglePanel {
-                parent: action_parent,
-                panel: BarPanel::Session,
-                ..
-            }) if action_parent == parent
-        ));
     }
 
     #[test]
@@ -1458,16 +1345,26 @@ mod tests {
     }
 
     #[test]
-    fn session_popup_mounts_with_all_actions() {
+    fn quick_settings_power_control_opens_session_actions() {
         fn preview() -> impl IntoElement {
             use_provide_context(BarContext::create);
             use_provide_context(BarActionSink::inert);
-            session_popup_app()
+            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
+            super::quick_settings_popup_app()
         }
 
         let mut runner = launch_test(preview);
         runner.sync_and_update();
-        for expected in ["Lock", "Log out", "Restart", "Shut down"] {
+        let power_area = runner
+            .find(|node, element| {
+                Image::try_downcast(element)
+                    .filter(|icon| icon.accessibility.builder.label() == Some("Power off / Log out"))
+                    .map(|_| node.layout().area)
+            })
+            .expect("power control");
+        runner.click_cursor(power_area.center().to_f64());
+        runner.sync_and_update();
+        for expected in ["Suspend", "Restart", "Power Off", "Log out"] {
             assert!(
                 runner
                     .find(|_, element| Label::try_downcast(element).filter(|label| label.text.as_ref() == expected))
@@ -1483,6 +1380,117 @@ mod tests {
                 "session action button is not named {expected}",
             );
         }
+    }
+
+    #[test]
+    fn quick_settings_system_row_dispatches_lock_and_settings() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let parent = kobel_wayland::SurfaceId::new(7);
+        let sink = BarActionSink::testing(sender, parent);
+        let mut runner = launch_test(move || {
+            let provided = sink.clone();
+            use_provide_context(BarContext::create);
+            use_provide_context(move || provided);
+            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
+            super::quick_settings_popup_app()
+        });
+        runner.sync_and_update();
+
+        let settings = runner
+            .find(|node, element| {
+                Image::try_downcast(element)
+                    .filter(|icon| icon.accessibility.builder.label() == Some("Settings"))
+                    .map(|_| node.layout().area)
+            })
+            .expect("settings control");
+        runner.click_cursor(settings.center().to_f64());
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::Service(Command::LaunchApp(app))) if app == "org.gnome.Settings"
+        ));
+
+        let lock = runner
+            .find(|node, element| {
+                Image::try_downcast(element)
+                    .filter(|icon| icon.accessibility.builder.label() == Some("Lock screen"))
+                    .map(|_| node.layout().area)
+            })
+            .expect("lock control");
+        runner.click_cursor(lock.center().to_f64());
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::Service(Command::Session(
+                kobel_services::SessionVerb::Lock
+            )))
+        ));
+    }
+
+    #[test]
+    fn session_back_disarms_so_reopened_destructive_action_rearms() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let parent = kobel_wayland::SurfaceId::new(7);
+        let sink = BarActionSink::testing(sender, parent);
+        let mut runner = launch_test(move || {
+            let provided = sink.clone();
+            use_provide_context(BarContext::create);
+            use_provide_context(move || provided);
+            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
+            super::quick_settings_popup_app()
+        });
+        runner.sync_and_update();
+
+        let open_power = |runner: &mut TestingRunner| {
+            let area = runner
+                .find(|node, element| {
+                    Image::try_downcast(element)
+                        .filter(|icon| icon.accessibility.builder.label() == Some("Power off / Log out"))
+                        .map(|_| node.layout().area)
+                })
+                .expect("power control");
+            runner.click_cursor(area.center().to_f64());
+            runner.sync_and_update();
+        };
+        let click_restart = |runner: &mut TestingRunner| {
+            let area = runner
+                .find(|node, element| {
+                    Image::try_downcast(element)
+                        .filter(|icon| icon.accessibility.builder.label() == Some("Restart"))
+                        .map(|_| node.layout().area)
+                })
+                .expect("restart row");
+            runner.click_cursor(area.center().to_f64());
+            runner.sync_and_update();
+        };
+
+        // Arm Restart (first press), then leave via the Back control.
+        open_power(&mut runner);
+        click_restart(&mut runner);
+        let back = runner
+            .find(|node, element| {
+                Image::try_downcast(element)
+                    .filter(|icon| icon.accessibility.builder.label() == Some("Back to quick settings"))
+                    .map(|_| node.layout().area)
+            })
+            .expect("session back control");
+        runner.click_cursor(back.center().to_f64());
+        runner.sync_and_update();
+
+        // Reopening must present a disarmed Restart row again...
+        open_power(&mut runner);
+        assert!(
+            runner
+                .find(|_, element| {
+                    Label::try_downcast(element).filter(|label| label.text.as_ref() == "Press again to confirm restart")
+                })
+                .is_none(),
+            "Back must disarm the armed destructive action before reopening",
+        );
+        // ...so its first press re-arms (dispatches nothing) rather than firing.
+        click_restart(&mut runner);
+        assert!(
+            !matches!(receiver.try_recv(), Ok(super::BarAction::Service(Command::Session(_)))),
+            "reopened destructive action fired on the first press",
+        );
     }
     #[test]
     fn quick_settings_wifi_drill_is_reachable() {
@@ -1538,17 +1546,6 @@ mod tests {
     }
 
     #[test]
-    fn right_hand_popups_align_below_their_controls() {
-        let anchor = (1140, 4, 28, 28);
-        for panel in [BarPanel::QuickSettings, BarPanel::Session] {
-            let config = popup_config(panel, anchor, PopoverLayout::default());
-            assert_eq!(config.anchor_rect, anchor);
-            assert_eq!(config.anchor, PopupAnchor::BottomRight);
-            assert_eq!(config.gravity, PopupGravity::BottomLeft);
-        }
-    }
-
-    #[test]
     fn popup_layout_uses_desktop_defaults_when_the_output_has_room() {
         let layout = PopoverLayout::for_output((1920, 1080));
 
@@ -1559,7 +1556,7 @@ mod tests {
     #[test]
     fn popup_layout_stays_inside_narrow_and_short_outputs() {
         let layout = PopoverLayout::for_output((320, 240));
-        let config = popup_config(BarPanel::Session, (260, 4, 28, 24), layout);
+        let config = popup_config(BarPanel::QuickSettings, (260, 4, 28, 24), layout);
 
         assert_eq!(
             config.size,
