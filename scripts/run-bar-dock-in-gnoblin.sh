@@ -8,6 +8,8 @@ GNOBLIN="${GNOBLIN:-/home/kieran/dev/gnoblin}"
 PREFIX="$GNOBLIN/install"
 OUT="${OUT:-/tmp/kobel-bar-dock.png}"
 CALENDAR_OUT="${CALENDAR_OUT:-/tmp/kobel-bar-calendar.png}"
+QUICK_SETTINGS_OUT="${QUICK_SETTINGS_OUT:-/tmp/kobel-bar-quick-settings.png}"
+QUICK_SETTINGS_DRILL_OUT="${QUICK_SETTINGS_DRILL_OUT:-/tmp/kobel-bar-quick-settings-wifi.png}"
 BAR_BIN="$ROOT/target/debug/kobel-bar"
 DOCK_BIN="$ROOT/target/debug/kobel-dock"
 BAR_PREVIEW_BIN="$ROOT/target/debug/kobel-bar-preview"
@@ -57,7 +59,7 @@ export GTK_A11Y=none
 export NO_AT_BRIDGE=1
 export DISP="kobel-bar-dock-$$"
 export VIRTUAL_MONITORS="${VIRTUAL_MONITORS:-1280x800 1024x768}"
-export DK OUT CALENDAR_OUT PREFIX BAR_BIN DOCK_BIN BAR_PREVIEW_BIN DOCK_PREVIEW_BIN INSPECTOR_BIN INPUT_DRIVER
+export DK OUT CALENDAR_OUT QUICK_SETTINGS_OUT QUICK_SETTINGS_DRILL_OUT PREFIX BAR_BIN DOCK_BIN BAR_PREVIEW_BIN DOCK_PREVIEW_BIN INSPECTOR_BIN INPUT_DRIVER
 
 CONF="$(python3 "$GNOBLIN/scripts/devkit_dbus.py" "$DK" "$GNOBLIN")"
 

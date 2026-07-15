@@ -42,6 +42,7 @@ Command language (argv tokens, applied in order; ':'-separated fields):
                   like 'Escape'/'Control_L', or a number '0x6b'/'107')
   kdown:NAME / kup:NAME   press / release a key
   wait:MS         sleep MS milliseconds
+  screenshot:PATH capture the full stage through org.gnome.Shell.Screenshot
 
 With no command tokens the built-in phase-0 script runs (see DEFAULT_SCRIPT): click
 the top-bar strip, then 'k' three times (cycles keyboard-interactivity
@@ -77,6 +78,9 @@ SC_PATH = "/org/gnome/Mutter/ScreenCast"
 SC_IFACE = "org.gnome.Mutter.ScreenCast"
 SC_SESSION_IFACE = "org.gnome.Mutter.ScreenCast.Session"
 
+SHELL_SCREENSHOT_DEST = "org.gnome.Shell.Screenshot"
+SHELL_SCREENSHOT_PATH = "/org/gnome/Shell/Screenshot"
+SHELL_SCREENSHOT_IFACE = "org.gnome.Shell.Screenshot"
 PROPS_IFACE = "org.freedesktop.DBus.Properties"
 
 BTN_LEFT = 0x110
@@ -277,6 +281,20 @@ class Injector:
                 ks = keysym_of(parts[1])
                 log(f"kup {parts[1]} (0x{ks:x})")
                 self._keysym(ks, False)
+            elif op == "screenshot":
+                path = parts[1]
+                result = self._call(
+                    SHELL_SCREENSHOT_DEST,
+                    SHELL_SCREENSHOT_PATH,
+                    SHELL_SCREENSHOT_IFACE,
+                    "Screenshot",
+                    GLib.Variant("(bbs)", (False, False, path)),
+                    "(bs)",
+                )
+                success, written_path = result.unpack()
+                if not success:
+                    raise SystemExit(f"[inject] screenshot failed: {path}")
+                log(f"screenshot {written_path}")
             elif op == "wait":
                 ms = int(parts[1])
                 log(f"wait {ms}ms")
@@ -299,7 +317,7 @@ class Injector:
 USAGE = """usage: devkit_input.py [--connector NAME] [--settle MS] [--settle-prime S] [ACTION ...]
 
 Actions (colon-separated args): move:X:Y  click[:X:Y]  rclick[:X:Y]  btndown  btnup
-  key:NAME  kdown:NAME  kup:NAME  wait:MS
+  key:NAME  kdown:NAME  kup:NAME  wait:MS  screenshot:PATH
 No actions -> the built-in spike sequence. Runs against the CURRENT session
 bus and creates a Mutter RemoteDesktop session: devkit sessions only.
 """

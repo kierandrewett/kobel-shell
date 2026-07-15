@@ -158,6 +158,73 @@ else
     echo "PASS: Escape closed the calendar popup"
 fi
 
+status_x=$((primary_width - 48))
+quick_settings_drill_x=$((primary_width - 220))
+quick_settings_closed_before=$(grep -c "\[bar\] QuickSettings popup .* closed" "$DK/bar.log" || true)
+if ! python3 "$INPUT_DRIVER" \
+    --settle-prime 0.5 \
+    "click:${status_x}:16" \
+    "wait:500" \
+    "screenshot:${QUICK_SETTINGS_OUT}" \
+    "click:${quick_settings_drill_x}:126" \
+    "wait:500" \
+    "screenshot:${QUICK_SETTINGS_DRILL_OUT}" \
+    "key:Escape" \
+    "wait:500" \
+    "key:Escape" \
+    "wait:500" >"$DK/quick-settings-input.log" 2>&1; then
+    echo "FAIL: quick settings interaction injection failed"
+    fail=1
+fi
+cat "$DK/quick-settings-input.log"
+
+if grep -q "\[bar\] opened QuickSettings popup" "$DK/bar.log"; then
+    echo "PASS: status click opened quick settings"
+else
+    echo "FAIL: status click did not open quick settings"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
+
+if [ -s "$QUICK_SETTINGS_OUT" ]; then
+    echo "PASS: captured $QUICK_SETTINGS_OUT"
+else
+    echo "FAIL: quick settings screenshot is missing or empty: $QUICK_SETTINGS_OUT"
+    fail=1
+fi
+
+if grep -q "\[bar\] quick settings view Wifi" "$DK/bar.log"; then
+    echo "PASS: Wi-Fi drill opened"
+else
+    echo "FAIL: Wi-Fi drill did not open"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
+
+if [ -s "$QUICK_SETTINGS_DRILL_OUT" ]; then
+    echo "PASS: captured $QUICK_SETTINGS_DRILL_OUT"
+else
+    echo "FAIL: quick settings drill screenshot is missing or empty: $QUICK_SETTINGS_DRILL_OUT"
+    fail=1
+fi
+
+if grep -q "\[bar\] quick settings escape Back" "$DK/bar.log"; then
+    echo "PASS: Escape returned from the Wi-Fi drill"
+else
+    echo "FAIL: Escape did not return from the Wi-Fi drill"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
+
+quick_settings_closed_after=$(grep -c "\[bar\] QuickSettings popup .* closed" "$DK/bar.log" || true)
+if grep -q "\[bar\] quick settings escape Close" "$DK/bar.log" \
+    && [ "$quick_settings_closed_after" -gt "$quick_settings_closed_before" ]; then
+    echo "PASS: Escape closed quick settings from its root"
+else
+    echo "FAIL: Escape did not close quick settings from its root"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
 
 for port in 7354 7355; do
     if [ -n "$(ss -Htnl "sport = :$port")" ]; then
