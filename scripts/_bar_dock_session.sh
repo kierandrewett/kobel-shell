@@ -97,8 +97,70 @@ for process in "$bar_pid:$DK/bar.log" "$dock_pid:$DK/dock.log"; do
 done
 primary_monitor="${VIRTUAL_MONITORS%% *}"
 primary_width="${primary_monitor%%x*}"
+
+session_x=$((primary_width - 28))
+session_restart_x=$((primary_width - 166))
+session_closed_before=$(grep -c "\[bar\] Session popup .* closed" "$DK/bar.log" || true)
+if ! python3 "$INPUT_DRIVER" \
+    --settle-prime 1.5 \
+    "move:${session_x}:16" \
+    "wait:250" \
+    "click" \
+    "wait:500" \
+    "screenshot:${SESSION_OUT}" \
+    "move:${session_restart_x}:112" \
+    "wait:250" \
+    "click" \
+    "wait:500" \
+    "screenshot:${SESSION_CONFIRM_OUT}" >"$DK/session-input.log" 2>&1; then
+    echo "FAIL: session popup interaction injection failed"
+    fail=1
+fi
+cat "$DK/session-input.log"
+if grep -q "\[bar\] opened Session popup" "$DK/bar.log" \
+    && grep -q "\[bar\] session armed Restart" "$DK/bar.log"; then
+    echo "PASS: session popup armed restart confirmation"
+else
+    echo "FAIL: session popup did not arm restart confirmation"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
+if [ -s "$SESSION_OUT" ] && [ -s "$SESSION_CONFIRM_OUT" ]; then
+    echo "PASS: captured session and confirmation states"
+else
+    echo "FAIL: session popup screenshots are missing or empty"
+    fail=1
+fi
+
+if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "key:Escape" "wait:500"; then
+    echo "FAIL: session confirmation Escape injection failed"
+    fail=1
+fi
+session_closed_after_disarm=$(grep -c "\[bar\] Session popup .* closed" "$DK/bar.log" || true)
+if grep -q "\[bar\] session disarmed Restart" "$DK/bar.log" \
+    && [ "$session_closed_after_disarm" -eq "$session_closed_before" ]; then
+    echo "PASS: first Escape disarmed restart without closing"
+else
+    echo "FAIL: first Escape did not disarm restart cleanly"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
+
+if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "key:Escape" "wait:500"; then
+    echo "FAIL: session close Escape injection failed"
+    fail=1
+fi
+session_closed_after=$(grep -c "\[bar\] Session popup .* closed" "$DK/bar.log" || true)
+if [ "$session_closed_after" -gt "$session_closed_after_disarm" ]; then
+    echo "PASS: second Escape closed session controls"
+else
+    echo "FAIL: second Escape did not close session controls"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
+
 clock_x=$((primary_width / 2))
-if ! python3 "$INPUT_DRIVER" --settle-prime 0.5 "click:${clock_x}:16" "wait:500"; then
+if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "click:${clock_x}:16" "wait:500"; then
     echo "FAIL: calendar popup input injection failed"
     fail=1
 fi
@@ -138,7 +200,7 @@ else
     echo "PASS: captured $CALENDAR_OUT"
 fi
 
-if ! python3 "$INPUT_DRIVER" --settle-prime 0.5 "key:Escape" "wait:500"; then
+if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "key:Escape" "wait:500"; then
     echo "FAIL: calendar popup Escape injection failed"
     fail=1
 fi
@@ -158,11 +220,25 @@ else
     echo "PASS: Escape closed the calendar popup"
 fi
 
-status_x=$((primary_width - 48))
-quick_settings_drill_x=$((primary_width - 220))
+notifications_x=$((primary_width - 79))
+notifications_closed_before=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
+notifications_opened_before=$(grep -c "\[bar\] opened Notifications popup" "$DK/bar.log" || true)
+if ! gdbus call --session \
+    --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.Notify \
+    "Kobel smoke" 0 "" "Smoke notification" "Service-backed notification content" "[]" "{}" 5000 \
+    >"$DK/notification-send.log" 2>&1; then
+    echo "FAIL: could not send a test notification"
+    cat "$DK/notification-send.log"
+    fail=1
+fi
+
+status_x=$((primary_width - 112))
+quick_settings_drill_x=$((primary_width - 302))
 quick_settings_closed_before=$(grep -c "\[bar\] QuickSettings popup .* closed" "$DK/bar.log" || true)
 if ! python3 "$INPUT_DRIVER" \
-    --settle-prime 0.5 \
+    --settle-prime 1.5 \
     "click:${status_x}:16" \
     "wait:500" \
     "screenshot:${QUICK_SETTINGS_OUT}" \
@@ -171,6 +247,13 @@ if ! python3 "$INPUT_DRIVER" \
     "screenshot:${QUICK_SETTINGS_DRILL_OUT}" \
     "key:Escape" \
     "wait:500" \
+    "key:Escape" \
+    "wait:500" \
+    "move:${notifications_x}:16" \
+    "wait:250" \
+    "click" \
+    "wait:500" \
+    "screenshot:${NOTIFICATIONS_OUT}" \
     "key:Escape" \
     "wait:500" >"$DK/quick-settings-input.log" 2>&1; then
     echo "FAIL: quick settings interaction injection failed"
@@ -223,6 +306,76 @@ if grep -q "\[bar\] quick settings escape Close" "$DK/bar.log" \
 else
     echo "FAIL: Escape did not close quick settings from its root"
     tail -30 "$DK/bar.log"
+    fail=1
+fi
+
+notifications_opened_after=$(grep -c "\[bar\] opened Notifications popup" "$DK/bar.log" || true)
+notifications_closed_after=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
+if [ "$notifications_opened_after" -gt "$notifications_opened_before" ] \
+    && [ "$notifications_closed_after" -gt "$notifications_closed_before" ]; then
+    echo "PASS: count-bearing bell opened notifications and Escape closed it"
+else
+    echo "FAIL: notification popup lifecycle did not complete"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
+if [ -s "$NOTIFICATIONS_OUT" ]; then
+    echo "PASS: captured $NOTIFICATIONS_OUT"
+else
+    echo "FAIL: notification popup screenshot is missing or empty: $NOTIFICATIONS_OUT"
+    fail=1
+fi
+
+history_send_failed=0
+for index in {2..9}; do
+    if ! gdbus call --session \
+        --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.Notify \
+        "Kobel history" 0 "" "History item ${index}" "Scrollable notification history ${index}" "[]" "{}" 30000 \
+        >>"$DK/notification-history-send.log" 2>&1; then
+        history_send_failed=1
+    fi
+done
+if [ "$history_send_failed" -ne 0 ]; then
+    echo "FAIL: could not populate notification history"
+    cat "$DK/notification-history-send.log"
+    fail=1
+fi
+
+# A new devkit RemoteDesktop session can inherit the last pointer coordinate.
+# Force a real in-bounds move away before targeting the same top-bar control.
+notifications_history_opened_before=$(grep -c "\[bar\] opened Notifications popup" "$DK/bar.log" || true)
+notifications_history_closed_before=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
+if ! python3 "$INPUT_DRIVER" \
+    --settle-prime 1.5 \
+    "move:1000:300" \
+    "wait:250" \
+    "move:${notifications_x}:16" \
+    "wait:250" \
+    "click" \
+    "wait:500" \
+    "screenshot:${NOTIFICATIONS_HISTORY_OUT}" \
+    "key:Escape" \
+    "wait:500" >"$DK/notifications-history-input.log" 2>&1; then
+    echo "FAIL: notification history interaction injection failed"
+    fail=1
+fi
+cat "$DK/notifications-history-input.log"
+notifications_history_opened_after=$(grep -c "\[bar\] opened Notifications popup" "$DK/bar.log" || true)
+notifications_history_closed_after=$(grep -c "\[bar\] Notifications popup .* closed" "$DK/bar.log" || true)
+if [ "$notifications_history_opened_after" -gt "$notifications_history_opened_before" ] \
+    && [ "$notifications_history_closed_after" -gt "$notifications_history_closed_before" ]; then
+    echo "PASS: long notification history opened and closed"
+else
+    echo "FAIL: long notification history lifecycle did not complete"
+    tail -30 "$DK/bar.log"
+    fail=1
+fi
+if [ -s "$NOTIFICATIONS_HISTORY_OUT" ]; then
+    echo "PASS: captured $NOTIFICATIONS_HISTORY_OUT"
+else
+    echo "FAIL: notification history screenshot is missing or empty: $NOTIFICATIONS_HISTORY_OUT"
     fail=1
 fi
 

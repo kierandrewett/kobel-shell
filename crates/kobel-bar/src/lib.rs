@@ -1,8 +1,12 @@
 //! The complete presentation and layer-shell policy for the independent top bar.
 
+mod notifications;
 mod quick_settings;
+mod session;
 
+pub use notifications::notifications_popup_app;
 pub use quick_settings::quick_settings_popup_app;
+pub use session::session_popup_app;
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -16,11 +20,11 @@ use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use kobel_services::{
     AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot, CalendarSnapshot, Command, GnoblinSnapshot,
-    NetworkSnapshot, PowerSnapshot, ServiceEvent, SettingsSnapshot,
+    NetworkSnapshot, NotifdSnapshot, PowerSnapshot, ServiceEvent, SettingsSnapshot,
 };
 use kobel_theme::{TOKENS, icons};
 use kobel_wayland::{
-    Anchor, KeyboardInteractivity, LoopWaker, Margins, PopupAnchor, PopupConfig, PopupGravity, SurfaceConfig,
+    Anchor, KeyPress, KeyboardInteractivity, LoopWaker, Margins, PopupAnchor, PopupConfig, PopupGravity, SurfaceConfig,
     SurfaceId, SurfaceSize,
 };
 use torin::prelude::{Alignment, Area, Content, Size};
@@ -32,6 +36,8 @@ const MAX_VISIBLE_EVENTS: usize = 2;
 pub enum BarPanel {
     Calendar,
     QuickSettings,
+    Notifications,
+    Session,
 }
 
 #[derive(Debug)]
@@ -74,6 +80,14 @@ impl BarActionSink {
             sender,
             waker: None,
             parent: Rc::new(Cell::new(None)),
+        }
+    }
+    #[cfg(test)]
+    fn testing(sender: mpsc::Sender<BarAction>, parent: SurfaceId) -> Self {
+        Self {
+            sender,
+            waker: None,
+            parent: Rc::new(Cell::new(Some(parent))),
         }
     }
 
@@ -128,6 +142,7 @@ pub struct BarSnapshots {
     brightness: BrightnessSnapshot,
     power: PowerSnapshot,
     settings: SettingsSnapshot,
+    notifications: NotifdSnapshot,
     gnoblin: GnoblinSnapshot,
 }
 
@@ -146,6 +161,7 @@ impl Default for BarSnapshots {
             brightness: BrightnessSnapshot::default(),
             power: PowerSnapshot::default(),
             settings: SettingsSnapshot::default(),
+            notifications: NotifdSnapshot::default(),
             gnoblin: GnoblinSnapshot::default(),
         }
     }
@@ -163,9 +179,16 @@ impl BarSnapshots {
             ServiceEvent::Power(snapshot) => self.power = snapshot.clone(),
             ServiceEvent::Settings(snapshot) => self.settings = snapshot.clone(),
             ServiceEvent::Gnoblin(snapshot) => self.gnoblin = snapshot.clone(),
+            ServiceEvent::Notifd(snapshot) => self.notifications = snapshot.clone(),
             _ => {}
         }
     }
+}
+
+#[derive(Clone)]
+struct SessionKeyDelivery {
+    sequence: u64,
+    press: KeyPress,
 }
 
 /// Reactive service state installed independently in every output's Freya tree.
@@ -180,7 +203,10 @@ pub struct BarContext {
     power: State<PowerSnapshot>,
     settings: State<SettingsSnapshot>,
     gnoblin: State<GnoblinSnapshot>,
+    notifications: State<NotifdSnapshot>,
     escape_generation: State<u64>,
+    session_key: State<Option<SessionKeyDelivery>>,
+    session_sequence: Rc<Cell<u64>>,
 }
 
 impl BarContext {
@@ -199,7 +225,10 @@ impl BarContext {
             power: State::create(snapshots.power.clone()),
             settings: State::create(snapshots.settings.clone()),
             gnoblin: State::create(snapshots.gnoblin.clone()),
+            notifications: State::create(snapshots.notifications.clone()),
             escape_generation: State::create(0),
+            session_key: State::create(None),
+            session_sequence: Rc::new(Cell::new(0)),
         }
     }
 
@@ -207,6 +236,13 @@ impl BarContext {
         let mut escape_generation = self.escape_generation;
         let next = escape_generation.peek().wrapping_add(1);
         escape_generation.set(next);
+    }
+
+    pub fn deliver_session_key(&self, press: KeyPress) {
+        let sequence = self.session_sequence.get().wrapping_add(1);
+        self.session_sequence.set(sequence);
+        let mut session_key = self.session_key;
+        session_key.set(Some(SessionKeyDelivery { sequence, press }));
     }
 
     pub fn apply(&self, event: &ServiceEvent) {
@@ -247,6 +283,10 @@ impl BarContext {
                 let mut gnoblin = self.gnoblin;
                 gnoblin.set_if_modified(snapshot.clone());
             }
+            ServiceEvent::Notifd(snapshot) => {
+                let mut notifications = self.notifications;
+                notifications.set_if_modified(snapshot.clone());
+            }
             _ => {}
         }
     }
@@ -275,7 +315,10 @@ pub fn bar_app() -> impl IntoElement {
         .horizontal()
         .cross_align(Alignment::Center)
         .main_align(Alignment::End)
-        .child(StatusPill);
+        .spacing(TOKENS.bar.module_gap)
+        .child(StatusPill)
+        .child(NotificationButton)
+        .child(SessionButton);
 
     rect()
         .width(Size::fill())
@@ -455,6 +498,99 @@ impl Component for StatusPill {
                     ))
                     .on_press(move |_| open_quick_settings.toggle(BarPanel::QuickSettings, *bounds.read()))
                     .child(status),
+            )
+    }
+}
+
+#[derive(PartialEq)]
+struct NotificationButton;
+
+impl Component for NotificationButton {
+    fn render(&self) -> impl IntoElement {
+        let context = use_consume::<BarContext>();
+        let sink = use_consume::<BarActionSink>();
+        let bounds = use_state(Area::default);
+        let mut measured = bounds;
+        let open_notifications = sink.clone();
+        let notifications = context.notifications.read();
+        let count = notifications.notifications.len();
+        let accessible_label = match count {
+            0 => "Open notifications".to_string(),
+            1 => "Open notifications, 1 item".to_string(),
+            count => format!("Open notifications, {count} items"),
+        };
+
+        let mut content = rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(4.0)
+            .child(icon(icons::BELL));
+        if count > 0 {
+            content = content.child(
+                label()
+                    .text(if count > 9 { "9+".to_string() } else { count.to_string() })
+                    .font_size(TOKENS.typography.small_size)
+                    .font_weight(TOKENS.typography.semibold_weight),
+            );
+        }
+        if notifications.dnd {
+            content = content.opacity(0.65);
+        }
+
+        rect()
+            .on_sized(move |event: Event<SizedEventData>| measured.set(event.area))
+            .child(
+                Button::new()
+                    .flat()
+                    .theme_colors(button_colours(
+                        Color::TRANSPARENT,
+                        TOKENS.colours.surface_hover.rgba().into(),
+                    ))
+                    .theme_layout(button_layout(
+                        Size::auto(),
+                        TOKENS.bar.control_height,
+                        (0.0, TOKENS.bar.control_padding),
+                        TOKENS.bar.radius,
+                    ))
+                    .on_press(move |_| open_notifications.toggle(BarPanel::Notifications, *bounds.read()))
+                    .child(content.child(label().text("").a11y_alt(accessible_label))),
+            )
+    }
+}
+
+#[derive(PartialEq)]
+struct SessionButton;
+
+impl Component for SessionButton {
+    fn render(&self) -> impl IntoElement {
+        let sink = use_consume::<BarActionSink>();
+        let bounds = use_state(Area::default);
+        let mut measured = bounds;
+        let open_session = sink.clone();
+
+        rect()
+            .on_sized(move |event: Event<SizedEventData>| measured.set(event.area))
+            .child(
+                Button::new()
+                    .flat()
+                    .theme_colors(button_colours(
+                        Color::TRANSPARENT,
+                        TOKENS.colours.surface_hover.rgba().into(),
+                    ))
+                    .theme_layout(button_layout(
+                        Size::auto(),
+                        TOKENS.bar.control_height,
+                        (0.0, TOKENS.bar.control_padding),
+                        TOKENS.bar.radius,
+                    ))
+                    .on_press(move |_| open_session.toggle(BarPanel::Session, *bounds.read()))
+                    .child(
+                        rect()
+                            .horizontal()
+                            .cross_align(Alignment::Center)
+                            .child(icon(icons::POWER))
+                            .child(label().text("").a11y_alt("Open session controls")),
+                    ),
             )
     }
 }
@@ -825,6 +961,28 @@ pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32)) -> Popup
         )
         .anchor(PopupAnchor::BottomRight)
         .gravity(PopupGravity::BottomLeft),
+        BarPanel::Notifications => PopupConfig::new(
+            "kobel-notifications",
+            anchor_rect,
+            SurfaceSize::ContentSized {
+                width: TOKENS.popover.width,
+                max_height: TOKENS.popover.max_height,
+            },
+            PreferredTheme::Dark,
+        )
+        .anchor(PopupAnchor::BottomRight)
+        .gravity(PopupGravity::BottomLeft),
+        BarPanel::Session => PopupConfig::new(
+            "kobel-session",
+            anchor_rect,
+            SurfaceSize::ContentSized {
+                width: TOKENS.popover.width,
+                max_height: TOKENS.popover.max_height,
+            },
+            PreferredTheme::Dark,
+        )
+        .anchor(PopupAnchor::BottomRight)
+        .gravity(PopupGravity::BottomLeft),
     }
 }
 
@@ -849,20 +1007,79 @@ mod tests {
     use chrono::{Days, NaiveDate};
     use freya_core::prelude::{IntoElement, Label, use_provide_context};
     use freya_testing::launch_test;
-    use kobel_services::CalendarEvent;
-    use kobel_services::{AudioSnapshot, BatterySnapshot, NetworkSnapshot, ServiceEvent};
+    use kobel_services::{
+        AudioSnapshot, BatterySnapshot, CalendarEvent, Command, NetworkSnapshot, NotifdSnapshot, Notification,
+        ServiceEvent,
+    };
     use kobel_wayland::{Anchor, KeyboardInteractivity, PopupAnchor, PopupGravity, SurfaceSize};
 
     use super::{
         BarActionSink, BarContext, BarPanel, BarSnapshots, MAX_VISIBLE_EVENTS, SURFACE_HEIGHT, bar_preview_app,
-        calendar_popup_app, event_occurs_on, event_time_label, local_midnight_epoch, popup_config, surface_config,
-        visible_events_for_day,
+        calendar_popup_app, event_occurs_on, event_time_label, local_midnight_epoch, notifications_popup_app,
+        popup_config, session_popup_app, surface_config, visible_events_for_day,
     };
 
     #[test]
     fn component_mounts_in_the_headless_runner() {
         let mut runner = launch_test(bar_preview_app);
         runner.sync_and_update();
+    }
+
+    #[test]
+    fn right_hand_controls_dispatch_their_panel_actions() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let parent = kobel_wayland::SurfaceId::new(7);
+        let context_slot = std::rc::Rc::new(std::cell::RefCell::new(None::<BarContext>));
+        let app_context_slot = context_slot.clone();
+        let sink = BarActionSink::testing(sender, parent);
+        let mut runner = launch_test(move || {
+            let provided_sink = sink.clone();
+            let context = use_provide_context(BarContext::create);
+            app_context_slot.replace(Some(context));
+            use_provide_context(move || provided_sink);
+            super::bar_app()
+        });
+        runner.sync_and_update();
+
+        context_slot
+            .borrow()
+            .as_ref()
+            .expect("test context")
+            .apply(&ServiceEvent::Notifd(NotifdSnapshot {
+                serving: true,
+                dnd: false,
+                notifications: vec![Notification {
+                    id: 1,
+                    app_name: "Kobel test".to_string(),
+                    app_icon: None,
+                    summary: "Notification".to_string(),
+                    body: "Body".to_string(),
+                    actions: Vec::new(),
+                    critical: false,
+                    time: 0,
+                }],
+            }));
+        runner.sync_and_update();
+        runner.sync_and_update();
+        runner.click_cursor((420.0, 250.0));
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::TogglePanel {
+                parent: action_parent,
+                panel: BarPanel::Notifications,
+                ..
+            }) if action_parent == parent
+        ));
+
+        runner.click_cursor((472.0, 250.0));
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::TogglePanel {
+                parent: action_parent,
+                panel: BarPanel::Session,
+                ..
+            }) if action_parent == parent
+        ));
     }
 
     #[test]
@@ -885,15 +1102,22 @@ mod tests {
             active_strength: 81,
             aps: Vec::new(),
         };
+        let notifications = NotifdSnapshot {
+            serving: true,
+            dnd: true,
+            notifications: Vec::new(),
+        };
 
         let mut latest = BarSnapshots::default();
         latest.apply(&ServiceEvent::Audio(audio.clone()));
         latest.apply(&ServiceEvent::Battery(battery.clone()));
         latest.apply(&ServiceEvent::Network(network.clone()));
+        latest.apply(&ServiceEvent::Notifd(notifications.clone()));
 
         assert_eq!(latest.audio, audio);
         assert_eq!(latest.battery, battery);
         assert_eq!(latest.network, network);
+        assert_eq!(latest.notifications, notifications);
     }
 
     #[test]
@@ -933,6 +1157,134 @@ mod tests {
 
         let mut runner = launch_test(preview);
         runner.sync_and_update();
+    }
+
+    #[test]
+    fn notification_popup_mounts_with_an_empty_state() {
+        fn preview() -> impl IntoElement {
+            use_provide_context(BarContext::create);
+            use_provide_context(BarActionSink::inert);
+            notifications_popup_app()
+        }
+
+        let mut runner = launch_test(preview);
+        runner.sync_and_update();
+        assert!(
+            runner
+                .find(|_, element| Label::try_downcast(element).filter(|label| label.text.as_ref() == "All caught up"))
+                .is_some(),
+        );
+    }
+
+    #[test]
+    fn notification_controls_dispatch_service_commands() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let context_slot = std::rc::Rc::new(std::cell::RefCell::new(None::<BarContext>));
+        let app_context_slot = context_slot.clone();
+        let sink = BarActionSink::testing(sender, kobel_wayland::SurfaceId::new(7));
+        let mut runner = launch_test(move || {
+            let provided_sink = sink.clone();
+            let context = use_provide_context(BarContext::create);
+            app_context_slot.replace(Some(context));
+            use_provide_context(move || provided_sink);
+            notifications_popup_app()
+        });
+        runner.sync_and_update();
+
+        context_slot
+            .borrow()
+            .as_ref()
+            .expect("test context")
+            .apply(&ServiceEvent::Notifd(NotifdSnapshot {
+                serving: true,
+                dnd: false,
+                notifications: vec![Notification {
+                    id: 42,
+                    app_name: "Kobel test".to_string(),
+                    app_icon: None,
+                    summary: "Notification".to_string(),
+                    body: "Body".to_string(),
+                    actions: vec![("open".to_string(), "Open".to_string())],
+                    critical: false,
+                    time: 0,
+                }],
+            }));
+        runner.sync_and_update();
+        runner.sync_and_update();
+
+        let dnd_area = runner
+            .find(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.text.as_ref() == "Do not disturb")
+                    .map(|_| node.layout().area)
+            })
+            .expect("Do not disturb control");
+        runner.click_cursor(dnd_area.center().to_f64());
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::Service(Command::SetDnd(true)))
+        ));
+
+        let clear_area = runner
+            .find(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.text.as_ref() == "Clear")
+                    .map(|_| node.layout().area)
+            })
+            .expect("Clear control");
+        runner.click_cursor(clear_area.center().to_f64());
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::Service(Command::ClearNotifications))
+        ));
+
+        let action_area = runner
+            .find(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.text.as_ref() == "Open")
+                    .map(|_| node.layout().area)
+            })
+            .expect("notification action control");
+        runner.click_cursor(action_area.center().to_f64());
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::Service(Command::InvokeNotificationAction {
+                id: 42,
+                action_key,
+            })) if action_key == "open"
+        ));
+        let dismiss_area = runner
+            .find(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.accessibility.builder.label() == Some("Dismiss Notification"))
+                    .map(|_| node.layout().area)
+            })
+            .expect("notification dismiss control");
+        runner.click_cursor(dismiss_area.center().to_f64());
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(super::BarAction::Service(Command::CloseNotification(42)))
+        ));
+    }
+
+    #[test]
+    fn session_popup_mounts_with_all_actions() {
+        fn preview() -> impl IntoElement {
+            use_provide_context(BarContext::create);
+            use_provide_context(BarActionSink::inert);
+            session_popup_app()
+        }
+
+        let mut runner = launch_test(preview);
+        runner.sync_and_update();
+        for expected in ["Lock", "Log out", "Restart", "Shut down"] {
+            assert!(
+                runner
+                    .find(|_, element| Label::try_downcast(element).filter(|label| label.text.as_ref() == expected))
+                    .is_some(),
+                "missing session action {expected}",
+            );
+        }
     }
     #[test]
     fn quick_settings_wifi_drill_is_reachable() {
@@ -985,6 +1337,17 @@ mod tests {
         assert_eq!(config.anchor_rect, anchor);
         assert_eq!(config.anchor, PopupAnchor::BottomRight);
         assert_eq!(config.gravity, PopupGravity::BottomLeft);
+    }
+
+    #[test]
+    fn right_hand_popups_align_below_their_controls() {
+        let anchor = (1140, 4, 28, 28);
+        for panel in [BarPanel::Notifications, BarPanel::Session] {
+            let config = popup_config(panel, anchor);
+            assert_eq!(config.anchor_rect, anchor);
+            assert_eq!(config.anchor, PopupAnchor::BottomRight);
+            assert_eq!(config.gravity, PopupGravity::BottomLeft);
+        }
     }
 
     #[test]

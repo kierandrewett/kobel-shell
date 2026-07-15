@@ -49,6 +49,7 @@ fn main() -> anyhow::Result<()> {
             .with(ServiceCapability::Brightness)
             .with(ServiceCapability::Power)
             .with(ServiceCapability::Settings)
+            .with(ServiceCapability::Notifications)
             .with(ServiceCapability::Calendar)
             .with(ServiceCapability::Exec),
         move |event| {
@@ -115,17 +116,24 @@ fn main() -> anyhow::Result<()> {
         let active_popup = active_popup.clone();
         let contexts = contexts.clone();
         move |press: KeyPress, control| {
+            let Some(popup) = active_popup.get() else {
+                return;
+            };
+            if popup.panel == BarPanel::Session {
+                if let Some(context) = contexts.borrow().get(&popup.surface) {
+                    context.deliver_session_key(press);
+                }
+                return;
+            }
             if !press.is_escape() {
                 return;
             }
-            if let Some(popup) = active_popup.get() {
-                if popup.panel == BarPanel::QuickSettings
-                    && let Some(context) = contexts.borrow().get(&popup.surface)
-                {
-                    context.request_escape();
-                } else {
-                    control.close_popup(popup.surface);
-                }
+            if popup.panel == BarPanel::QuickSettings
+                && let Some(context) = contexts.borrow().get(&popup.surface)
+            {
+                context.request_escape();
+            } else {
+                control.close_popup(popup.surface);
             }
         }
     });
@@ -182,6 +190,8 @@ fn main() -> anyhow::Result<()> {
                             move || match panel {
                                 BarPanel::Calendar => kobel_bar::calendar_popup_app().into_element(),
                                 BarPanel::QuickSettings => kobel_bar::quick_settings_popup_app().into_element(),
+                                BarPanel::Notifications => kobel_bar::notifications_popup_app().into_element(),
+                                BarPanel::Session => kobel_bar::session_popup_app().into_element(),
                             },
                         );
                         match result {
