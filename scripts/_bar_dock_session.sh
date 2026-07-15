@@ -194,7 +194,7 @@ clock_x=$((primary_width / 2))
 if [ "$primary_width" -le 520 ]; then
     clock_x=36
 fi
-if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "click:${clock_x}:16" "wait:500"; then
+if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "click:${clock_x}:16" "wait:500" "screenshot:${CALENDAR_OUT}"; then
     echo "FAIL: calendar popup input injection failed"
     fail=1
 fi
@@ -214,19 +214,6 @@ else
     echo "PASS: clock click opened the calendar popup"
 fi
 
-calendar_screenshot="$(
-    gdbus call --session \
-        --dest org.gnome.Shell.Screenshot \
-        --object-path /org/gnome/Shell/Screenshot \
-        --method org.gnome.Shell.Screenshot.Screenshot false false "$CALENDAR_OUT" 2>&1
-)"
-case "$calendar_screenshot" in
-    "(true,"*) ;;
-    *)
-        echo "FAIL: calendar screenshot call failed: $calendar_screenshot"
-        fail=1
-        ;;
-esac
 if [ ! -s "$CALENDAR_OUT" ]; then
     echo "FAIL: calendar screenshot is missing or empty: $CALENDAR_OUT"
     fail=1
@@ -578,19 +565,11 @@ for _ in 1 2 3; do
     sleep 0.3
 done
 
-screenshot_result="$(
-    gdbus call --session \
-        --dest org.gnome.Shell.Screenshot \
-        --object-path /org/gnome/Shell/Screenshot \
-        --method org.gnome.Shell.Screenshot.Screenshot false false "$OUT" 2>&1
-)"
-case "$screenshot_result" in
-    "(true,"*) ;;
-    *)
-        echo "FAIL: screenshot call failed: $screenshot_result"
-        fail=1
-        ;;
-esac
+if ! python3 "$INPUT_DRIVER" --settle-prime 1.5 "screenshot:${OUT}" >"$DK/bar-dock-capture.log" 2>&1; then
+    echo "FAIL: bar-dock screenshot injection failed"
+    cat "$DK/bar-dock-capture.log"
+    fail=1
+fi
 if [ ! -s "$OUT" ]; then
     echo "FAIL: screenshot is missing or empty: $OUT"
     fail=1

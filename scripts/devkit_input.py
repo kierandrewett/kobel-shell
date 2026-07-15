@@ -42,7 +42,7 @@ Command language (argv tokens, applied in order; ':'-separated fields):
                   like 'Escape'/'Control_L', or a number '0x6b'/'107')
   kdown:NAME / kup:NAME   press / release a key
   wait:MS         sleep MS milliseconds
-  screenshot:PATH capture the full stage through org.gnome.Shell.Screenshot
+  screenshot:PATH capture one frame from the mutter ScreenCast PipeWire node
 
 With no command tokens the built-in phase-0 script runs (see DEFAULT_SCRIPT): click
 the top-bar strip, then 'k' three times (cycles keyboard-interactivity
@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import sys
 import time
+import subprocess
 
 import gi
 
@@ -77,10 +78,8 @@ SC_DEST = "org.gnome.Mutter.ScreenCast"
 SC_PATH = "/org/gnome/Mutter/ScreenCast"
 SC_IFACE = "org.gnome.Mutter.ScreenCast"
 SC_SESSION_IFACE = "org.gnome.Mutter.ScreenCast.Session"
+SC_STREAM_IFACE = "org.gnome.Mutter.ScreenCast.Stream"
 
-SHELL_SCREENSHOT_DEST = "org.gnome.Shell.Screenshot"
-SHELL_SCREENSHOT_PATH = "/org/gnome/Shell/Screenshot"
-SHELL_SCREENSHOT_IFACE = "org.gnome.Shell.Screenshot"
 PROPS_IFACE = "org.freedesktop.DBus.Properties"
 
 BTN_LEFT = 0x110
@@ -149,6 +148,7 @@ class Injector:
         self.rd_session_path: str | None = None
         self.sc_session_path: str | None = None
         self.stream_path: str | None = None
+        self.node_id: int | None = None
 
     def _call(self, dest, path, iface, method, params, reply_type):
         rt = GLib.VariantType.new(reply_type) if reply_type else None
@@ -193,10 +193,19 @@ class Injector:
         )
         self.stream_path = res.unpack()[0]
         log(f"stream {self.stream_path} (connector {self.connector})")
+        # Subscribe before Start(): mutter emits PipeWireStreamAdded on the stream
+        # object once the (RD-linked) screencast session starts.
+        self.bus.signal_subscribe(
+            SC_DEST, SC_STREAM_IFACE, "PipeWireStreamAdded", self.stream_path,
+            None, Gio.DBusSignalFlags.NONE, self._on_pipewire_stream_added, None,
+        )
 
         # Starting the RD session also starts the linked screen-cast session/streams.
         self._call(RD_DEST, self.rd_session_path, RD_SESSION_IFACE, "Start", None, "()")
         log("RemoteDesktop session started")
+        # Frames only flow once the session is started; wait for the node id so
+        # `screenshot` can pull straight off the PipeWire stream.
+        self._await_pipewire_node()
 
         # Work around lazily-created virtual devices: a first keyboard tap + a pointer
         # move off-screen make mutter instantiate the virtual keyboard/pointer before
@@ -231,6 +240,34 @@ class Injector:
             RD_DEST, self.rd_session_path, RD_SESSION_IFACE, "NotifyKeyboardKeysym",
             GLib.Variant("(ub)", (keysym, state)), "()",
         )
+
+    def _on_pipewire_stream_added(self, _conn, _sender, _path, _iface, _signal, params, _user_data) -> None:
+        self.node_id = params.get_child_value(0).get_uint32()
+
+    def _await_pipewire_node(self, timeout_s: float = 10.0) -> None:
+        ctx = GLib.MainContext.default()
+        deadline = time.monotonic() + timeout_s
+        while self.node_id is None and time.monotonic() < deadline:
+            ctx.iteration(False)
+            time.sleep(0.02)
+        if self.node_id is None:
+            raise SystemExit("[inject] timed out waiting for the PipeWire stream node")
+        log(f"pipewire node {self.node_id}")
+
+    def _capture_frame(self, path: str) -> None:
+        if self.node_id is None:
+            raise SystemExit("[inject] no PipeWire node; cannot capture")
+        # Pull one settled frame straight off mutter's ScreenCast PipeWire node,
+        # bypassing the locked-down org.gnome.Shell.Screenshot API.
+        cmd = [
+            "gst-launch-1.0", "-q", "-e",
+            "pipewiresrc", f"path={self.node_id}", "num-buffers=1",
+            "!", "videoconvert",
+            "!", "pngenc",
+            "!", "filesink", f"location={path}",
+        ]
+        subprocess.run(cmd, check=True, timeout=30)
+        log(f"screenshot {path}")
 
     def run(self, script: list[str], settle_ms: int) -> None:
         for cmd in script:
@@ -283,18 +320,7 @@ class Injector:
                 self._keysym(ks, False)
             elif op == "screenshot":
                 path = parts[1]
-                result = self._call(
-                    SHELL_SCREENSHOT_DEST,
-                    SHELL_SCREENSHOT_PATH,
-                    SHELL_SCREENSHOT_IFACE,
-                    "Screenshot",
-                    GLib.Variant("(bbs)", (False, False, path)),
-                    "(bs)",
-                )
-                success, written_path = result.unpack()
-                if not success:
-                    raise SystemExit(f"[inject] screenshot failed: {path}")
-                log(f"screenshot {written_path}")
+                self._capture_frame(path)
             elif op == "wait":
                 ms = int(parts[1])
                 log(f"wait {ms}ms")
