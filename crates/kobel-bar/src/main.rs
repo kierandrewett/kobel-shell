@@ -41,10 +41,16 @@ fn main() -> anyhow::Result<()> {
     let service_waker = shell.waker();
     let services = Services::spawn_with(
         ServiceSet::empty()
+            .with(ServiceCapability::Gnoblin)
             .with(ServiceCapability::Audio)
             .with(ServiceCapability::Battery)
             .with(ServiceCapability::Network)
-            .with(ServiceCapability::Calendar),
+            .with(ServiceCapability::Bluetooth)
+            .with(ServiceCapability::Brightness)
+            .with(ServiceCapability::Power)
+            .with(ServiceCapability::Settings)
+            .with(ServiceCapability::Calendar)
+            .with(ServiceCapability::Exec),
         move |event| {
             if service_tx.send(event).is_ok() {
                 service_waker.wake();
@@ -107,12 +113,19 @@ fn main() -> anyhow::Result<()> {
 
     shell.on_key({
         let active_popup = active_popup.clone();
+        let contexts = contexts.clone();
         move |press: KeyPress, control| {
             if !press.is_escape() {
                 return;
             }
             if let Some(popup) = active_popup.get() {
-                control.close_popup(popup.surface);
+                if popup.panel == BarPanel::QuickSettings
+                    && let Some(context) = contexts.borrow().get(&popup.surface)
+                {
+                    context.request_escape();
+                } else {
+                    control.close_popup(popup.surface);
+                }
             }
         }
     });
@@ -132,6 +145,14 @@ fn main() -> anyhow::Result<()> {
 
             while let Ok(action) = action_rx.try_recv() {
                 match action {
+                    BarAction::ClosePanel { parent, panel } => {
+                        if let Some(popup) = active_popup
+                            .get()
+                            .filter(|popup| popup.parent == parent && popup.panel == panel)
+                        {
+                            control.close_popup(popup.surface);
+                        }
+                    }
                     BarAction::Service(command) => services.send(command),
                     BarAction::TogglePanel {
                         parent,
@@ -160,6 +181,7 @@ fn main() -> anyhow::Result<()> {
                             },
                             move || match panel {
                                 BarPanel::Calendar => kobel_bar::calendar_popup_app().into_element(),
+                                BarPanel::QuickSettings => kobel_bar::quick_settings_popup_app().into_element(),
                             },
                         );
                         match result {

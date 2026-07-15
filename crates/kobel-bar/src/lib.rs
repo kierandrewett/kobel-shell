@@ -1,5 +1,9 @@
 //! The complete presentation and layer-shell policy for the independent top bar.
 
+mod quick_settings;
+
+pub use quick_settings::quick_settings_popup_app;
+
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -10,7 +14,10 @@ use chrono::{Datelike, Days, Local, Months, NaiveDate, NaiveTime, TimeZone};
 use freya_components::button::{Button, ButtonColorsThemePartial, ButtonLayoutThemePartial};
 use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
-use kobel_services::{AudioSnapshot, BatterySnapshot, CalendarSnapshot, Command, NetworkSnapshot, ServiceEvent};
+use kobel_services::{
+    AudioSnapshot, BatterySnapshot, BluetoothSnapshot, BrightnessSnapshot, CalendarSnapshot, Command, GnoblinSnapshot,
+    NetworkSnapshot, PowerSnapshot, ServiceEvent, SettingsSnapshot,
+};
 use kobel_theme::{TOKENS, icons};
 use kobel_wayland::{
     Anchor, KeyboardInteractivity, LoopWaker, Margins, PopupAnchor, PopupConfig, PopupGravity, SurfaceConfig,
@@ -24,6 +31,7 @@ const MAX_VISIBLE_EVENTS: usize = 2;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarPanel {
     Calendar,
+    QuickSettings,
 }
 
 #[derive(Debug)]
@@ -32,6 +40,10 @@ pub enum BarAction {
         parent: SurfaceId,
         panel: BarPanel,
         anchor_rect: (i32, i32, i32, i32),
+    },
+    ClosePanel {
+        parent: SurfaceId,
+        panel: BarPanel,
     },
     Service(Command),
 }
@@ -81,6 +93,13 @@ impl BarActionSink {
         });
     }
 
+    fn close(&self, panel: BarPanel) {
+        let Some(parent) = self.parent.get() else {
+            return;
+        };
+        self.send(BarAction::ClosePanel { parent, panel });
+    }
+
     fn service(&self, command: Command) {
         self.send(BarAction::Service(command));
     }
@@ -105,6 +124,11 @@ pub struct BarSnapshots {
     battery: BatterySnapshot,
     network: NetworkSnapshot,
     calendar: CalendarSnapshot,
+    bluetooth: BluetoothSnapshot,
+    brightness: BrightnessSnapshot,
+    power: PowerSnapshot,
+    settings: SettingsSnapshot,
+    gnoblin: GnoblinSnapshot,
 }
 
 impl Default for BarSnapshots {
@@ -118,6 +142,11 @@ impl Default for BarSnapshots {
             battery: BatterySnapshot::default(),
             network: NetworkSnapshot::default(),
             calendar: CalendarSnapshot::default(),
+            bluetooth: BluetoothSnapshot::default(),
+            brightness: BrightnessSnapshot::default(),
+            power: PowerSnapshot::default(),
+            settings: SettingsSnapshot::default(),
+            gnoblin: GnoblinSnapshot::default(),
         }
     }
 }
@@ -129,6 +158,11 @@ impl BarSnapshots {
             ServiceEvent::Battery(snapshot) => self.battery = snapshot.clone(),
             ServiceEvent::Network(snapshot) => self.network = snapshot.clone(),
             ServiceEvent::Calendar(snapshot) => self.calendar = snapshot.clone(),
+            ServiceEvent::Bluetooth(snapshot) => self.bluetooth = snapshot.clone(),
+            ServiceEvent::Brightness(snapshot) => self.brightness = snapshot.clone(),
+            ServiceEvent::Power(snapshot) => self.power = snapshot.clone(),
+            ServiceEvent::Settings(snapshot) => self.settings = snapshot.clone(),
+            ServiceEvent::Gnoblin(snapshot) => self.gnoblin = snapshot.clone(),
             _ => {}
         }
     }
@@ -141,6 +175,12 @@ pub struct BarContext {
     battery: State<BatterySnapshot>,
     network: State<NetworkSnapshot>,
     calendar: State<CalendarSnapshot>,
+    bluetooth: State<BluetoothSnapshot>,
+    brightness: State<BrightnessSnapshot>,
+    power: State<PowerSnapshot>,
+    settings: State<SettingsSnapshot>,
+    gnoblin: State<GnoblinSnapshot>,
+    escape_generation: State<u64>,
 }
 
 impl BarContext {
@@ -154,7 +194,19 @@ impl BarContext {
             battery: State::create(snapshots.battery.clone()),
             network: State::create(snapshots.network.clone()),
             calendar: State::create(snapshots.calendar.clone()),
+            bluetooth: State::create(snapshots.bluetooth.clone()),
+            brightness: State::create(snapshots.brightness.clone()),
+            power: State::create(snapshots.power.clone()),
+            settings: State::create(snapshots.settings.clone()),
+            gnoblin: State::create(snapshots.gnoblin.clone()),
+            escape_generation: State::create(0),
         }
+    }
+
+    pub fn request_escape(&self) {
+        let mut escape_generation = self.escape_generation;
+        let next = escape_generation.peek().wrapping_add(1);
+        escape_generation.set(next);
     }
 
     pub fn apply(&self, event: &ServiceEvent) {
@@ -174,6 +226,26 @@ impl BarContext {
             ServiceEvent::Calendar(snapshot) => {
                 let mut calendar = self.calendar;
                 calendar.set_if_modified(snapshot.clone());
+            }
+            ServiceEvent::Bluetooth(snapshot) => {
+                let mut bluetooth = self.bluetooth;
+                bluetooth.set_if_modified(snapshot.clone());
+            }
+            ServiceEvent::Brightness(snapshot) => {
+                let mut brightness = self.brightness;
+                brightness.set_if_modified(snapshot.clone());
+            }
+            ServiceEvent::Power(snapshot) => {
+                let mut power = self.power;
+                power.set_if_modified(snapshot.clone());
+            }
+            ServiceEvent::Settings(snapshot) => {
+                let mut settings = self.settings;
+                settings.set_if_modified(snapshot.clone());
+            }
+            ServiceEvent::Gnoblin(snapshot) => {
+                let mut gnoblin = self.gnoblin;
+                gnoblin.set_if_modified(snapshot.clone());
             }
             _ => {}
         }
@@ -336,6 +408,10 @@ struct StatusPill;
 impl Component for StatusPill {
     fn render(&self) -> impl IntoElement {
         let context = use_consume::<BarContext>();
+        let sink = use_consume::<BarActionSink>();
+        let bounds = use_state(Area::default);
+        let mut measured = bounds;
+        let open_quick_settings = sink.clone();
         let audio = context.audio.read();
         let battery = context.battery.read();
         let network = context.network.read();
@@ -345,9 +421,7 @@ impl Component for StatusPill {
             .horizontal()
             .cross_align(Alignment::Center)
             .spacing(TOKENS.bar.module_gap)
-            .corner_radius(TOKENS.bar.radius)
             .padding((0.0, TOKENS.bar.control_padding))
-            .background(TOKENS.colours.surface_elevated.rgba())
             .child(icon(icons::WIFI_HIGH))
             .child(icon(icons::SPEAKER_HIGH));
 
@@ -364,7 +438,24 @@ impl Component for StatusPill {
             status = status.opacity(0.65);
         }
 
-        status
+        rect()
+            .on_sized(move |event: Event<SizedEventData>| measured.set(event.area))
+            .child(
+                Button::new()
+                    .flat()
+                    .theme_colors(button_colours(
+                        TOKENS.colours.surface_elevated.rgba().into(),
+                        TOKENS.colours.surface_hover.rgba().into(),
+                    ))
+                    .theme_layout(button_layout(
+                        Size::auto(),
+                        TOKENS.bar.control_height,
+                        (0.0, 0.0),
+                        TOKENS.bar.radius,
+                    ))
+                    .on_press(move |_| open_quick_settings.toggle(BarPanel::QuickSettings, *bounds.read()))
+                    .child(status),
+            )
     }
 }
 
@@ -723,6 +814,17 @@ pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32)) -> Popup
         )
         .anchor(PopupAnchor::Bottom)
         .gravity(PopupGravity::Bottom),
+        BarPanel::QuickSettings => PopupConfig::new(
+            "kobel-quick-settings",
+            anchor_rect,
+            SurfaceSize::ContentSized {
+                width: TOKENS.popover.width,
+                max_height: TOKENS.popover.max_height,
+            },
+            PreferredTheme::Dark,
+        )
+        .anchor(PopupAnchor::BottomRight)
+        .gravity(PopupGravity::BottomLeft),
     }
 }
 
@@ -745,7 +847,7 @@ pub fn surface_config() -> SurfaceConfig {
 #[cfg(test)]
 mod tests {
     use chrono::{Days, NaiveDate};
-    use freya_core::prelude::{IntoElement, use_provide_context};
+    use freya_core::prelude::{IntoElement, Label, use_provide_context};
     use freya_testing::launch_test;
     use kobel_services::CalendarEvent;
     use kobel_services::{AudioSnapshot, BatterySnapshot, NetworkSnapshot, ServiceEvent};
@@ -822,6 +924,50 @@ mod tests {
     }
 
     #[test]
+    fn quick_settings_popup_mounts_in_the_headless_runner() {
+        fn preview() -> impl IntoElement {
+            use_provide_context(BarContext::create);
+            use_provide_context(BarActionSink::inert);
+            super::quick_settings_popup_app()
+        }
+
+        let mut runner = launch_test(preview);
+        runner.sync_and_update();
+    }
+    #[test]
+    fn quick_settings_wifi_drill_is_reachable() {
+        fn preview() -> impl IntoElement {
+            use_provide_context(BarContext::create);
+            use_provide_context(BarActionSink::inert);
+            super::quick_settings_popup_app()
+        }
+
+        let mut runner = launch_test(preview);
+        runner.sync_and_update();
+        let drill = runner
+            .find(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.accessibility.builder.label() == Some("Open Wi-Fi details"))
+                    .map(|_| node)
+            })
+            .expect("Wi-Fi drill button label");
+        let area = drill.layout().area;
+        runner.click_cursor((
+            (area.min_x() + area.width() / 2.0) as f64,
+            (area.min_y() + area.height() / 2.0) as f64,
+        ));
+
+        assert!(
+            runner
+                .find(|_, element| {
+                    Label::try_downcast(element).filter(|label| label.text.as_ref() == "Turn Wi-Fi on")
+                })
+                .is_some(),
+            "clicking the Wi-Fi drill control should replace the root view",
+        );
+    }
+
+    #[test]
     fn popup_is_anchored_below_the_clock() {
         let anchor = (120, 4, 150, 24);
         let config = popup_config(BarPanel::Calendar, anchor);
@@ -829,6 +975,16 @@ mod tests {
         assert_eq!(config.anchor_rect, anchor);
         assert_eq!(config.anchor, PopupAnchor::Bottom);
         assert_eq!(config.gravity, PopupGravity::Bottom);
+    }
+
+    #[test]
+    fn quick_settings_popup_aligns_its_right_edge_below_the_status_pill() {
+        let anchor = (980, 4, 180, 24);
+        let config = popup_config(BarPanel::QuickSettings, anchor);
+
+        assert_eq!(config.anchor_rect, anchor);
+        assert_eq!(config.anchor, PopupAnchor::BottomRight);
+        assert_eq!(config.gravity, PopupGravity::BottomLeft);
     }
 
     #[test]
