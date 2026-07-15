@@ -14,6 +14,21 @@ struct ActivePopup {
     panel: BarPanel,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PopupTransition {
+    Open,
+    Close(SurfaceId),
+    Replace(SurfaceId),
+}
+
+fn popup_transition(active: Option<ActivePopup>, parent: SurfaceId, panel: BarPanel) -> PopupTransition {
+    match active {
+        None => PopupTransition::Open,
+        Some(popup) if popup.parent == parent && popup.panel == panel => PopupTransition::Close(popup.surface),
+        Some(popup) => PopupTransition::Replace(popup.surface),
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let mut shell = Shell::new()?.with_font(kobel_theme::FONT_FAMILY, kobel_theme::FONT_DATA);
     let contexts = Rc::new(RefCell::new(HashMap::<SurfaceId, BarContext>::new()));
@@ -123,11 +138,13 @@ fn main() -> anyhow::Result<()> {
                         panel,
                         anchor_rect,
                     } => {
-                        if let Some(popup) = active_popup.get() {
-                            control.close_popup(popup.surface);
-                            if popup.parent == parent && popup.panel == panel {
+                        match popup_transition(active_popup.get(), parent, panel) {
+                            PopupTransition::Open => {}
+                            PopupTransition::Close(surface) => {
+                                control.close_popup(surface);
                                 continue;
                             }
+                            PopupTransition::Replace(surface) => control.close_popup(surface),
                         }
 
                         let snapshots = latest.borrow().clone();
@@ -160,4 +177,45 @@ fn main() -> anyhow::Result<()> {
     });
 
     shell.run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ActivePopup, PopupTransition, popup_transition};
+    use kobel_bar::BarPanel;
+    use kobel_wayland::SurfaceId;
+
+    #[test]
+    fn repeated_panel_request_closes_without_reopening() {
+        let parent = SurfaceId::new(2);
+        let popup = ActivePopup {
+            surface: SurfaceId::new(3),
+            parent,
+            panel: BarPanel::Calendar,
+        };
+
+        assert_eq!(
+            popup_transition(Some(popup), parent, BarPanel::Calendar),
+            PopupTransition::Close(popup.surface),
+        );
+    }
+
+    #[test]
+    fn panel_request_opens_or_replaces_as_needed() {
+        let parent = SurfaceId::new(2);
+        let popup = ActivePopup {
+            surface: SurfaceId::new(3),
+            parent: SurfaceId::new(4),
+            panel: BarPanel::Calendar,
+        };
+
+        assert_eq!(
+            popup_transition(None, parent, BarPanel::Calendar),
+            PopupTransition::Open,
+        );
+        assert_eq!(
+            popup_transition(Some(popup), parent, BarPanel::Calendar),
+            PopupTransition::Replace(popup.surface),
+        );
+    }
 }
