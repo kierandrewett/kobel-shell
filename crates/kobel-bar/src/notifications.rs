@@ -9,7 +9,7 @@ use kobel_services::{Command, Notification};
 use kobel_theme::{TOKENS, icons};
 use torin::prelude::{Alignment, Content, Size};
 
-use super::{BarActionSink, BarContext, button_colours, button_layout, popover_frame};
+use super::{BarActionSink, BarContext, button_colours, button_layout, popover_frame, use_popover_layout};
 
 pub fn notifications_popup_app() -> impl IntoElement {
     NotificationsPanel
@@ -22,6 +22,7 @@ impl Component for NotificationsPanel {
     fn render(&self) -> impl IntoElement {
         let context = use_consume::<BarContext>();
         let sink = use_consume::<BarActionSink>();
+        let layout = use_popover_layout();
         let snapshot = context.notifications.read().clone();
         let count = snapshot.notifications.len();
         let dnd = snapshot.dnd;
@@ -76,45 +77,67 @@ impl Component for NotificationsPanel {
                     .font_size(TOKENS.typography.small_size),
             );
 
-        let header = rect()
-            .width(Size::fill())
+        let heading = |width| {
+            rect()
+                .width(width)
+                .spacing(TOKENS.notifications.header_text_gap)
+                .child(
+                    label()
+                        .text("Notifications")
+                        .font_size(TOKENS.typography.title_size)
+                        .font_weight(TOKENS.typography.semibold_weight),
+                )
+                .child(
+                    label()
+                        .text(notification_count_label(count))
+                        .font_size(TOKENS.typography.small_size)
+                        .color(TOKENS.colours.text_muted.rgba()),
+                )
+        };
+        let actions = rect()
             .horizontal()
             .cross_align(Alignment::Center)
-            .content(Content::Flex)
-            .child(
-                rect()
-                    .width(Size::flex(1.0))
-                    .spacing(TOKENS.notifications.header_text_gap)
-                    .child(
-                        label()
-                            .text("Notifications")
-                            .font_size(TOKENS.typography.title_size)
-                            .font_weight(TOKENS.typography.semibold_weight),
-                    )
-                    .child(
-                        label()
-                            .text(notification_count_label(count))
-                            .font_size(TOKENS.typography.small_size)
-                            .color(TOKENS.colours.text_muted.rgba()),
-                    ),
-            )
+            .spacing(TOKENS.popover.row_gap)
             .child(dnd_button)
             .child(clear_button);
+        let compact = layout.compact();
+        let header_height = if compact {
+            TOKENS.notifications.header_height + TOKENS.popover.control_height + TOKENS.popover.row_gap
+        } else {
+            TOKENS.notifications.header_height
+        };
+        let header = if compact {
+            rect()
+                .width(Size::fill())
+                .height(Size::px(header_height))
+                .vertical()
+                .spacing(TOKENS.popover.row_gap)
+                .child(heading(Size::fill()))
+                .child(actions)
+        } else {
+            rect()
+                .width(Size::fill())
+                .height(Size::px(header_height))
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .content(Content::Flex)
+                .child(heading(Size::flex(1.0)))
+                .child(actions)
+        };
 
         let unavailable_height = if snapshot.serving {
             0.0
         } else {
             TOKENS.popover.control_height + TOKENS.popover.section_gap
         };
-        let history_max_height = TOKENS.popover.max_height as f32
-            - TOKENS.popover.padding * 2.0
-            - TOKENS.popover.section_gap
-            - TOKENS.notifications.header_height
-            - unavailable_height;
+        let history_max_height =
+            (layout.inner_max_height() - TOKENS.popover.section_gap - header_height - unavailable_height).max(1.0);
         let content = if snapshot.notifications.is_empty() {
             rect()
                 .width(Size::fill())
-                .height(Size::px(TOKENS.notifications.empty_state_height))
+                .height(Size::px(
+                    TOKENS.notifications.empty_state_height.min(history_max_height),
+                ))
                 .center()
                 .child(
                     label()
@@ -134,7 +157,7 @@ impl Component for NotificationsPanel {
                     snapshot
                         .notifications
                         .into_iter()
-                        .map(|notification| NotificationCard { notification }.into_element()),
+                        .map(|notification| NotificationCard { notification, compact }.into_element()),
                 )
                 .into_element()
         };
@@ -167,6 +190,7 @@ impl Component for NotificationsPanel {
 #[derive(PartialEq)]
 struct NotificationCard {
     notification: Notification,
+    compact: bool,
 }
 
 impl Component for NotificationCard {
@@ -244,6 +268,15 @@ impl Component for NotificationCard {
         let actions = notification.actions.iter().map(|(action_key, action_label)| {
             let action_sink = sink.clone();
             let action_key = action_key.clone();
+            let mut label = label()
+                .text(action_label.clone())
+                .font_size(TOKENS.typography.small_size);
+            if self.compact {
+                label = label
+                    .width(Size::fill())
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis);
+            }
             Button::new()
                 .flat()
                 .theme_colors(button_colours(
@@ -251,7 +284,7 @@ impl Component for NotificationCard {
                     TOKENS.colours.surface_hover.rgba().into(),
                 ))
                 .theme_layout(button_layout(
-                    Size::auto(),
+                    if self.compact { Size::fill() } else { Size::auto() },
                     TOKENS.popover.control_height,
                     (0.0, TOKENS.popover.control_padding),
                     TOKENS.popover.row_radius,
@@ -262,14 +295,15 @@ impl Component for NotificationCard {
                         action_key: action_key.clone(),
                     });
                 })
-                .child(
-                    label()
-                        .text(action_label.clone())
-                        .font_size(TOKENS.typography.small_size),
-                )
+                .child(label)
                 .into_element()
         });
-
+        let mut action_list = rect().width(Size::fill()).spacing(TOKENS.notifications.card_gap);
+        action_list = if self.compact {
+            action_list.vertical()
+        } else {
+            action_list.horizontal()
+        };
         rect()
             .width(Size::fill())
             .padding(TOKENS.notifications.card_padding)
@@ -283,12 +317,7 @@ impl Component for NotificationCard {
             .vertical()
             .spacing(TOKENS.notifications.card_gap)
             .child(body)
-            .child(
-                rect()
-                    .horizontal()
-                    .spacing(TOKENS.notifications.card_gap)
-                    .children(actions),
-            )
+            .child(action_list.children(actions))
     }
 }
 

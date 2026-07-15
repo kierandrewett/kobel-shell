@@ -16,6 +16,7 @@ use std::time::Duration;
 use async_io::Timer;
 use chrono::{Datelike, Days, Local, Months, NaiveDate, NaiveTime, TimeZone};
 use freya_components::button::{Button, ButtonColorsThemePartial, ButtonLayoutThemePartial};
+use freya_components::scrollviews::ScrollView;
 use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use kobel_services::{
@@ -38,6 +39,50 @@ pub enum BarPanel {
     QuickSettings,
     Notifications,
     Session,
+}
+
+/// Output-resolved viewport policy shared by an xdg popup and its Freya content.
+///
+/// The outer surface and inner scroll limits must use the same values; otherwise a
+/// compositor clamp can leave a panel measuring against stale desktop-sized bounds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PopoverLayout {
+    pub width: u32,
+    pub max_height: u32,
+}
+
+impl PopoverLayout {
+    pub fn for_output(output_size: (u32, u32)) -> Self {
+        let (output_width, output_height) = output_size;
+        let horizontal_insets = TOKENS.popover.screen_inset.saturating_mul(2);
+        let vertical_chrome = SURFACE_HEIGHT.saturating_add(TOKENS.popover.screen_inset);
+
+        Self {
+            width: output_width
+                .saturating_sub(horizontal_insets)
+                .clamp(1, TOKENS.popover.width),
+            max_height: output_height
+                .saturating_sub(vertical_chrome)
+                .clamp(1, TOKENS.popover.max_height),
+        }
+    }
+
+    pub fn inner_max_height(self) -> f32 {
+        (self.max_height as f32 - TOKENS.popover.padding * 2.0).max(1.0)
+    }
+
+    pub fn compact(self) -> bool {
+        self.width < TOKENS.popover.compact_width
+    }
+}
+
+impl Default for PopoverLayout {
+    fn default() -> Self {
+        Self {
+            width: TOKENS.popover.width,
+            max_height: TOKENS.popover.max_height,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -299,28 +344,27 @@ fn icon(bytes: &'static [u8]) -> SvgViewer {
         .height(Size::px(TOKENS.bar.icon_size))
 }
 
+fn compact_bar_width(physical_width: f32, scale_factor: f64) -> bool {
+    let logical_width = physical_width / scale_factor.max(f64::EPSILON) as f32;
+    logical_width <= TOKENS.bar.compact_width
+}
+
 /// The one component used by both the layer-shell process and native preview.
 pub fn bar_app() -> impl IntoElement {
-    let left = rect()
-        .width(Size::flex(1.0))
-        .height(Size::fill())
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .main_align(Alignment::Start)
-        .child(ActivitiesButton);
-
+    let platform = Platform::get();
+    let compact = compact_bar_width(platform.root_size.read().width, *platform.scale_factor.read());
     let right = rect()
-        .width(Size::flex(1.0))
+        .width(if compact { Size::auto() } else { Size::flex(1.0) })
         .height(Size::fill())
         .horizontal()
         .cross_align(Alignment::Center)
         .main_align(Alignment::End)
         .spacing(TOKENS.bar.module_gap)
-        .child(StatusPill)
+        .child(StatusPill { compact })
         .child(NotificationButton)
         .child(SessionButton);
 
-    rect()
+    let mut bar = rect()
         .width(Size::fill())
         .height(Size::fill())
         .background(TOKENS.colours.surface.rgba())
@@ -329,10 +373,29 @@ pub fn bar_app() -> impl IntoElement {
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .font_family(TOKENS.typography.family)
-        .color(TOKENS.colours.text.rgba())
-        .child(left)
-        .child(ClockButton)
-        .child(right)
+        .color(TOKENS.colours.text.rgba());
+
+    if compact {
+        bar = bar
+            .child(ClockButton { compact })
+            .child(rect().width(Size::flex(1.0)).height(Size::fill()))
+            .child(right);
+    } else {
+        bar = bar
+            .child(
+                rect()
+                    .width(Size::flex(1.0))
+                    .height(Size::fill())
+                    .horizontal()
+                    .cross_align(Alignment::Center)
+                    .main_align(Alignment::Start)
+                    .child(ActivitiesButton),
+            )
+            .child(ClockButton { compact })
+            .child(right);
+    }
+
+    bar
 }
 
 /// Preview wrapper with default service snapshots.
@@ -393,8 +456,16 @@ pub(crate) fn popover_frame() -> Rect {
         .color(TOKENS.colours.text.rgba())
 }
 
+pub(crate) fn use_popover_layout() -> PopoverLayout {
+    use_try_consume::<State<PopoverLayout>>()
+        .map(|layout| *layout.read())
+        .unwrap_or_default()
+}
+
 #[derive(PartialEq)]
-struct ClockButton;
+struct ClockButton {
+    compact: bool,
+}
 
 fn clock_text() -> (String, String) {
     let now = Local::now();
@@ -438,8 +509,8 @@ impl Component for ClockButton {
                         TOKENS.bar.radius,
                     ))
                     .on_press(move |_| open_calendar.toggle(BarPanel::Calendar, *bounds.read()))
-                    .child(
-                        rect()
+                    .child({
+                        let mut content = rect()
                             .horizontal()
                             .cross_align(Alignment::Center)
                             .spacing(TOKENS.bar.module_gap)
@@ -448,20 +519,25 @@ impl Component for ClockButton {
                                     .text(time)
                                     .font_size(TOKENS.typography.label_size)
                                     .font_weight(TOKENS.typography.semibold_weight),
-                            )
-                            .child(
+                            );
+                        if !self.compact {
+                            content = content.child(
                                 label()
                                     .text(date)
                                     .font_size(TOKENS.typography.small_size)
                                     .color(TOKENS.colours.text_muted.rgba()),
-                            ),
-                    ),
+                            );
+                        }
+                        content
+                    }),
             )
     }
 }
 
 #[derive(PartialEq)]
-struct StatusPill;
+struct StatusPill {
+    compact: bool,
+}
 
 impl Component for StatusPill {
     fn render(&self) -> impl IntoElement {
@@ -484,12 +560,15 @@ impl Component for StatusPill {
             .child(icon(icons::SPEAKER_HIGH));
 
         if battery.present {
-            status = status.child(icon(icons::BATTERY_HIGH)).child(
-                label()
-                    .text(format!("{}%", battery.percentage.round() as i64))
-                    .font_size(TOKENS.typography.small_size)
-                    .font_weight(TOKENS.typography.semibold_weight),
-            );
+            status = status.child(icon(icons::BATTERY_HIGH));
+            if !self.compact {
+                status = status.child(
+                    label()
+                        .text(format!("{}%", battery.percentage.round() as i64))
+                        .font_size(TOKENS.typography.small_size)
+                        .font_weight(TOKENS.typography.semibold_weight),
+                );
+            }
         }
 
         if !network.available || !network.enabled || audio.muted {
@@ -512,7 +591,7 @@ impl Component for StatusPill {
                         TOKENS.bar.radius,
                     ))
                     .on_press(move |_| open_quick_settings.toggle(BarPanel::QuickSettings, *bounds.read()))
-                    .child(status),
+                    .child(status.child(label().text("").a11y_alt("Open quick settings"))),
             )
     }
 }
@@ -681,6 +760,7 @@ impl Component for CalendarPanel {
     fn render(&self) -> impl IntoElement {
         let context = use_consume::<BarContext>();
         let sink = use_consume::<BarActionSink>();
+        let layout = use_popover_layout();
         let initial_month = month_start(Local::now().date_naive());
         let viewed_month = use_state(move || initial_month);
         let selected = use_state(|| Local::now().date_naive());
@@ -910,7 +990,8 @@ impl Component for CalendarPanel {
                     .font_size(TOKENS.typography.title_size),
             );
 
-        popover_frame()
+        let content = rect()
+            .width(Size::fill())
             .vertical()
             .spacing(TOKENS.popover.section_gap)
             .child(
@@ -937,7 +1018,16 @@ impl Component for CalendarPanel {
                     .font_size(TOKENS.typography.label_size)
                     .font_weight(TOKENS.typography.semibold_weight),
             )
-            .child(events)
+            .child(events);
+
+        popover_frame().child(
+            ScrollView::new()
+                .height(Size::auto())
+                .max_height(Size::px(layout.inner_max_height()))
+                .show_scrollbar(true)
+                .scroll_with_arrows(true)
+                .child(content),
+        )
     }
 }
 
@@ -945,14 +1035,14 @@ pub fn calendar_popup_app() -> impl IntoElement {
     CalendarPanel
 }
 
-pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32)) -> PopupConfig {
+pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32), layout: PopoverLayout) -> PopupConfig {
     match panel {
         BarPanel::Calendar => PopupConfig::new(
             "kobel-calendar",
             anchor_rect,
             SurfaceSize::ContentSized {
-                width: TOKENS.popover.width,
-                max_height: TOKENS.popover.max_height,
+                width: layout.width,
+                max_height: layout.max_height,
             },
             PreferredTheme::Dark,
         )
@@ -962,8 +1052,8 @@ pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32)) -> Popup
             "kobel-quick-settings",
             anchor_rect,
             SurfaceSize::ContentSized {
-                width: TOKENS.popover.width,
-                max_height: TOKENS.popover.max_height,
+                width: layout.width,
+                max_height: layout.max_height,
             },
             PreferredTheme::Dark,
         )
@@ -973,8 +1063,8 @@ pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32)) -> Popup
             "kobel-notifications",
             anchor_rect,
             SurfaceSize::ContentSized {
-                width: TOKENS.popover.width,
-                max_height: TOKENS.popover.max_height,
+                width: layout.width,
+                max_height: layout.max_height,
             },
             PreferredTheme::Dark,
         )
@@ -984,8 +1074,8 @@ pub fn popup_config(panel: BarPanel, anchor_rect: (i32, i32, i32, i32)) -> Popup
             "kobel-session",
             anchor_rect,
             SurfaceSize::ContentSized {
-                width: TOKENS.popover.width,
-                max_height: TOKENS.popover.max_height,
+                width: layout.width,
+                max_height: layout.max_height,
             },
             PreferredTheme::Dark,
         )
@@ -1013,8 +1103,8 @@ pub fn surface_config() -> SurfaceConfig {
 #[cfg(test)]
 mod tests {
     use chrono::{Days, NaiveDate};
-    use freya_core::prelude::{IntoElement, Label, use_provide_context};
-    use freya_testing::launch_test;
+    use freya_core::prelude::{IntoElement, Label, State, use_provide_context};
+    use freya_testing::{TestingRunner, launch_test};
     use kobel_services::{
         AudioSnapshot, BatterySnapshot, CalendarEvent, Command, NetworkSnapshot, NotifdSnapshot, Notification,
         ServiceEvent,
@@ -1022,15 +1112,142 @@ mod tests {
     use kobel_wayland::{Anchor, KeyboardInteractivity, PopupAnchor, PopupGravity, SurfaceSize};
 
     use super::{
-        BarActionSink, BarContext, BarPanel, BarSnapshots, MAX_VISIBLE_EVENTS, SURFACE_HEIGHT, bar_preview_app,
-        calendar_popup_app, event_occurs_on, event_time_label, local_midnight_epoch, notifications_popup_app,
-        popup_config, session_popup_app, surface_config, visible_events_for_day,
+        BarActionSink, BarContext, BarPanel, BarSnapshots, MAX_VISIBLE_EVENTS, PopoverLayout, SURFACE_HEIGHT,
+        bar_preview_app, calendar_popup_app, event_occurs_on, event_time_label, local_midnight_epoch,
+        notifications_popup_app, popup_config, session_popup_app, surface_config, visible_events_for_day,
     };
 
     #[test]
     fn component_mounts_in_the_headless_runner() {
         let mut runner = launch_test(bar_preview_app);
         runner.sync_and_update();
+    }
+
+    #[test]
+    fn compact_bar_keeps_every_control_inside_phone_widths_at_one_and_two_x() {
+        for (scale_factor, width) in [(1.0, 320.0), (2.0, 640.0)] {
+            let mut runner = TestingRunner::new(
+                bar_preview_app,
+                (width, SURFACE_HEIGHT as f32 * scale_factor as f32).into(),
+                |_| {},
+                scale_factor,
+            )
+            .0;
+            runner.sync_and_update();
+            runner.sync_and_update();
+            let overflow = runner.find_many(|node, _| {
+                let area = node.layout().area;
+                (area.min_x() < -0.01 || area.max_x() > width + 0.01).then_some(area)
+            });
+            assert!(
+                overflow.is_empty(),
+                "bar descendants escaped the {width}px viewport at {scale_factor}x: {overflow:?}",
+            );
+
+            assert!(
+                runner
+                    .find(|_, element| {
+                        Label::try_downcast(element).filter(|label| label.text.as_ref() == "Activities")
+                    })
+                    .is_none(),
+                "compact bars must surrender the decorative Activities label before controls collide",
+            );
+            let control_names = ["Open quick settings", "Open notifications", "Open session controls"];
+            for name in control_names {
+                assert!(
+                    runner
+                        .find(|_, element| {
+                            Label::try_downcast(element)
+                                .filter(|label| label.accessibility.builder.label() == Some(name))
+                        })
+                        .is_some(),
+                    "missing compact bar control `{name}` at {scale_factor}x",
+                );
+            }
+        }
+    }
+
+    fn assert_compact_popup_fits_width(mut runner: TestingRunner, width: f32, expected_label: &str) {
+        runner.sync_and_update();
+        runner.sync_and_update();
+        assert!(
+            runner
+                .find(|_, element| Label::try_downcast(element).filter(|label| label.text.as_ref() == expected_label))
+                .is_some(),
+            "compact popup did not render its `{expected_label}` content",
+        );
+        let overflow = runner.find_many(|node, _| {
+            let area = node.layout().area;
+            (area.min_x() < -0.01 || area.max_x() > width + 0.01).then_some(area)
+        });
+        assert!(
+            overflow.is_empty(),
+            "popup descendants escaped the {width}px viewport: {overflow:?}"
+        );
+    }
+
+    #[test]
+    fn every_popup_renders_inside_a_short_phone_viewport() {
+        let layout = PopoverLayout::for_output((320, 480));
+        assert!(layout.compact());
+        let viewport = (layout.width as f32, layout.max_height as f32).into();
+        fn calendar() -> impl IntoElement {
+            use_provide_context(BarContext::create);
+            use_provide_context(BarActionSink::inert);
+            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
+            calendar_popup_app()
+        }
+        fn quick_settings() -> impl IntoElement {
+            use_provide_context(BarContext::create);
+            use_provide_context(BarActionSink::inert);
+            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
+            super::quick_settings_popup_app()
+        }
+        fn notifications() -> impl IntoElement {
+            let snapshots = BarSnapshots {
+                notifications: NotifdSnapshot {
+                    serving: true,
+                    dnd: false,
+                    notifications: vec![Notification {
+                        id: 1,
+                        app_name: "Compact test".to_string(),
+                        app_icon: None,
+                        summary: "A notification with actions".to_string(),
+                        body: "The body remains readable while every action stays inside the card.".to_string(),
+                        actions: vec![
+                            ("open".to_string(), "Open a deliberately long action".to_string()),
+                            ("snooze".to_string(), "Snooze until tomorrow morning".to_string()),
+                            ("settings".to_string(), "Notification settings".to_string()),
+                        ],
+                        critical: false,
+                        time: 0,
+                    }],
+                },
+                ..BarSnapshots::default()
+            };
+            use_provide_context(move || BarContext::from_snapshots(&snapshots));
+            use_provide_context(BarActionSink::inert);
+            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
+            notifications_popup_app()
+        }
+        fn session() -> impl IntoElement {
+            use_provide_context(BarContext::create);
+            use_provide_context(BarActionSink::inert);
+            use_provide_context(|| State::create(PopoverLayout::for_output((320, 480))));
+            session_popup_app()
+        }
+
+        for (runner, expected_label) in [
+            (TestingRunner::new(calendar, viewport, |_| {}, 1.0).0, "M"),
+            (TestingRunner::new(quick_settings, viewport, |_| {}, 1.0).0, "Volume"),
+            (
+                TestingRunner::new(notifications, viewport, |_| {}, 1.0).0,
+                "Notifications",
+            ),
+            (TestingRunner::new(session, viewport, |_| {}, 1.0).0, "Session"),
+        ] {
+            assert_compact_popup_fits_width(runner, layout.width as f32, expected_label);
+        }
     }
 
     #[test]
@@ -1330,7 +1547,7 @@ mod tests {
     #[test]
     fn popup_is_anchored_below_the_clock() {
         let anchor = (120, 4, 150, 24);
-        let config = popup_config(BarPanel::Calendar, anchor);
+        let config = popup_config(BarPanel::Calendar, anchor, PopoverLayout::default());
 
         assert_eq!(config.anchor_rect, anchor);
         assert_eq!(config.anchor, PopupAnchor::Bottom);
@@ -1340,7 +1557,7 @@ mod tests {
     #[test]
     fn quick_settings_popup_aligns_its_right_edge_below_the_status_pill() {
         let anchor = (980, 4, 180, 24);
-        let config = popup_config(BarPanel::QuickSettings, anchor);
+        let config = popup_config(BarPanel::QuickSettings, anchor, PopoverLayout::default());
 
         assert_eq!(config.anchor_rect, anchor);
         assert_eq!(config.anchor, PopupAnchor::BottomRight);
@@ -1351,11 +1568,41 @@ mod tests {
     fn right_hand_popups_align_below_their_controls() {
         let anchor = (1140, 4, 28, 28);
         for panel in [BarPanel::Notifications, BarPanel::Session] {
-            let config = popup_config(panel, anchor);
+            let config = popup_config(panel, anchor, PopoverLayout::default());
             assert_eq!(config.anchor_rect, anchor);
             assert_eq!(config.anchor, PopupAnchor::BottomRight);
             assert_eq!(config.gravity, PopupGravity::BottomLeft);
         }
+    }
+
+    #[test]
+    fn popup_layout_uses_desktop_defaults_when_the_output_has_room() {
+        let layout = PopoverLayout::for_output((1920, 1080));
+
+        assert_eq!(layout, PopoverLayout::default());
+        assert!(!layout.compact());
+    }
+
+    #[test]
+    fn popup_layout_stays_inside_narrow_and_short_outputs() {
+        let layout = PopoverLayout::for_output((320, 240));
+        let config = popup_config(BarPanel::Notifications, (260, 4, 28, 24), layout);
+
+        assert_eq!(
+            config.size,
+            SurfaceSize::ContentSized {
+                width: 296,
+                max_height: 196,
+            },
+        );
+        assert!(layout.compact());
+        assert_eq!(
+            PopoverLayout::for_output((10, 10)),
+            PopoverLayout {
+                width: 1,
+                max_height: 1
+            }
+        );
     }
 
     #[test]

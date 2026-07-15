@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use async_io::Timer;
 use freya_components::button::{Button, ButtonLayoutThemePartial};
+use freya_components::scrollviews::ScrollView;
 use freya_components::svg_viewer::SvgViewer;
 use freya_core::prelude::*;
 use kobel_services::{Command, SessionVerb};
@@ -11,7 +12,7 @@ use kobel_theme::{TOKENS, icons};
 use kobel_wayland::KeyPress;
 use torin::prelude::{Alignment, Size};
 
-use super::{BarActionSink, BarContext, BarPanel, button_colours, popover_frame};
+use super::{BarActionSink, BarContext, BarPanel, PopoverLayout, button_colours, popover_frame, use_popover_layout};
 
 const ACTIONS: [SessionAction; 4] = [
     SessionAction::Lock,
@@ -20,6 +21,20 @@ const ACTIONS: [SessionAction; 4] = [
     SessionAction::Shutdown,
 ];
 const REVERT_MS: u64 = 4000;
+
+fn session_columns(layout: PopoverLayout) -> usize {
+    let inner_width = (layout.width as f32 - TOKENS.popover.padding * 2.0).max(0.0);
+    let four_columns = TOKENS.session.tile_width * 4.0 + TOKENS.session.tile_gap * 3.0;
+    let two_columns = TOKENS.session.tile_width * 2.0 + TOKENS.session.tile_gap;
+
+    if inner_width >= four_columns {
+        4
+    } else if inner_width >= two_columns {
+        2
+    } else {
+        1
+    }
+}
 
 pub fn session_popup_app() -> impl IntoElement {
     SessionPanel
@@ -32,10 +47,12 @@ impl Component for SessionPanel {
     fn render(&self) -> impl IntoElement {
         let context = use_consume::<BarContext>();
         let sink = use_consume::<BarActionSink>();
+        let layout = use_popover_layout();
         let selected = use_state(|| 0_usize);
         let armed = use_state(|| None::<SessionAction>);
         let generation = use_state(|| 0_u64);
         let key_sequence = context.session_key.read().as_ref().map(|event| event.sequence);
+        let columns = session_columns(layout);
 
         {
             let sink = sink.clone();
@@ -43,27 +60,41 @@ impl Component for SessionPanel {
                 let Some(event) = context.session_key.peek().clone() else {
                     return;
                 };
-                handle_key(&event.press, selected, armed, generation, &sink);
+                handle_key(&event.press, selected, armed, generation, columns, &sink);
             });
         }
 
         let selected_now = *selected.read();
         let armed_now = *armed.read();
-        let actions = ACTIONS.iter().copied().enumerate().map(|(index, action)| {
-            session_action_button(
-                index,
-                action,
-                selected_now == index,
-                armed_now == Some(action),
-                selected,
-                armed,
-                generation,
-                sink.clone(),
-            )
-            .into_element()
-        });
+        let mut action_grid = rect()
+            .width(Size::fill())
+            .vertical()
+            .cross_align(Alignment::Center)
+            .spacing(TOKENS.session.tile_gap);
+        for row_start in (0..ACTIONS.len()).step_by(columns) {
+            let mut row = rect()
+                .width(Size::fill())
+                .horizontal()
+                .cross_align(Alignment::Start)
+                .main_align(Alignment::Center)
+                .spacing(TOKENS.session.tile_gap);
+            for (index, action) in ACTIONS.iter().copied().enumerate().skip(row_start).take(columns) {
+                row = row.child(session_action_button(
+                    index,
+                    action,
+                    selected_now == index,
+                    armed_now == Some(action),
+                    selected,
+                    armed,
+                    generation,
+                    sink.clone(),
+                ));
+            }
+            action_grid = action_grid.child(row);
+        }
 
-        popover_frame()
+        let content = rect()
+            .width(Size::fill())
             .vertical()
             .spacing(TOKENS.popover.section_gap)
             .child(
@@ -72,15 +103,16 @@ impl Component for SessionPanel {
                     .font_size(TOKENS.typography.title_size)
                     .font_weight(TOKENS.typography.semibold_weight),
             )
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .horizontal()
-                    .cross_align(Alignment::Start)
-                    .main_align(Alignment::Center)
-                    .spacing(TOKENS.session.tile_gap)
-                    .children(actions),
-            )
+            .child(action_grid);
+
+        popover_frame().child(
+            ScrollView::new()
+                .height(Size::auto())
+                .max_height(Size::px(layout.inner_max_height()))
+                .show_scrollbar(true)
+                .scroll_with_arrows(true)
+                .child(content),
+        )
     }
 }
 
@@ -151,11 +183,20 @@ fn session_action_button(
         )
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Navigation {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
 fn handle_key(
     press: &KeyPress,
     mut selected: State<usize>,
     armed: State<Option<SessionAction>>,
     generation: State<u64>,
+    columns: usize,
     sink: &BarActionSink,
 ) {
     if press.is_escape() {
@@ -170,15 +211,20 @@ fn handle_key(
         return;
     }
 
+    let direction = match &press.key {
+        Key::Named(NamedKey::ArrowRight) => Some(Navigation::Right),
+        Key::Named(NamedKey::ArrowDown) => Some(Navigation::Down),
+        Key::Named(NamedKey::ArrowLeft) => Some(Navigation::Left),
+        Key::Named(NamedKey::ArrowUp) => Some(Navigation::Up),
+        _ => None,
+    };
+    if let Some(direction) = direction {
+        let current = *selected.peek();
+        selected.set(move_selection(current, direction, columns, ACTIONS.len()));
+        return;
+    }
+
     match &press.key {
-        Key::Named(NamedKey::ArrowRight) | Key::Named(NamedKey::ArrowDown) => {
-            let current = *selected.peek();
-            selected.set(step_selection(current, true, ACTIONS.len()));
-        }
-        Key::Named(NamedKey::ArrowLeft) | Key::Named(NamedKey::ArrowUp) => {
-            let current = *selected.peek();
-            selected.set(step_selection(current, false, ACTIONS.len()));
-        }
         Key::Named(NamedKey::Enter) if !press.repeat => {
             press_action(ACTIONS[*selected.peek()], armed, generation, sink);
         }
@@ -186,14 +232,34 @@ fn handle_key(
     }
 }
 
-fn step_selection(current: usize, forward: bool, len: usize) -> usize {
+fn move_selection(current: usize, direction: Navigation, columns: usize, len: usize) -> usize {
     if len == 0 {
         return 0;
     }
-    if forward {
-        (current + 1) % len
-    } else {
-        (current + len - 1) % len
+    let current = current.min(len - 1);
+    let columns = columns.clamp(1, len);
+    let row_start = current / columns * columns;
+    let row_len = (len - row_start).min(columns);
+    let column = current - row_start;
+
+    match direction {
+        Navigation::Left => row_start + (column + row_len - 1) % row_len,
+        Navigation::Right => row_start + (column + 1) % row_len,
+        Navigation::Up => {
+            if current >= columns {
+                current - columns
+            } else {
+                let last_row_start = (len - 1) / columns * columns;
+                (last_row_start + column).min(len - 1)
+            }
+        }
+        Navigation::Down => {
+            if current + columns < len {
+                current + columns
+            } else {
+                column.min(len - 1)
+            }
+        }
     }
 }
 
@@ -307,12 +373,51 @@ impl SessionAction {
 mod tests {
     use kobel_services::SessionVerb;
 
-    use super::{PressOutcome, SessionAction, decide_press, step_selection};
+    use super::{
+        Navigation, PopoverLayout, PressOutcome, SessionAction, decide_press, move_selection, session_columns,
+    };
 
     #[test]
-    fn selection_wraps_in_both_directions() {
-        assert_eq!(step_selection(3, true, 4), 0);
-        assert_eq!(step_selection(0, false, 4), 3);
+    fn selection_tracks_the_resolved_grid_in_every_direction() {
+        assert_eq!(move_selection(0, Navigation::Right, 4, 4), 1);
+        assert_eq!(move_selection(3, Navigation::Right, 4, 4), 0);
+        assert_eq!(move_selection(0, Navigation::Left, 4, 4), 3);
+        assert_eq!(move_selection(2, Navigation::Down, 4, 4), 2);
+
+        assert_eq!(move_selection(0, Navigation::Down, 2, 4), 2);
+        assert_eq!(move_selection(1, Navigation::Down, 2, 4), 3);
+        assert_eq!(move_selection(2, Navigation::Down, 2, 4), 0);
+        assert_eq!(move_selection(3, Navigation::Up, 2, 4), 1);
+        assert_eq!(move_selection(1, Navigation::Right, 2, 4), 0);
+
+        assert_eq!(move_selection(0, Navigation::Down, 1, 4), 1);
+        assert_eq!(move_selection(0, Navigation::Up, 1, 4), 3);
+        assert_eq!(move_selection(2, Navigation::Right, 1, 4), 2);
+    }
+
+    #[test]
+    fn actions_reflow_without_creating_a_three_column_or_overflowing_row() {
+        assert_eq!(
+            session_columns(PopoverLayout {
+                width: 384,
+                max_height: 620,
+            }),
+            4,
+        );
+        assert_eq!(
+            session_columns(PopoverLayout {
+                width: 367,
+                max_height: 620,
+            }),
+            2,
+        );
+        assert_eq!(
+            session_columns(PopoverLayout {
+                width: 180,
+                max_height: 620,
+            }),
+            1,
+        );
     }
 
     #[test]

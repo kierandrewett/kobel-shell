@@ -75,6 +75,7 @@ pub struct BarTokens {
     pub icon_size: f32,
     pub muted_opacity: f32,
     pub notification_gap: f32,
+    pub compact_width: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -114,6 +115,8 @@ pub struct DockTokens {
 pub struct PopoverTokens {
     pub width: u32,
     pub max_height: u32,
+    pub screen_inset: u32,
+    pub compact_width: u32,
     pub padding: f32,
     pub section_gap: f32,
     pub row_gap: f32,
@@ -198,6 +201,7 @@ pub const TOKENS: Tokens = Tokens {
         icon_size: 16.0,
         muted_opacity: 0.65,
         notification_gap: 4.0,
+        compact_width: 520.0,
     },
     dock: DockTokens {
         item_size: 48.0,
@@ -233,6 +237,8 @@ pub const TOKENS: Tokens = Tokens {
     popover: PopoverTokens {
         width: 384,
         max_height: 620,
+        screen_inset: 12,
+        compact_width: 368,
         padding: 16.0,
         section_gap: 16.0,
         row_gap: 8.0,

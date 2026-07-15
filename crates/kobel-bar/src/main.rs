@@ -2,10 +2,10 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use freya_core::prelude::IntoElement;
-use kobel_bar::{BarAction, BarActionSink, BarContext, BarPanel, BarSnapshots};
+use freya_core::prelude::{IntoElement, State, WritableUtils};
+use kobel_bar::{BarAction, BarActionSink, BarContext, BarPanel, BarSnapshots, PopoverLayout};
 use kobel_services::{ServiceCapability, ServiceSet, Services};
-use kobel_wayland::{KeyPress, OutputEvent, Shell, SurfaceId};
+use kobel_wayland::{KeyPress, OutputEvent, OutputId, Shell, SurfaceId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ActivePopup {
@@ -32,6 +32,9 @@ fn popup_transition(active: Option<ActivePopup>, parent: SurfaceId, panel: BarPa
 fn main() -> anyhow::Result<()> {
     let mut shell = Shell::new()?.with_font(kobel_theme::FONT_FAMILY, kobel_theme::FONT_DATA);
     let contexts = Rc::new(RefCell::new(HashMap::<SurfaceId, BarContext>::new()));
+    let parent_outputs = Rc::new(RefCell::new(HashMap::<SurfaceId, OutputId>::new()));
+    let output_sizes = Rc::new(RefCell::new(HashMap::<OutputId, (u32, u32)>::new()));
+    let popup_layouts = Rc::new(RefCell::new(HashMap::<SurfaceId, State<PopoverLayout>>::new()));
     let active_popup = Rc::new(Cell::new(None::<ActivePopup>));
     let latest = Rc::new(RefCell::new(BarSnapshots::default()));
     let (action_tx, action_rx) = std::sync::mpsc::channel();
@@ -61,12 +64,19 @@ fn main() -> anyhow::Result<()> {
 
     shell.on_output({
         let contexts = contexts.clone();
+        let parent_outputs = parent_outputs.clone();
+        let output_sizes = output_sizes.clone();
+        let popup_layouts = popup_layouts.clone();
         let active_popup = active_popup.clone();
         let latest = latest.clone();
         let action_tx = action_tx.clone();
         let action_waker = action_waker.clone();
         move |event, control| match event {
             OutputEvent::Added(output) => {
+                let output_size = control.logical_size(output);
+                if let Some(output_size) = output_size {
+                    output_sizes.borrow_mut().insert(output, output_size);
+                }
                 let snapshots = latest.borrow().clone();
                 let sink = BarActionSink::new(action_tx.clone(), action_waker.clone());
                 let setup_sink = sink.clone();
@@ -82,14 +92,50 @@ fn main() -> anyhow::Result<()> {
                     Ok((surface, context)) => {
                         sink.bind_parent(surface);
                         contexts.borrow_mut().insert(surface, context);
-                        eprintln!("[bar] mounted {surface:?} on {output:?}");
+                        parent_outputs.borrow_mut().insert(surface, output);
+                        match output_size {
+                            Some((width, height)) => {
+                                eprintln!("[bar] mounted {surface:?} on {output:?} at {width}x{height}");
+                            }
+                            None => eprintln!("[bar] mounted {surface:?} on {output:?} without resolved geometry"),
+                        }
                     }
                     Err(error) => eprintln!("[bar] failed to mount on {output:?}: {error:#}"),
                 }
             }
-            OutputEvent::Updated(_) => {}
+            OutputEvent::Updated(output) => {
+                let Some(output_size) = control.logical_size(output) else {
+                    return;
+                };
+                output_sizes.borrow_mut().insert(output, output_size);
+                eprintln!(
+                    "[bar] output {output:?} resolved to {}x{}",
+                    output_size.0, output_size.1
+                );
+                let Some(popup) = active_popup.get() else {
+                    return;
+                };
+                if parent_outputs.borrow().get(&popup.parent).copied() != Some(output) {
+                    return;
+                }
+
+                let layout = PopoverLayout::for_output(output_size);
+                if let Some(layout_state) = popup_layouts.borrow().get(&popup.surface).copied()
+                    && *layout_state.peek() != layout
+                {
+                    let mut layout_state = layout_state;
+                    layout_state.set(layout);
+                }
+                control.set_content_bounds(popup.surface, layout.width, layout.max_height);
+                eprintln!(
+                    "[bar] resized {:?} popup {:?} on {output:?} to {}x{}",
+                    popup.panel, popup.surface, layout.width, layout.max_height,
+                );
+            }
             OutputEvent::SurfaceClosed { output, surface } => {
                 contexts.borrow_mut().remove(&surface);
+                parent_outputs.borrow_mut().remove(&surface);
+                popup_layouts.borrow_mut().remove(&surface);
                 if let Some(popup) = active_popup.get().filter(|popup| popup.surface == surface) {
                     active_popup.set(None);
                     eprintln!(
@@ -101,9 +147,12 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             OutputEvent::Removed { output, retired } => {
+                output_sizes.borrow_mut().remove(&output);
                 let mut contexts = contexts.borrow_mut();
                 for surface in retired {
                     contexts.remove(&surface);
+                    parent_outputs.borrow_mut().remove(&surface);
+                    popup_layouts.borrow_mut().remove(&surface);
                     if active_popup.get().is_some_and(|popup| popup.surface == surface) {
                         active_popup.set(None);
                     }
@@ -144,6 +193,9 @@ fn main() -> anyhow::Result<()> {
         let active_popup = active_popup.clone();
         let latest = latest.clone();
         let action_tx = action_tx.clone();
+        let parent_outputs = parent_outputs.clone();
+        let output_sizes = output_sizes.clone();
+        let popup_layouts = popup_layouts.clone();
         move |control| {
             while let Ok(event) = service_rx.try_recv() {
                 latest.borrow_mut().apply(&event);
@@ -177,16 +229,24 @@ fn main() -> anyhow::Result<()> {
                             PopupTransition::Replace(surface) => control.close_popup(surface),
                         }
 
+                        let parent_output = parent_outputs.borrow().get(&parent).copied();
+                        let layout = parent_output
+                            .and_then(|output| output_sizes.borrow().get(&output).copied())
+                            .map(PopoverLayout::for_output)
+                            .unwrap_or_default();
+
                         let snapshots = latest.borrow().clone();
                         let sink = BarActionSink::new(action_tx.clone(), action_waker.clone());
                         sink.bind_parent(parent);
                         let setup_sink = sink.clone();
                         let result = control.open_popup(
                             parent,
-                            kobel_bar::popup_config(panel, anchor_rect),
+                            kobel_bar::popup_config(panel, anchor_rect, layout),
                             move |surface_contexts| {
                                 surface_contexts.provide(move || setup_sink);
-                                surface_contexts.provide(move || BarContext::from_snapshots(&snapshots))
+                                let context = surface_contexts.provide(move || BarContext::from_snapshots(&snapshots));
+                                let layout_state = surface_contexts.provide(move || State::create(layout));
+                                (context, layout_state)
                             },
                             move || match panel {
                                 BarPanel::Calendar => kobel_bar::calendar_popup_app().into_element(),
@@ -196,10 +256,14 @@ fn main() -> anyhow::Result<()> {
                             },
                         );
                         match result {
-                            Ok((surface, context)) => {
+                            Ok((surface, (context, layout_state))) => {
                                 contexts.borrow_mut().insert(surface, context);
+                                popup_layouts.borrow_mut().insert(surface, layout_state);
                                 active_popup.set(Some(ActivePopup { surface, parent, panel }));
-                                eprintln!("[bar] opened {panel:?} popup {surface:?} for {parent:?}");
+                                eprintln!(
+                                    "[bar] opened {panel:?} popup {surface:?} for {parent:?} at {}x{}",
+                                    layout.width, layout.max_height,
+                                );
                             }
                             Err(error) => eprintln!("[bar] failed to open {panel:?} for {parent:?}: {error:#}"),
                         }

@@ -1,4 +1,5 @@
 use freya_components::button::{Button, ButtonColorsThemePartial};
+use freya_components::scrollviews::ScrollView;
 use freya_components::slider::{Slider, SliderThemePartial};
 use freya_core::prelude::*;
 use kobel_services::{
@@ -7,7 +8,7 @@ use kobel_services::{
 use kobel_theme::TOKENS;
 use torin::prelude::{Alignment, Content, Size};
 
-use super::{BarActionSink, BarContext, BarPanel, button_layout, popover_frame};
+use super::{BarActionSink, BarContext, BarPanel, button_layout, popover_frame, use_popover_layout};
 
 const MAX_DRILL_ROWS: usize = 6;
 
@@ -212,14 +213,14 @@ fn quick_chip(
     chip.into_element()
 }
 
-fn chip_row(left: Element, right: Element) -> Rect {
-    rect()
-        .width(Size::fill())
-        .horizontal()
-        .content(Content::Flex)
-        .spacing(TOKENS.popover.row_gap)
-        .child(left)
-        .child(right)
+fn chip_row(left: Element, right: Element, compact: bool) -> Rect {
+    let row = rect().width(Size::fill()).spacing(TOKENS.popover.row_gap);
+    let row = if compact {
+        row.vertical()
+    } else {
+        row.horizontal().content(Content::Flex)
+    };
+    row.child(left).child(right)
 }
 
 fn action_button(label_text: &'static str, sink: &BarActionSink, command: Command, active: bool) -> Element {
@@ -280,7 +281,7 @@ fn slider_row(label_text: impl Into<String>, value: f32, enabled: bool, on_moved
         )
 }
 
-fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettingsView>) -> Element {
+fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettingsView>, compact: bool) -> Element {
     let audio = context.audio.read().clone();
     let battery = context.battery.read().clone();
     let network = context.network.read().clone();
@@ -401,9 +402,9 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
         );
     }
 
-    root.child(chip_row(wifi, bluetooth_chip))
-        .child(chip_row(power_chip, dark_style))
-        .child(chip_row(silent, night_light))
+    root.child(chip_row(wifi, bluetooth_chip, compact))
+        .child(chip_row(power_chip, dark_style, compact))
+        .child(chip_row(silent, night_light, compact))
         .child(volume)
         .child(brightness_row)
         .child(
@@ -640,6 +641,7 @@ impl Component for QuickSettingsPanel {
     fn render(&self) -> impl IntoElement {
         let context = use_consume::<BarContext>();
         let sink = use_consume::<BarActionSink>();
+        let layout = use_popover_layout();
         let view = use_state(|| QuickSettingsView::Root);
         let escape_generation = context.escape_generation;
         let handled_escape = use_state(|| *escape_generation.peek());
@@ -662,13 +664,20 @@ impl Component for QuickSettingsPanel {
         });
 
         let content = match *view.read() {
-            QuickSettingsView::Root => root_view(&context, &sink, view),
+            QuickSettingsView::Root => root_view(&context, &sink, view, layout.compact()),
             QuickSettingsView::Wifi => wifi_drill(&context.network.read(), &sink, view),
             QuickSettingsView::Bluetooth => bluetooth_drill(&context.bluetooth.read(), &sink, view),
             QuickSettingsView::Mixer => mixer_drill(&context.audio.read(), &sink, view),
         };
 
-        popover_frame().child(content)
+        popover_frame().child(
+            ScrollView::new()
+                .height(Size::auto())
+                .max_height(Size::px(layout.inner_max_height()))
+                .show_scrollbar(true)
+                .scroll_with_arrows(true)
+                .child(content),
+        )
     }
 }
 
