@@ -7,11 +7,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GNOBLIN="${GNOBLIN:-/home/kieran/dev/gnoblin}"
 PREFIX="$GNOBLIN/install"
 OUT="${OUT:-/tmp/kobel-bar-dock.png}"
+CALENDAR_OUT="${CALENDAR_OUT:-/tmp/kobel-bar-calendar.png}"
 BAR_BIN="$ROOT/target/debug/kobel-bar"
 DOCK_BIN="$ROOT/target/debug/kobel-dock"
 BAR_PREVIEW_BIN="$ROOT/target/debug/kobel-bar-preview"
 DOCK_PREVIEW_BIN="$ROOT/target/debug/kobel-dock-preview"
 INSPECTOR_BIN="$ROOT/target/debug/freya-devtools-app"
+INPUT_DRIVER="$ROOT/scripts/devkit_input.py"
 
 [ -x "$PREFIX/bin/gnome-shell" ] || {
     echo "[bar-dock] no gnome-shell in $PREFIX; build gnoblin first" >&2
@@ -55,7 +57,7 @@ export GTK_A11Y=none
 export NO_AT_BRIDGE=1
 export DISP="kobel-bar-dock-$$"
 export VIRTUAL_MONITORS="${VIRTUAL_MONITORS:-1280x800 1024x768}"
-export DK OUT PREFIX BAR_BIN DOCK_BIN BAR_PREVIEW_BIN DOCK_PREVIEW_BIN INSPECTOR_BIN
+export DK OUT CALENDAR_OUT PREFIX BAR_BIN DOCK_BIN BAR_PREVIEW_BIN DOCK_PREVIEW_BIN INSPECTOR_BIN INPUT_DRIVER
 
 CONF="$(python3 "$GNOBLIN/scripts/devkit_dbus.py" "$DK" "$GNOBLIN")"
 

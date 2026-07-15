@@ -95,6 +95,69 @@ for process in "$bar_pid:$DK/bar.log" "$dock_pid:$DK/dock.log"; do
         fail=1
     fi
 done
+primary_monitor="${VIRTUAL_MONITORS%% *}"
+primary_width="${primary_monitor%%x*}"
+clock_x=$((primary_width / 2))
+if ! python3 "$INPUT_DRIVER" --settle-prime 0.5 "click:${clock_x}:16" "wait:500"; then
+    echo "FAIL: calendar popup input injection failed"
+    fail=1
+fi
+calendar_opened=0
+for _ in $(seq 1 20); do
+    if grep -q "\[bar\] opened Calendar popup" "$DK/bar.log"; then
+        calendar_opened=1
+        break
+    fi
+    sleep 0.1
+done
+if [ "$calendar_opened" -ne 1 ]; then
+    echo "FAIL: clock click did not open the calendar popup"
+    tail -30 "$DK/bar.log"
+    fail=1
+else
+    echo "PASS: clock click opened the calendar popup"
+fi
+
+calendar_screenshot="$(
+    gdbus call --session \
+        --dest org.gnome.Shell.Screenshot \
+        --object-path /org/gnome/Shell/Screenshot \
+        --method org.gnome.Shell.Screenshot.Screenshot false false "$CALENDAR_OUT" 2>&1
+)"
+case "$calendar_screenshot" in
+    "(true,"*) ;;
+    *)
+        echo "FAIL: calendar screenshot call failed: $calendar_screenshot"
+        fail=1
+        ;;
+esac
+if [ ! -s "$CALENDAR_OUT" ]; then
+    echo "FAIL: calendar screenshot is missing or empty: $CALENDAR_OUT"
+    fail=1
+else
+    echo "PASS: captured $CALENDAR_OUT"
+fi
+
+if ! python3 "$INPUT_DRIVER" --settle-prime 0.5 "key:Escape" "wait:500"; then
+    echo "FAIL: calendar popup Escape injection failed"
+    fail=1
+fi
+calendar_closed=0
+for _ in $(seq 1 20); do
+    if grep -q "\[bar\] Calendar popup .* closed" "$DK/bar.log"; then
+        calendar_closed=1
+        break
+    fi
+    sleep 0.1
+done
+if [ "$calendar_closed" -ne 1 ]; then
+    echo "FAIL: Escape did not close the calendar popup"
+    tail -30 "$DK/bar.log"
+    fail=1
+else
+    echo "PASS: Escape closed the calendar popup"
+fi
+
 
 for port in 7354 7355; do
     if [ -n "$(ss -Htnl "sport = :$port")" ]; then
