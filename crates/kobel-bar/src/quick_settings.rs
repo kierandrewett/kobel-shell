@@ -128,6 +128,7 @@ fn slider_theme() -> SliderThemePartial {
 
 fn quick_chip(
     name: &'static str,
+    glyph: &'static [u8],
     detail: String,
     active: bool,
     on_toggle: EventHandler<Event<PressEventData>>,
@@ -162,22 +163,30 @@ fn quick_chip(
         .child(
             rect()
                 .width(Size::fill())
-                .vertical()
-                .main_align(Alignment::Center)
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(TOKENS.popover.row_gap)
+                .child(icon(glyph).color(text_colour))
                 .child(
-                    label()
-                        .text(name)
-                        .font_size(TOKENS.typography.label_size)
-                        .font_weight(TOKENS.typography.semibold_weight)
-                        .color(text_colour),
-                )
-                .child(
-                    label()
-                        .text(detail)
-                        .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis)
-                        .font_size(TOKENS.typography.small_size)
-                        .color(detail_colour),
+                    rect()
+                        .width(Size::flex(1.0))
+                        .vertical()
+                        .main_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(name)
+                                .font_size(TOKENS.typography.label_size)
+                                .font_weight(TOKENS.typography.semibold_weight)
+                                .color(text_colour),
+                        )
+                        .child(
+                            label()
+                                .text(detail)
+                                .max_lines(1)
+                                .text_overflow(TextOverflow::Ellipsis)
+                                .font_size(TOKENS.typography.small_size)
+                                .color(detail_colour),
+                        ),
                 ),
         );
 
@@ -319,6 +328,7 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
 
     let wifi = quick_chip(
         "Wi-Fi",
+        icons::WIFI_HIGH,
         wifi_detail(&network),
         network.available && network.enabled,
         command_handler(sink, Command::SetWifiEnabled(!network.enabled)),
@@ -326,6 +336,7 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
     );
     let bluetooth_chip = quick_chip(
         "Bluetooth",
+        icons::BLUETOOTH,
         bluetooth_detail(&bluetooth),
         bluetooth.available && bluetooth.powered,
         command_handler(sink, Command::SetBluetoothPowered(!bluetooth.powered)),
@@ -334,6 +345,7 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
     let power_saver = power.profile == PowerProfile::PowerSaver;
     let power_chip = quick_chip(
         "Power Saver",
+        icons::POWER_SAVER,
         if power.available {
             format!("{:?}", power.profile)
         } else {
@@ -345,6 +357,7 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
     );
     let dark_style = quick_chip(
         "Dark Style",
+        icons::DARK_STYLE,
         if settings.dark_style { "On" } else { "Off" }.to_string(),
         settings.dark_style,
         command_handler(sink, Command::SetDarkStyle(!settings.dark_style)),
@@ -352,6 +365,7 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
     );
     let silent = quick_chip(
         "Silent",
+        icons::MUTED,
         if audio.muted { "On" } else { "Off" }.to_string(),
         audio.muted,
         command_handler(sink, Command::SetMuted(!audio.muted)),
@@ -359,6 +373,7 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
     );
     let night_light = quick_chip(
         "Night Light",
+        icons::NIGHT_LIGHT,
         if settings.night_light { "On" } else { "Off" }.to_string(),
         settings.night_light,
         command_handler(sink, Command::SetNightLight(!settings.night_light)),

@@ -19,12 +19,17 @@ pub const WIFI_HIGH: &[u8] = include_bytes!("../assets/icons/network-wireless-si
 pub const POWER: &[u8] = include_bytes!("../assets/icons/system-shutdown-symbolic.svg");
 pub const SIGN_OUT: &[u8] = include_bytes!("../assets/icons/system-log-out-symbolic.svg");
 pub const X: &[u8] = include_bytes!("../assets/icons/window-close-symbolic.svg");
+pub const BLUETOOTH: &[u8] = include_bytes!("../assets/icons/bluetooth-active-symbolic.svg");
+pub const POWER_SAVER: &[u8] = include_bytes!("../assets/icons/power-profile-power-saver-symbolic.svg");
+pub const DARK_STYLE: &[u8] = include_bytes!("../assets/icons/weather-clear-night-symbolic.svg");
+pub const MUTED: &[u8] = include_bytes!("../assets/icons/audio-volume-muted-symbolic.svg");
+pub const NIGHT_LIGHT: &[u8] = include_bytes!("../assets/icons/night-light-symbolic.svg");
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ARROW_CLOCKWISE, BATTERY_HIGH, BELL, CALENDAR_BLANK, CARET_DOWN, CARET_LEFT, CARET_RIGHT, DOTS_NINE, LOCK,
-        POWER, SIGN_OUT, SPEAKER_HIGH, WIFI_HIGH, X,
+        ARROW_CLOCKWISE, BATTERY_HIGH, BELL, BLUETOOTH, CALENDAR_BLANK, CARET_DOWN, CARET_LEFT, CARET_RIGHT,
+        DARK_STYLE, DOTS_NINE, LOCK, MUTED, NIGHT_LIGHT, POWER, POWER_SAVER, SIGN_OUT, SPEAKER_HIGH, WIFI_HIGH, X,
     };
 
     #[test]
@@ -44,6 +49,11 @@ mod tests {
             SPEAKER_HIGH,
             WIFI_HIGH,
             X,
+            BLUETOOTH,
+            POWER_SAVER,
+            DARK_STYLE,
+            MUTED,
+            NIGHT_LIGHT,
         ] {
             let icon = std::str::from_utf8(icon).expect("symbolic SVG must be UTF-8");
             assert!(icon.starts_with("<svg "));

@@ -1410,6 +1410,12 @@ mod tests {
 
         let mut runner = launch_test(preview);
         runner.sync_and_update();
+        let icons = runner.find_many(|_, element| Image::try_downcast(element).map(|_| ()));
+        assert!(
+            icons.len() >= 6,
+            "quick settings should render a leading icon on each toggle, found {} icons",
+            icons.len()
+        );
     }
 
     #[test]
