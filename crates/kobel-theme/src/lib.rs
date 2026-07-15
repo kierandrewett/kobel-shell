@@ -93,6 +93,10 @@ pub struct PopoverTokens {
     pub row_gap: f32,
     pub radius: f32,
     pub row_radius: f32,
+    pub control_height: f32,
+    pub control_padding: f32,
+    pub icon_size: f32,
+    pub indicator_size: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -157,6 +161,10 @@ pub const TOKENS: Tokens = Tokens {
         row_gap: 8.0,
         radius: 18.0,
         row_radius: 12.0,
+        control_height: 36.0,
+        control_padding: 12.0,
+        icon_size: 16.0,
+        indicator_size: 3.0,
     },
     motion: MotionTokens {
         fast_seconds: 0.12,
