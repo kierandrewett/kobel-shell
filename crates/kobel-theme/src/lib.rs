@@ -157,6 +157,8 @@ pub struct NotificationTokens {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct QuickSettingsTokens {
     pub chip_height_ratio: f32,
+    /// Toggle pill radius (GNOME `$forced_circular_radius`).
+    pub chip_radius: f32,
     pub slider_label_width: f32,
     pub slider_value_width: f32,
 }
@@ -274,6 +276,7 @@ pub const TOKENS: Tokens = Tokens {
     },
     quick_settings: QuickSettingsTokens {
         chip_height_ratio: 1.5,
+        chip_radius: 999.0,
         slider_label_width: 72.0,
         slider_value_width: 40.0,
     },

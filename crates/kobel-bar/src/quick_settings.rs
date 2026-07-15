@@ -156,7 +156,7 @@ fn quick_chip(
             main_width,
             TOKENS.popover.control_height * TOKENS.quick_settings.chip_height_ratio,
             (0.0, TOKENS.popover.control_padding),
-            TOKENS.popover.row_radius,
+            TOKENS.quick_settings.chip_radius,
         ))
         .on_press(on_toggle)
         .child(
@@ -188,7 +188,7 @@ fn quick_chip(
         ))
         .horizontal()
         .content(Content::Flex)
-        .corner_radius(TOKENS.popover.row_radius)
+        .corner_radius(TOKENS.quick_settings.chip_radius)
         .background(if active {
             TOKENS.colours.accent.rgba()
         } else {
@@ -205,7 +205,7 @@ fn quick_chip(
                     Size::px(TOKENS.popover.control_height),
                     TOKENS.popover.control_height * TOKENS.quick_settings.chip_height_ratio,
                     (0.0, 0.0),
-                    TOKENS.popover.row_radius,
+                    TOKENS.quick_settings.chip_radius,
                 ))
                 .on_press(on_drill)
                 .child(
@@ -250,6 +250,22 @@ fn action_button(label_text: &'static str, sink: &BarActionSink, command: Comman
                 .font_size(TOKENS.typography.small_size)
                 .font_weight(TOKENS.typography.semibold_weight),
         )
+        .into_element()
+}
+
+fn system_icon_button(glyph: &'static [u8], alt: &'static str, sink: &BarActionSink, command: Command) -> Element {
+    let size = TOKENS.popover.control_height * 1.25;
+    Button::new()
+        .flat()
+        .theme_colors(button_colours(false))
+        .theme_layout(button_layout(
+            Size::px(size),
+            size,
+            (0.0, 0.0),
+            TOKENS.quick_settings.chip_radius,
+        ))
+        .on_press(command_handler(sink, command))
+        .child(icon(glyph).color(TOKENS.colours.text.rgba()).a11y_alt(alt))
         .into_element()
 }
 
@@ -365,9 +381,9 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
     );
 
     let battery_text = if battery.present {
-        format!("{}% battery", battery.percentage.round() as i64)
+        format!("{}%", battery.percentage.round() as i64)
     } else {
-        "Desktop power".to_string()
+        String::new()
     };
     let mut root = rect()
         .width(Size::fill())
@@ -385,10 +401,15 @@ fn root_view(context: &BarContext, sink: &BarActionSink, view: State<QuickSettin
                         .text(battery_text)
                         .width(Size::flex(1.0))
                         .font_size(TOKENS.typography.small_size)
+                        .font_weight(TOKENS.typography.semibold_weight)
                         .color(TOKENS.colours.text_muted.rgba()),
                 )
-                .child(action_button("Reload", sink, Command::Reload, true))
-                .child(action_button("Lock", sink, Command::Session(SessionVerb::Lock), false)),
+                .child(system_icon_button(
+                    icons::LOCK,
+                    "Lock screen",
+                    sink,
+                    Command::Session(SessionVerb::Lock),
+                )),
         );
 
     if !gnoblin.connected {
